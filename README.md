@@ -78,3 +78,7 @@ unzip data/raw/city_day.csv.zip -d data/raw
 # run the notebooks in order (the weather file downloads automatically)
 cd notebooks && ../.venv/bin/jupyter nbconvert --to notebook --execute --inplace 01_data_prep.ipynb 02_eda.ipynb 03_var_granger.ipynb
 ```
+
+## Authors
+
+Kushagra Singh (LuciferK47)
