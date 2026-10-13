@@ -1,0 +1,32 @@
+{
+  "var_sample": "2015-01-01 to 2019-12-31 (1826 days)",
+  "var_lag_aic": 4,
+  "var_lag_bic": 2,
+  "var_stable": true,
+  "portmanteau_p": 0.173,
+  "max_eigen_modulus": 0.811,
+  "irf": {
+    "wind": {
+      "peak_pct": -11.9,
+      "peak_day": 1,
+      "shock_sd": 2.54,
+      "unit": "km/h"
+    },
+    "rh": {
+      "peak_pct": -6.8,
+      "peak_day": 1,
+      "shock_sd": 5.43,
+      "unit": "% RH"
+    }
+  },
+  "fevd_weather_share_h14": 29.9,
+  "fevd_wind_h14": 20.4,
+  "fevd_rh_h14": 9.5,
+  "granger": {
+    "Wind → PM2.5": 1.73e-29,
+    "Humidity → PM2.5": 1.11e-11,
+    "Wind + Humidity → PM2.5": 3.98e-33,
+    "PM2.5 → Wind": 0.127,
+    "PM2.5 → Humidity": 0.615
+  }
+}

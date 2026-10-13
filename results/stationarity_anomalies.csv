@@ -1,0 +1,4 @@
+series,n,adf_stat,adf_p,adf_lags,kpss_stat,kpss_p,verdict
+Wind anomaly,1826,-19.569,0.0,3,1.05,0.01,"Mixed (ADF says stationary, KPSS rejects)"
+Humidity anomaly,1826,-12.605,0.0,3,0.225,0.1,Stationary
+PM2.5 anomaly,1826,-6.601,0.0,18,2.033,0.01,"Mixed (ADF says stationary, KPSS rejects)"

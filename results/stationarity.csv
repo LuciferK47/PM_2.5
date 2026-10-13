@@ -1,0 +1,12 @@
+series,n,adf_stat,adf_p,adf_lags,kpss_stat,kpss_p,verdict
+Daily PM2.5 (raw),2009,-3.98,0.0015,17,0.224,0.1,Stationary
+Daily log PM2.5,2009,-3.089,0.0274,18,0.366,0.0917,Stationary
+Daily Δ log PM2.5,2008,-15.229,0.0,17,0.031,0.1,Stationary
+Daily wind speed,2009,-13.142,0.0,6,0.54,0.0326,"Mixed (ADF says stationary, KPSS rejects)"
+Daily Δ wind speed,2008,-15.186,0.0,26,0.141,0.1,Stationary
+Daily rel. humidity,2009,-4.521,0.0002,9,0.052,0.1,Stationary
+Daily Δ rel. humidity,2008,-20.681,0.0,8,0.015,0.1,Stationary
+Weekly log PM2.5,287,-5.389,0.0,9,0.158,0.1,Stationary
+Weekly Δ log PM2.5 (d=1),286,-9.743,0.0,2,0.027,0.1,Stationary
+Weekly Δ₅₂ log PM2.5 (D=1),235,-5.852,0.0,2,0.669,0.0163,"Mixed (ADF says stationary, KPSS rejects)"
+"Weekly Δ Δ₅₂ log PM2.5 (d=1, D=1)",234,-9.235,0.0,6,0.049,0.1,Stationary

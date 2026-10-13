@@ -1,0 +1,16 @@
+spec,direction,F,df,p_value,verdict (5%)
+"Anomalies, VAR(4) [AIC]",Wind → PM2.5,35.7,"(4, 5427)",1.7343310337634947e-29,Granger-causes
+"Anomalies, VAR(4) [AIC]",Humidity → PM2.5,14.38,"(4, 5427)",1.1067189654168457e-11,Granger-causes
+"Anomalies, VAR(4) [AIC]",Wind + Humidity → PM2.5,21.89,"(8, 5427)",3.983163340819903e-33,Granger-causes
+"Anomalies, VAR(4) [AIC]",PM2.5 → Wind,1.8,"(4, 5427)",0.12682729497358625,No evidence
+"Anomalies, VAR(4) [AIC]",PM2.5 → Humidity,0.67,"(4, 5427)",0.6145243868365059,No evidence
+"Anomalies, VAR(2) [BIC]",Wind → PM2.5,72.87,"(2, 5451)",5.8476261217026e-32,Granger-causes
+"Anomalies, VAR(2) [BIC]",Humidity → PM2.5,28.56,"(2, 5451)",4.577746492953554e-13,Granger-causes
+"Anomalies, VAR(2) [BIC]",Wind + Humidity → PM2.5,44.65,"(4, 5451)",6.085790669419818e-37,Granger-causes
+"Anomalies, VAR(2) [BIC]",PM2.5 → Wind,4.1,"(2, 5451)",0.01656633791774924,Granger-causes
+"Anomalies, VAR(2) [BIC]",PM2.5 → Humidity,0.52,"(2, 5451)",0.5929231805064531,No evidence
+"First differences, VAR(14) [AIC]",Wind → PM2.5,10.84,"(14, 5304)",7.84718614481944e-25,Granger-causes
+"First differences, VAR(14) [AIC]",Humidity → PM2.5,5.47,"(14, 5304)",1.4702671617419578e-10,Granger-causes
+"First differences, VAR(14) [AIC]",Wind + Humidity → PM2.5,7.23,"(28, 5304)",1.0136812524769753e-27,Granger-causes
+"First differences, VAR(14) [AIC]",PM2.5 → Wind,0.89,"(14, 5304)",0.5686069913849159,No evidence
+"First differences, VAR(14) [AIC]",PM2.5 → Humidity,1.19,"(14, 5304)",0.2759597033055998,No evidence

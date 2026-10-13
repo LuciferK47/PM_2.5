@@ -1,0 +1,9 @@
+,n_missing,pct_missing,longest_gap_days
+pm25,2,0.1,2
+no2,2,0.1,2
+so2,110,5.48,81
+aqi,10,0.5,4
+rh,0,0.0,0
+wind,0,0.0,0
+temp,0,0.0,0
+precip,0,0.0,0

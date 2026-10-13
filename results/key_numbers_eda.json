@@ -1,0 +1,11 @@
+{
+  "pct_days_poor_or_worse": 52.2,
+  "winter_mean_pm25": 213.3,
+  "monsoon_mean_pm25": 48.1,
+  "winter_to_monsoon_ratio": 4.43,
+  "nov_to_aug_median_ratio": 4.9,
+  "seasonal_strength": 0.89,
+  "trend_strength": 0.34,
+  "spearman_pm25_wind": -0.24,
+  "spearman_pm25_rh": -0.2
+}
