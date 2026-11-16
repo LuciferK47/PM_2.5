@@ -19,7 +19,6 @@ H = 52
 PERIOD = 365.25 / 7  # weeks per year
 T0 = pd.Timestamp("2015-01-04")
 WINTER = [11, 12, 1, 2]
-warnings.filterwarnings("ignore")
 
 
 # ── features ────────────────────────────────────────────────────────────────────────────────────────────
@@ -43,7 +42,9 @@ def aicc(res):
 
 # ── baselines ───────────────────────────────────────────────────────────────────────────────────────────
 def seasonal_naive(y, idx):
-    return {"mu": y.iloc[-H:].to_numpy()[: len(idx)], "sd": None}
+    """Same week one year (52 weeks) earlier. sd = spread of 52-week log differences in the training data."""
+    d52 = (y - y.shift(H)).dropna()
+    return {"mu": y.iloc[-H:].to_numpy()[: len(idx)], "sd": np.full(len(idx), float(np.sqrt(np.mean(d52 ** 2))))}
 
 
 def _clim(y):
@@ -53,7 +54,11 @@ def _clim(y):
 
 
 def climatology(y, idx):
-    return {"mu": _clim(y).reindex(week_index(idx)).to_numpy(), "sd": None}
+    """Mean log PM2.5 of each calendar week over the training years. sd = training residual sd around it."""
+    c = _clim(y)
+    resid = y - c.reindex(week_index(y.index)).to_numpy()
+    sd = float(np.sqrt(np.mean(resid ** 2)))
+    return {"mu": c.reindex(week_index(idx)).to_numpy(), "sd": np.full(len(idx), sd)}
 
 
 def clim_ar1(y, idx):
@@ -77,40 +82,58 @@ TREND_SPECS = {  # name -> (trend arg, d)
 PQ_GRID = [(0, 0), (1, 0), (2, 0), (1, 1), (2, 1)]
 
 
+def _fit(mod, maxiter=200):
+    """Fit a statsmodels state-space model, silencing only its convergence / start-value warnings (they are checked
+    explicitly through `converged`)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return mod.fit(disp=False, maxiter=maxiter)
+
+
+def converged(res):
+    return bool(getattr(res, "mle_retvals", {}).get("converged", True))
+
+
 def _fit_dhr(y, K, p, q, trend):
     tr, d = TREND_SPECS[trend]
-    mod = SARIMAX(y, exog=fourier(y.index, K), order=(p, d, q), trend=tr)
-    return mod.fit(disp=False, maxiter=200)
+    return _fit(SARIMAX(y, exog=fourier(y.index, K), order=(p, d, q), trend=tr))
 
 
 def _best_by_aicc(y, trend):
-    best = None
+    """Lowest AICc over K=1..5 and the (p,q) grid; fits whose optimiser did not converge are rejected and counted."""
+    best, rejected = None, 0
     for K, (p, q) in product(range(1, 6), PQ_GRID):
         try:
             r = _fit_dhr(y, K, p, q, trend)
             a = aicc(r)
         except Exception:  # noqa: BLE001
+            rejected += 1
             continue
-        if np.isfinite(a) and (best is None or a < best[0]):
+        if not converged(r) or not np.isfinite(a):
+            rejected += 1
+            continue
+        if best is None or a < best[0]:
             best = (a, K, p, q, r)
-    return best
+    return None if best is None else (*best, rejected)
 
 
 def select_dhr(y, inner=H):
     """Choose (K, p, q) by AICc within each trend type, then the trend type by validation on the last `inner` weeks
     of the training sample (so nothing after the training end is ever used)."""
     sub, val = y.iloc[:-inner], y.iloc[-inner:]
-    scores = {}
+    scores, n_rej = {}, 0
     for trend in TREND_SPECS:
         b = _best_by_aicc(sub, trend)
         if b is None:
             continue
-        _, K, p, q, r = b
+        _, K, p, q, r, rej = b
+        n_rej += rej
         fc = r.get_forecast(inner, exog=fourier(val.index, K)).predicted_mean
         scores[trend] = float(np.abs(np.exp(val.to_numpy()) - np.exp(fc.to_numpy())).mean())
     trend = min(scores, key=scores.get)
-    _, K, p, q, res = _best_by_aicc(y, trend)
-    return {"trend": trend, "K": K, "p": p, "q": q, "inner_mae": scores, "res": res}
+    _, K, p, q, res, rej = _best_by_aicc(y, trend)
+    return {"trend": trend, "K": K, "p": p, "q": q, "inner_mae": scores, "res": res,
+            "n_rejected_nonconverged": n_rej + rej}
 
 
 def dhr(y, idx, fixed=None):
@@ -128,7 +151,7 @@ def dhr_fixed(trend, K=3, p=1, q=0):
 # ── SARIMA benchmarks ───────────────────────────────────────────────────────────────────────────────────
 def sarima(order, sorder, trend="n"):
     def _m(y, idx):
-        res = SARIMAX(y, order=order, seasonal_order=sorder, trend=trend).fit(disp=False, maxiter=200)
+        res = _fit(SARIMAX(y, order=order, seasonal_order=sorder, trend=trend))
         f = res.get_forecast(len(idx))
         return {"mu": f.predicted_mean.to_numpy(), "sd": np.sqrt(f.var_pred_mean.to_numpy()), "res": res}
     return _m
@@ -146,18 +169,47 @@ def _design(idx, K, t0):
 
 
 def linreg(y, idx, K=3):
-    from sklearn.linear_model import LinearRegression
-    X = _design(y.index, K, y.index[0])
-    m = LinearRegression().fit(X, y.to_numpy())
-    sd = float(np.std(y.to_numpy() - m.predict(X), ddof=X.shape[1] + 1))
-    return {"mu": m.predict(_design(idx, K, y.index[0])), "sd": np.full(len(idx), sd)}
+    """OLS on Fourier terms + linear time. The predictive sd includes parameter uncertainty, so it grows with the horizon:
+    sd_h^2 = s^2 (1 + x_h' (X'X)^-1 x_h)."""
+    import statsmodels.api as sm
+    X = sm.add_constant(_design(y.index, K, y.index[0]), has_constant="add")
+    m = sm.OLS(y.to_numpy(), X.to_numpy()).fit()
+    Xf = sm.add_constant(_design(idx, K, y.index[0]), has_constant="add")
+    pr = m.get_prediction(Xf.to_numpy())
+    se_obs = np.sqrt(pr.se_mean ** 2 + m.scale)
+    return {"mu": pr.predicted_mean, "sd": se_obs}
+
+
+def lstm_window(z_hist, C_hist, lag):
+    """Input window for predicting the step after the end of `z_hist`: the last `lag` anomalies, each next to the calendar
+    features OF ITS OWN WEEK. `z_hist` and `C_hist` must be aligned row by row (same weeks). Used for training and forecasting."""
+    assert len(z_hist) == len(C_hist) and len(z_hist) >= lag
+    return np.c_[np.asarray(z_hist)[-lag:], np.asarray(C_hist)[-lag:]]
+
+
+def _lstm_recursive(net, z_hist, C_hist, C_future, torch):
+    """Recursive multi-step forecast; the calendar block grows by exactly one week per predicted week (aligned)."""
+    zh, Ch, out = list(z_hist), [list(r) for r in C_hist], []
+    lag = net.lag
+    for j in range(len(C_future)):
+        xin = torch.tensor(lstm_window(zh, Ch, lag)[None], dtype=torch.float32)
+        nxt = float(net(xin))
+        out.append(nxt)
+        zh.append(nxt)
+        Ch.append(list(C_future[j]))  # the predicted value belongs to week j of the future index
+    return np.array(out)
 
 
 def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
-    """Tiny recursive one-step LSTM on weekly log-anomalies (vs training climatology) + calendar features."""
+    """Tiny recursive one-step LSTM on weekly log-anomalies (vs training climatology) + calendar features.
+
+    Predictive sd is horizon-specific: the spread of h-step recursive errors from in-sample origins (non-decreasing in h,
+    capped at the training anomaly sd, which is the long-horizon limit)."""
     import torch
     torch.manual_seed(seed)
     np.random.seed(seed)
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
     c = _clim(y)
     a = (y - c.reindex(week_index(y.index)).to_numpy()).to_numpy()
     sd_a = a.std()
@@ -170,7 +222,7 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
     C = cal(y.index)
     X, Y = [], []
     for i in range(lag, len(z)):
-        X.append(np.c_[z[i - lag:i], C[i - lag:i]])
+        X.append(lstm_window(z[:i], C[:i], lag))
         Y.append(z[i])
     X = torch.tensor(np.array(X), dtype=torch.float32)
     Y = torch.tensor(np.array(Y), dtype=torch.float32)
@@ -186,6 +238,7 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
             return self.out(o[:, -1]).squeeze(-1)
 
     net = Net()
+    net.lag = lag
     opt = torch.optim.Adam(net.parameters(), lr=0.01, weight_decay=1e-3)
     for _ in range(epochs):
         opt.zero_grad()
@@ -193,19 +246,23 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
         loss.backward()
         opt.step()
     with torch.no_grad():
-        resid_sd = float(torch.std(net(X) - Y)) * sd_a
-        hist = list(z[-lag:])
-        Cf = cal(idx)
-        Cp = cal(y.index[-lag:])
-        preds = []
-        for j in range(len(idx)):
-            cc = np.vstack([Cp, Cf[:j + 1]])[-lag:] if j else Cp
-            xin = torch.tensor(np.c_[hist[-lag:], cc][None], dtype=torch.float32)
-            nxt = float(net(xin))
-            preds.append(nxt)
-            hist.append(nxt)
-    mu = c.reindex(week_index(idx)).to_numpy() + np.array(preds) * sd_a
-    return {"mu": mu, "sd": np.full(len(idx), resid_sd)}
+        one_step_sd = float(torch.std(net(X) - Y))
+        preds = _lstm_recursive(net, z, C, cal(idx), torch)
+        # horizon-specific sd from in-sample recursive forecasts (every 4 weeks), in z units
+        hmax = len(idx)
+        errs = [[] for _ in range(hmax)]
+        for o in range(lag, len(z) - 1, 4):
+            steps = min(hmax, len(z) - o)
+            p = _lstm_recursive(net, z[:o], C[:o], C[o:o + steps], torch)
+            for h in range(steps):
+                errs[h].append(z[o + h] - p[h])
+        sd_z = np.empty(hmax)
+        for h in range(hmax):
+            sd_z[h] = np.sqrt(np.mean(np.square(errs[h]))) if len(errs[h]) >= 8 else np.nan
+        sd_z = pd.Series(sd_z).ffill().fillna(one_step_sd).to_numpy()
+        sd_z = np.minimum(np.maximum.accumulate(np.maximum(sd_z, one_step_sd)), max(1.0, one_step_sd))
+    mu = c.reindex(week_index(idx)).to_numpy() + preds * sd_a
+    return {"mu": mu, "sd": sd_z * sd_a}
 
 
 # ── metrics ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -269,13 +326,28 @@ def backtest(y, raw, models, origins=ORIGINS, h=H, n_jobs=8, verbose=True):
 
 
 def block_bootstrap_diff(e_a, e_b, block=8, n=4000, seed=0):
-    """Mean of (e_a - e_b) with a moving-block bootstrap 95% CI (e = absolute errors, concatenated over folds)."""
-    d = np.asarray(e_a) - np.asarray(e_b)
+    """Mean of (e_a - e_b) with a circular moving-block bootstrap 95% CI.
+
+    e_a, e_b: lists of per-fold error arrays (absolute errors), or single arrays (one fold). Blocks are drawn WITHIN each fold
+    (stratified), so no block joins one forecast year to another. Blocks wrap around inside a fold (circular), so every week
+    is equally likely to be drawn; without wrapping, the first and last weeks are under-sampled and the interval is biased."""
+    if not isinstance(e_a, (list, tuple)):
+        e_a, e_b = [e_a], [e_b]
+    ds = [np.asarray(a, float) - np.asarray(b, float) for a, b in zip(e_a, e_b)]
     rng = np.random.default_rng(seed)
-    nb = int(np.ceil(len(d) / block))
-    starts = np.arange(len(d) - block + 1)
-    means = np.array([np.concatenate([d[s:s + block] for s in rng.choice(starts, nb)])[:len(d)].mean() for _ in range(n)])
-    return float(d.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+    total = sum(len(d) for d in ds)
+    means = np.empty(n)
+    for r in range(n):
+        s_ = 0.0
+        for d in ds:
+            L = len(d)
+            nb = int(np.ceil(L / block))
+            starts = rng.integers(0, L, nb)
+            take = np.concatenate([d[(st + np.arange(block)) % L] for st in starts])[:L]
+            s_ += take.sum()
+        means[r] = s_ / total
+    d_all = np.concatenate(ds)
+    return float(d_all.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
 def hln_dm(e_a, e_b, h=1, power=1):
@@ -317,33 +389,45 @@ def band_edges():
 
 
 def week_offsets_by_month(daily_pm25):
-    """Pool of log(daily) - log(weekly mean) offsets, by calendar month of the day (training data only)."""
+    """Pool of complete within-week offset VECTORS (Mon..Sun) of log(daily) - log(weekly mean), keyed by the calendar month of
+    the week's Thursday (training data only). Each vector satisfies mean(exp(offset)) = 1 exactly, so adding it to a weekly
+    log-mean keeps that week's mean unchanged."""
     d = daily_pm25.dropna()
     wk_end = d.index + pd.to_timedelta((6 - d.index.weekday) % 7, unit="D")
-    wmean = d.groupby(wk_end).transform("mean")
-    n = d.groupby(wk_end).transform("count")
-    off = (np.log(d) - np.log(wmean))[n == 7]
-    return {m: off[off.index.month == m].to_numpy() for m in range(1, 13)}
+    full = d.groupby(wk_end).transform("count") == 7
+    d = d[full]
+    wk_end = wk_end[full.to_numpy()]
+    off = np.log(d) - np.log(d.groupby(wk_end).transform("mean"))
+    vecs = off.groupby(wk_end).apply(lambda s: s.sort_index().to_numpy())
+    thu = pd.DatetimeIndex(vecs.index) - pd.Timedelta(days=3)
+    return {m: np.vstack(vecs[thu.month == m].to_list()) for m in range(1, 13)}
 
 
-def daily_band_days(paths, idx, pools, year, seed=2):
-    """Monte-Carlo days per PM2.5 band per month for the calendar `year`.
+def daily_paths(paths, idx, pools, year, seed=2):
+    """Daily PM2.5 paths for calendar `year`, coherent with the weekly paths.
 
-    paths: weekly log-mean paths (len(idx), n_paths) for weeks `idx` (W-SUN). Each day gets its week's path value plus a
-    resampled within-week offset from the matching month pool. Returns array (n_paths, 12, 6) of days per band.
-    """
+    paths: weekly log-mean paths (len(idx), n_paths) for W-SUN weeks `idx`. For each week and path one whole offset vector is
+    drawn from the pool of that week's month, so the 7 daily values of every simulated week average EXACTLY to the simulated
+    weekly mean, and within-week day-to-day dependence is kept. Returns (days, values[n_days, n_paths])."""
     rng = np.random.default_rng(seed)
-    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
-    wk_end = days + pd.to_timedelta((6 - days.weekday) % 7, unit="D")
-    pos = pd.Index(idx).get_indexer(wk_end)
-    keep = pos >= 0
-    days, pos = days[keep], pos[keep]
     n = paths.shape[1]
-    vals = np.empty((len(days), n))
-    for i, d in enumerate(days):
-        vals[i] = np.exp(paths[pos[i]] + rng.choice(pools[d.month], size=n))
+    idx = pd.DatetimeIndex(idx)
+    allv = np.empty((len(idx) * 7, n))
+    alld = []
+    for w, end in enumerate(idx):
+        pool = pools[(end - pd.Timedelta(days=3)).month]
+        pick = pool[rng.integers(0, len(pool), n)]                  # (n, 7)
+        allv[w * 7:(w + 1) * 7] = np.exp(paths[w][None, :] + pick.T)
+        alld.extend(pd.date_range(end - pd.Timedelta(days=6), end, freq="D"))
+    alld = pd.DatetimeIndex(alld)
+    keep = alld.year == year
+    return alld[keep], allv[keep]
+
+
+def daily_band_days(days, vals):
+    """Days per PM2.5 band per month for each path, from `daily_paths` output. Returns (n_paths, 12, 6)."""
     cat = np.searchsorted(band_edges(), vals, side="left")  # 0..5 (<=edge -> lower band)
-    out = np.zeros((n, 12, 6))
+    out = np.zeros((vals.shape[1], 12, 6))
     for m in range(12):
         sel = days.month == m + 1
         for b in range(6):
@@ -351,17 +435,11 @@ def daily_band_days(paths, idx, pools, year, seed=2):
     return out
 
 
-def monthly_mean_paths(paths, idx, year):
-    """Monthly mean PM2.5 (raw scale) per simulated path, weighting weekly means by days falling in each month."""
-    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
-    wk_end = days + pd.to_timedelta((6 - days.weekday) % 7, unit="D")
-    pos = pd.Index(idx).get_indexer(wk_end)
-    keep = pos >= 0
-    days, pos = days[keep], pos[keep]
-    raw = np.exp(paths)
-    out = np.full((12, paths.shape[1]), np.nan)
+def monthly_mean_paths(days, vals):
+    """Monthly mean PM2.5 per path from the SAME daily paths used for the band counts. Returns (12, n_paths)."""
+    out = np.full((12, vals.shape[1]), np.nan)
     for m in range(12):
         sel = days.month == m + 1
         if sel.any():
-            out[m] = raw[pos[sel]].mean(axis=0)
+            out[m] = vals[sel].mean(axis=0)
     return out
