@@ -1,19 +1,19 @@
 folds,model,mean_MAE_diff_vs_climatology,ci_lo,ci_hi,verdict
-folds 2018+2019,Seasonal naive,4.84,0.19,8.53,worse
-folds 2018+2019,Climatology + AR(1),-0.3,-0.75,0.05,indistinguishable
-folds 2018+2019,Linear regression,-2.33,-6.17,0.77,indistinguishable
-folds 2018+2019,LSTM (small),26.26,8.8,42.3,worse
-folds 2018+2019,Fourier+ARMA const,0.86,-2.1,2.72,indistinguishable
-folds 2018+2019,Fourier+ARMA linear,-2.94,-6.43,-0.36,better
-folds 2018+2019,Fourier+ARMA (selected),-0.23,-3.56,1.81,indistinguishable
-folds 2018+2019,SARIMA D=1,-0.53,-2.32,1.02,indistinguishable
-folds 2018+2019,SARIMA D=0,18.67,12.96,23.98,worse
-all three folds,Seasonal naive,5.71,1.22,9.4,worse
-all three folds,Climatology + AR(1),-0.3,-0.6,0.02,indistinguishable
-all three folds,Linear regression,0.08,-3.71,3.97,indistinguishable
-all three folds,LSTM (small),19.27,7.53,30.95,worse
-all three folds,Fourier+ARMA const,0.44,-1.91,2.12,indistinguishable
-all three folds,Fourier+ARMA linear,-0.34,-3.96,3.24,indistinguishable
-all three folds,Fourier+ARMA (selected),0.0,-2.49,1.97,indistinguishable
-all three folds,SARIMA D=1,7.26,-0.57,14.21,indistinguishable
-all three folds,SARIMA D=0,17.07,11.1,22.85,worse
+folds 2018+2019,Seasonal naive,4.84,0.94,8.96,worse
+folds 2018+2019,Climatology + AR(1),-0.3,-0.8,0.02,indistinguishable
+folds 2018+2019,Linear regression,-2.33,-5.83,1.91,indistinguishable
+folds 2018+2019,LSTM (small),16.54,6.62,27.75,worse
+folds 2018+2019,Fourier+ARMA const,0.86,-2.09,4.32,indistinguishable
+folds 2018+2019,Fourier+ARMA linear,-2.94,-6.12,0.68,indistinguishable
+folds 2018+2019,Fourier+ARMA (selected),-0.23,-2.91,2.77,indistinguishable
+folds 2018+2019,SARIMA D=1,-0.53,-1.91,0.98,indistinguishable
+folds 2018+2019,SARIMA D=0,18.67,13.13,23.88,worse
+all three folds,Seasonal naive,5.71,2.04,10.07,worse
+all three folds,Climatology + AR(1),-0.3,-0.68,0.0,indistinguishable
+all three folds,Linear regression,0.08,-3.19,3.6,indistinguishable
+all three folds,LSTM (small),12.81,6.07,20.63,worse
+all three folds,Fourier+ARMA const,0.44,-1.84,2.94,indistinguishable
+all three folds,Fourier+ARMA linear,-0.34,-3.45,3.04,indistinguishable
+all three folds,Fourier+ARMA (selected),0.0,-2.2,2.28,indistinguishable
+all three folds,SARIMA D=1,7.26,0.37,14.97,worse
+all three folds,SARIMA D=0,17.07,11.68,22.58,worse

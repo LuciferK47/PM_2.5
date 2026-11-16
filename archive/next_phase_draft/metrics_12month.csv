@@ -1,4 +1,0 @@
-,MAE,RMSE
-"SARIMA(1, 0, 1)x(0, 1, 1)[52]",27.5,40.5
-Seasonal naive,30.3,44.2
-Climatology,27.8,41.1
