@@ -1,0 +1,14 @@
+\begin{tabular}{lrrrrl}
+\toprule
+\textbf{Model} & \textbf{2017} & \textbf{2018} & \textbf{2019} & \textbf{Mean 18--19} & \textbf{vs climatology} \\
+\midrule
+Climatology (benchmark) & 31.0 & 21.8 & 27.8 & 24.8 & reference \\
+Climatology + AR(1) & 30.7 & 21.7 & 27.3 & 24.5 & indistinguishable \\
+Linear regression & 35.9 & 20.0 & 24.9 & 22.5 & indistinguishable \\
+Fourier+ARMA (selected) & 31.5 & 23.4 & 25.7 & 24.6 & indistinguishable \\
+SARIMA $D=1$ & 53.8 & 21.1 & 27.5 & 24.3 & indistinguishable \\
+SARIMA $D=0$ (+constant) & 44.9 & 42.8 & 44.1 & 43.5 & worse \\
+LSTM (small) & 36.3 & 49.2 & 52.9 & 51.1 & worse \\
+Seasonal naive & 38.4 & 29.0 & 30.3 & 29.6 & worse \\
+\bottomrule
+\end{tabular}

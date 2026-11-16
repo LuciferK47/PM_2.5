@@ -1,0 +1,2 @@
+R2_lagged_pm25_only,R2_plus_lagged_weather,delta_R2,joint_wald_p_weather
+0.1341,0.1391,0.005,0.5146

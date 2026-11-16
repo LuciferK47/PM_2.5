@@ -1,0 +1,5 @@
+ordering,shock,day0_pct,day1_pct,day2_pct,day3_pct,day5_pct
+"weather first (wind, rh, pm25)",Wind,-9.2,-12.0,-4.7,-1.9,-0.3
+"weather first (wind, rh, pm25)",Humidity,-4.5,-6.7,-5.7,-4.0,-1.4
+"PM2.5 first (pm25, wind, rh)",Wind,0.0,-5.9,-1.1,0.9,1.0
+"PM2.5 first (pm25, wind, rh)",Humidity,0.0,-4.0,-4.1,-2.7,-0.7
