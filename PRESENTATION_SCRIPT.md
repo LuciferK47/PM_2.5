@@ -1,85 +1,86 @@
 # Presentation script and Q&A
 
-Deck: `slides/Delhi_PM25_presentation.pdf` (14 slides + 3 backup; source `slides/beamer/main.tex`).
-Every number in the deck is generated from `results/` and re-checked by `slides/beamer/verify_numbers.py` (52 checks).
+Deck: `slides/Delhi_PM25_presentation.pdf` (21 slides + 5 backup; source `slides/beamer/main.tex`). Every number on a slide comes from `results/` and is re-derived by `slides/beamer/verify_numbers.py` (65 checks). The full report is `report/report.pdf`; the log of what three reviewers claimed and what we found is `docs/REVIEW_RESPONSES.md`.
 
 ## One-line pitch
-"Delhi's PM2.5 repeats a huge winter peak every year. We first tested whether weather (wind and humidity) actually drives it. It does, over the next few days. In the next phase we use that to build and compare forecasting models for the coming 12 months."
+"Delhi's PM2.5 repeats a huge winter peak. Weather predicts it for about a week, but not for a year. A smooth seasonal model forecasts the year ahead about as well as the calendar average does, and we show honestly where it is and is not better."
 
 ## What to say on each slide
 
-**1. Title.** "We are forecasting Delhi's PM2.5 air pollution. Today: what we have established. Next phase: the forecasting models."
+**1. Title.** "We forecast Delhi's PM2.5. First: does weather explain it, and over what horizon? Then: how well can we forecast a week and a year ahead?"
 
-**2. The problem.** "PM2.5 means particles under 2.5 micrometres that reach the lungs and blood, measured in micrograms per cubic metre. India's AQI colours these bands. 52 percent of days from 2015 to 2020 were Poor or worse, and it repeats every year: winter averages 213, the monsoon 48, so winter is 4.4 times higher."
+**2. Problem.** "PM2.5 is particles under 2.5 micrometres. 52 percent of days from 2015 to 2020 were Poor or worse on India's PM2.5 band; winter averages 213 against 48 in the monsoon, 4.4 times. Note: the official AQI takes the worst pollutant; we use only the PM2.5 band."
 
-**3. What we are building (say the intent clearly here).** "Two questions. Q1: does weather drive PM2.5? That is done, using a VAR model and Granger causality. Q2: what will PM2.5 be next? That is the next phase, on two horizons: next week, where weather may help, and the next 12 months, where weather is unknown, so we will not use weather inputs. The final output is a month-by-month AQI outlook for health advisories."
+**3. What we built.** "Q1 explain, Q2a next week, Q2b next 12 months. All three are answered. Weather has a short memory, so the 12-month model uses no weather."
 
-**4. Data.** "PM2.5 from CPCB, India's pollution board, through Kaggle; wind and humidity from ERA5, a reanalysis, meaning observations blended into a weather model to give a gap-free record. Links are on the slide. 2,009 days from January 2015 to July 2020, only 2 PM2.5 values interpolated. We use daily data for causality and weekly means, 287 weeks, for forecasting. Train 2015 to 2018, test 2019; the 2020 lockdown is excluded."
+**4. Data.** "CPCB PM2.5 through Kaggle, ERA5 weather (a reanalysis, observed not forecast) through Open-Meteo. 2,009 days, 2 values interpolated. Daily data for causality, weekly means for forecasting, validated on three rolling origins."
 
-**5. STL.** "STL splits the series into trend, seasonal and residual. Seasonal strength is 0.89 on a scale where 1 is purely seasonal, so the yearly cycle dominates and the forecasting model must be seasonal with period 52 weeks."
+**5. STL.** "Seasonal strength 0.90 on the training years: the cycle dominates."
 
-**6. Why logs.** "PM2.5 moves by percentages: its spread is about 115 in November but 15 in August. Raw data has a heavy right tail, skewness 1.70. The log is close to a bell curve, skewness minus 0.08. The Box-Cox estimate is 0.045, close to 0, which is exactly the log."
+**6-7. Log and volatility.** "Spread grows with the level, so we model the log: monthly spread 7.9x becomes 1.3x, skewness 1.70 becomes -0.08. Some volatility clustering remains in the daily data; on the weekly forecast residuals ARCH is absent."
 
-**7. Volatility tests.** "Volatility is how much values swing. Raw spread differs 7.9 times between months and tracks the level; after the log only 1.3 times. Honest note: small differences remain. The equal-spread test still gives p = 0.006 and the ARCH test, which asks whether big swings cluster, drops from 235 to 36 but is still significant. So we re-check the model residuals later."
+**8-9. Stationarity.** "ADF and KPSS have opposite null hypotheses; both are consistent with stationarity for log PM2.5, so d = 0. KPSS on the raw level hides a slow decline under the cycle: once the cycle is removed PM2.5 falls about 25 percent from 2016 to 2019. A D=1 SARIMA's seasonal MA coefficient is -0.988 with a huge standard error: the seasonal difference is not needed, so we model the cycle with Fourier terms."
 
-**8. Stationarity.** "Stationary means mean, spread and autocorrelation do not drift, so past patterns still apply. Weekly log PM2.5 on the training years has a flat rolling mean and a modestly varying spread: a repeating yearly pattern, not a drifting trend."
+**10. Granger.** "Model A uses past PM2.5; model B adds past wind and humidity; a Wald test with robust errors asks if B is better. Joint tests at every lag order 1 to 7 reject, also with rain and temperature controls. Reverse: absent for humidity, weak for wind at lag orders 1 and 2. This is predictive, not proof of a physical cause."
 
-**9. ADF and KPSS.** "Two tests with opposite null hypotheses. ADF: H0 is a unit root; a small p supports stationarity. KPSS: H0 is stationary; a large p supports it. Both pass for log PM2.5 and its seasonal difference, so d = 0. A further difference over-differences, with lag-1 autocorrelation minus 0.46. Whether to use the seasonal difference D is decided in the next phase on a validation year, not the test year."
+**11. Shock.** "A shock is the unpredictable part of today's wind. Binned by size, PM2.5 on day t+1 is 24 percent lower than on day t-1 after an unexpectedly windy day."
 
-**10. Granger causality.** "X Granger-causes Y if past X improves the forecast of Y beyond Y's own past. We compare Model A (past PM2.5 only) with Model B (plus past wind and humidity) using a Wald test with robust errors. We removed the seasonal cycle first. Wind and humidity help predict PM2.5 at every lag from 1 to 7 days, p below 10 to the minus 9, and humidity still matters after controlling for rain. The reverse is absent for humidity and weak for wind, only at 1 to 2 lags. This is predictive causality, not proof of a physical cause."
+**12. Impulse response.** "A 1-SD wind shock cuts PM2.5 by 6 to 12 percent next day, humidity 4 to 7; the range is the variable ordering; the ordering-free generalised response sits inside it. Fades in about a week. Last week's weather adds nothing at the weekly scale."
 
-**11. What is a shock.** "A shock is the part of today's wind or humidity that the model could not predict from the previous 4 days. On 21 January 2019 the model expected 7.4 km/h and the wind was 14.8, a shock of plus 7.4. One SD is a typical shock: 2.5 km/h for wind, 5.4 percent for humidity. Grouping all days by shock size, an unexpectedly windier day is followed by PM2.5 about 24 percent lower, a calmer one by about 32 percent higher."
+**13. Established.** Read the bullets; answer to Q1: robust predictive association over days.
 
-**12. Impulse response.** "This traces PM2.5 after a one-SD shock. The size depends on the ordering assumption: weather first lets a shock act on the same day; PM2.5 first allows lagged effects only. Wind cuts PM2.5 by 6 to 12 percent the next day, humidity 4 to 7 percent, fading within about a week. At the weekly scale, last week's weather adds nothing to predict this week's PM2.5."
+**14. Models and design.** "Benchmarks, a Fourier-plus-ARMA family, SARIMA, linear regression and a tiny LSTM. Three expanding-window origins; everything re-selected inside each window. We declared the headline model before looking at the test years."
 
-**13. Established so far.** Read the five bullets; end with: "Answer to Q1: yes, weather drives PM2.5 over the following days."
+**15-16. Backtest.** "Climatology is hard to beat. In 2019 the selected model scores 25.7 against 27.8; SARIMA D=1 27.5 but 54 in the 2017 fold. Seasonal naive, SARIMA D=0 and the LSTM are clearly worse. The linear-trend variant looks better in 2018-19 but not over all three origins and it was not our pre-declared choice, so we do not claim it. With three origins we cannot rank the rest."
 
-**14. Limits and next phase.** "Limits: Granger is predictive causality and mixing height, stubble burning and fireworks are not measured; weather's share of 14-day error is 6 to 30 percent depending on ordering; one city, data end mid-2020. Next: SARIMA(X) with AIC/BIC search and residual checks; baselines (seasonal naive, climatology, Linear Regression, LSTM) compared by test MAE on 2019; the final 12-month forecast with 95 percent intervals and a monthly AQI table."
+**17. Diagnostics.** "The earlier draft's Ljung-Box p of zero was a bug: the first 52 residuals of a D=1 model are initialisation values. Without them the residuals pass lags 10 and 26 (lag 52: p = 0.016). Intervals: 90 percent of 2019 weeks covered, all misses on the low side; seasonal rescaling from earlier years gives 96 percent. We re-centre only if the bias is consistent; it was not."
+
+**18. One week ahead.** "Last week's weather: no gain (-2.4 percent). Last three days: +0.7. The same week's weather, which no one knows in advance, +6.9 percent. Weather is explanatory but a weak forecasting input."
+
+**19. Outlook for 2020.** "Fitted on 2015-2019 only, simulated paths, converted to daily PM2.5 bands. Validated on 2019: all 12 monthly means inside the interval, but the Poor-or-worse share is over-predicted, 55 against 45 percent: the level bias. In 2020, January and February fall inside the interval; March to May fall below it."
+
+**20. Lockdown.** "Weeks from 29 March to 31 May were about 43 percent below the no-lockdown forecast, 38 percent after adjusting for the actual wind and humidity: most of the drop is not weather. Descriptive; relies on the level of the forecast."
+
+**21. Established and limits.** Read both cards.
+
+**Backups:** glossary; robustness of Granger and IRF orderings; PM2.5 by month; station check (is the decline real?); outlook table.
 
 ## Likely questions and answers
 
-**What is the project about?** Forecasting Delhi's PM2.5, after first testing whether wind and humidity drive it, so we know whether to use weather in the forecasting models.
+**Does weather cause PM2.5?** We claim a robust *predictive* association: after removing the seasonal cycle, lagged wind and humidity improve prediction of PM2.5 in every specification. Boundary-layer height, stubble burning and fireworks are unmeasured, so this is not a causal proof.
 
-**Why is there no forecast yet?** We split the work in two phases: first understand the data and the weather link (done); next fit and validate the SARIMA models. Doing the analysis first changed the design: weather only matters for days, so the 12-month model should not use it.
+**Is humidity only important in the monsoon?** Not as a predictive effect. Both variables are significant in winter and in the monsoon (p <= 5e-4); the monsoon-by-humidity interaction is not significant (p = 0.20). The correlation pattern in the EDA differs by season; the Granger effect does not detectably differ.
 
-**Why logs?** The spread of PM2.5 grows with its level (corr. 0.95 between monthly mean and monthly SD, spread 7.9 times across months). The log makes the spread nearly constant (1.3 times) and removes the skew (1.70 to minus 0.08). Box-Cox lambda 0.045 is near 0.
+**Why are the p-values so small? Aren't they inflated?** The plain F-tests (1e-29) assume independent errors, which is false; we use HAC errors (1e-20 to 1e-11) and a rain/temperature control (down to 7e-8). We quote them as "significant", not as precise numbers.
 
-**What does the volatility test show, and is the log enough?** It removes most of the level dependence, but the equal-spread test (p = 0.006) and ARCH (36, p about 6e-6) still reject. We will check the model residuals and add a variance model if needed.
+**Why does the reverse PM2.5 -> wind appear at lags 1-2?** Possibly a shared stagnation regime (low wind and high PM2.5 on consecutive days). We have no boundary-layer data, so we call it unproven. It vanishes at lag order 3 and above and is absent in the full VAR F-test.
 
-**What is stationarity and which tests?** No drift in mean, spread or autocorrelation. ADF (H0 unit root) and KPSS (H0 stationary). Both pass for log PM2.5 and its seasonal difference on 2015 to 2018.
+**Why Fourier + ARMA instead of SARIMA?** A SARIMA with a seasonal difference spends 52 of 209 points on differencing, and its seasonal MA hits -0.988 with a very large standard error (unidentified); it collapses in the 2017 fold (MAE 54). Fourier terms use 10 parameters for the yearly cycle.
 
-**Isn't raw PM2.5 stationary too?** Yes, it passes ADF and KPSS in our checks (ADF p = 0.0015, KPSS p at least 0.10). The log is for variance, not for stationarity.
+**Is the Fourier model really better than climatology?** The pre-declared model is not significantly better (2018-19 MAE 24.6 vs 24.8). A linear-trend variant is better on 2018-19 but not over all three origins and we did not choose it in advance. Our message is "as good, more robust, with calibrated uncertainty", not "better".
 
-**Why did you not use the seasonal difference twice (d = 1 and D = 1)?** The lag-1 autocorrelation is minus 0.46, close to the minus 0.5 warning level for over-differencing, and the series already passes the tests.
+**Why is the LSTM so bad?** 209 weekly points, recursive 52-step forecast: it can only learn the mean cycle and drifts. It is a small-data negative result, not a statement about deep learning in general.
 
-**What is a shock?** The unpredictable part of today's value given the past (the VAR residual). One SD is its typical size.
+**Is the decline over 2016-2019 real or a change in monitors?** Both are possible: stations reporting rose from 10 and 8 to 37. A fixed panel of six long-running stations still falls about 20 percent (all stations 25, weather-adjusted 18). Mostly real, with caveats: the panel is small and thin in 2017.
 
-**What is an impulse response, and why a range?** The path of PM2.5 after a one-SD shock. It depends on the Cholesky ordering. We report weather-first and PM2.5-first, so wind is 6 to 12 percent, humidity 4 to 7 percent on day 1.
+**What does the "monthly outlook" mean? Is it the AQI?** It is a PM2.5 sub-index band outlook: the official AQI is the maximum over pollutants. Weekly paths plus a within-week daily offset give expected days per band; validated on 2019.
 
-**Does it prove wind causes lower PM2.5?** No. Granger causality is predictive. Mixing height, stubble burning and fireworks are not in the data.
+**Why didn't you re-centre the forecast for the 2019 bias?** The bias had the same sign in both calibration years (-0.66 and -0.45 SD) but the smaller one is below our pre-set 0.5 SD threshold; we decided the rule before seeing 2019 and report the bias rather than tune it.
 
-**Is the reverse direction (PM2.5 to wind) significant?** Weakly at 1 to 2 lags (p = 0.04 and 0.016), not at 3 or more (0.07 to 0.2); PM2.5 to humidity never (p at least 0.2). Weather to PM2.5 is significant at every lag from 1 to 7 (p below 1e-9).
+**Why is the 2020 interval narrower than 2019's?** The calibration scale factors come from the two preceding folds and differ by year (1.33/1.42 vs 1.09/0.95): calibration itself is uncertain with this little data.
 
-**Why deseasonalise before Granger?** All series follow the calendar. Without removing it the test mostly detects "it is winter". We subtract a smoothed day-of-year mean.
+**Why not a Diebold-Mariano test for the 52-week comparison?** The 52 errors are one forecast path (strongly dependent), not 52 replications; we use a block bootstrap over three origins and say "indistinguishable". DM (HLN) is used only for the genuine one-step comparison.
 
-**Why robust (HAC) errors?** The residuals are autocorrelated and their variance changes (ARCH), which can make ordinary p-values too small. HAC errors correct for that. Our manual implementation matches the software.
+**Did you use the test year to choose anything?** No: the Fourier order, ARMA order and level treatment are chosen inside each training window (inner validation on its last year). The earlier draft chose D on 2018 after an in-sample order search; that overlap is gone. Headline STL / Box-Cox are on the training years.
 
-**Does humidity just stand in for rain?** No: with rain as a control, humidity stays significant (p = 3e-8) and rain adds nothing (p = 0.86).
+**What was wrong with the draft?** (1) Ljung-Box on the 52 initial residuals; (2) no constant in the D=0 model; (3) full-sample statistics quoted as headline; (4) wording ("drives", "p<1e-10 everywhere", "AQI"); (5) a weekday index that merged ISO week 53; (6) leap-year day-of-year. All fixed; see `docs/REVIEW_RESPONSES.md`.
 
-**What does "6 to 30 percent" mean?** The share of the 14-day forecast-error variance of PM2.5 due to weather shocks in the VAR; 6 percent if PM2.5 is ordered first, 30 percent if weather is first.
-
-**Why is weather not used for the 12-month forecast?** Its effect lasts about a week, last week's weather does not predict this week's PM2.5 (p = 0.46 and 0.48), and future weather is unknown a year ahead.
-
-**Why weekly data for forecasting?** A 12-month horizon is 52 steps with a clear seasonal period of 52, which keeps the model fast and stable.
-
-**What data and reliability?** CPCB through Kaggle; ERA5 reanalysis (a grid-cell estimate for central Delhi, not a station reading). A station dataset would be a good robustness check.
-
-**Why train on 2015 to 2018 and test on 2019?** One full seasonal cycle for testing, and it keeps the 2020 lockdown (an emissions shock) out of the test.
+**Why is the forecast for 2020 and not for the next 12 months from today?** Our data end in July 2020; a current advisory would need newer, consistently monitored data. This is a historical forecasting study with a real out-of-sample check (Jan-Jun 2020).
 
 ## Numbers to remember
-- 2,009 days; 52% of days Poor or worse; winter 213 vs monsoon 48 (4.4x); STL strength 0.89
-- Log: skewness 1.70 to minus 0.08; monthly spread 7.9x to 1.3x; Box-Cox 0.045
-- Training weeks 209: ADF stat minus 4.28 (level), minus 4.53 (seasonal difference); KPSS p at least 0.10; double-difference ACF minus 0.46
-- Granger (4 lags, HAC): wind p = 8e-20, humidity 3e-11 (with rain control 3e-8), rain 0.86; reverse 0.10 (wind), 0.55 (humidity)
-- 1 SD: wind 2.5 km/h, humidity 5.4%; day-1 effect wind minus 6 to minus 12%, humidity minus 4 to minus 7%; weather share 6 to 30%
-- 21 Jan 2019: expected 7.4, actual 14.8, shock plus 7.4 km/h
+- 2,009 days; 52% Poor or worse; winter 213 vs monsoon 48 (4.4x); STL strength 0.90 (training), 0.89 (full)
+- Log: skew 1.70 -> -0.08; monthly spread 7.9x -> 1.3x; drift about -25% (2016 -> 2019)
+- Granger (HAC, 4 lags): wind p ~ 6e-20, humidity ~ 4e-11 (with rain+temperature: 9e-18, 7e-8); IRF day 1: wind -6 to -12%, humidity -4 to -7%; FEVD 6-30%
+- Backtest MAE 2017/2018/2019: Fourier+ARMA 31.5/23.4/25.7; climatology 31.0/21.8/27.8; SARIMA D=1 53.8/21.1/27.5
+- Coverage 2019: 90% raw, 96% calibrated; one week ahead: -2.4% / +0.7% / +6.9% (oracle)
+- Lockdown: -43% (95% -52 to -32), weather-adjusted -38%

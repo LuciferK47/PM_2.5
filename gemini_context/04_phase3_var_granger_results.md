@@ -1,209 +1,148 @@
-# 04 Phase 3: VAR, Granger causality, IRF, FEVD (notebook 03), method and all numbers
-
-## Setup
-- Daily data 2015-01-01 to 2019-12-31 (1,826 days). 2020 excluded (lockdown).
-- Variables: wind, rh, log PM2.5, each **deseasonalised** by subtracting its smoothed day-of-year climatology (31-day circular window, climatology estimated on the same 2015-2019 sample). Rationale: otherwise Granger detects "it is winter".
-- Anomaly stationarity (note KPSS rejects for wind and PM2.5 anomaly, because of slow drift, e.g. the 2019 PM2.5 decline; ADF rejects unit root for all three):
-```
-          series    n  adf_stat    adf_p  adf_lags  adf_crit_1%  adf_crit_5%  adf_crit_10%  kpss_stat  kpss_p                                   verdict
-    Wind anomaly 1826    -19.57        0         3       -3.434       -2.863        -2.568       1.05    0.01 Mixed (ADF says stationary, KPSS rejects)
-Humidity anomaly 1826    -12.61  1.7e-23         3       -3.434       -2.863        -2.568      0.225     0.1                                Stationary
-   PM2.5 anomaly 1826    -6.601 6.73e-09        18       -3.434       -2.863        -2.568      2.033    0.01 Mixed (ADF says stationary, KPSS rejects)
-```
-
-- Lag order: AIC picks 4, BIC 2, HQIC 3. VAR(4) used (stable, max eigenvalue modulus 0.811; Portmanteau whiteness p = 0.173 using nlags = p+10).
+# 04 Phase 3: VAR, Granger, IRF, FEVD (notebook 03)
+VAR(4) on deseasonalised wind, humidity, log PM2.5 (2015-2019). Lag selection:
 ```
  lag   aic   bic  hqic   fpe
-   0 4.477 4.486 4.481    88
-   1 2.564 2.601 2.578 12.99
-   2 2.442 2.506 2.466  11.5
-   3 2.432 2.523 2.465 11.38
-   4 2.426 2.544  2.47 11.31
-   5 2.432 2.578 2.486 11.38
-   6  2.43 2.603 2.494 11.36
-   7 2.436 2.636  2.51 11.43
-   8 2.434 2.662 2.518  11.4
-   9  2.44 2.695 2.534 11.48
-  10 2.441 2.724 2.546 11.49
-  11 2.449 2.758 2.563 11.57
-  12 2.456 2.793 2.581 11.66
-  13 2.461 2.825 2.595 11.71
-  14 2.466 2.858 2.611 11.78
+   0 4.484 4.493 4.487 88.59
+   1 2.566 2.603  2.58 13.02
+   2 2.444 2.508 2.468 11.52
+   3 2.434 2.525 2.467  11.4
+   4 2.428 2.546 2.471 11.33
+   5 2.434 2.579 2.487  11.4
+   6 2.432 2.605 2.496 11.38
+   7 2.438 2.638 2.512 11.45
+   8 2.436 2.663  2.52 11.42
+   9 2.442 2.697 2.536  11.5
+  10 2.443 2.725 2.547 11.51
+  11  2.45  2.76 2.565 11.59
+  12 2.458 2.795 2.582 11.68
+  13 2.462 2.827 2.597 11.73
+  14 2.468 2.859 2.612 11.79
 ```
-
-
-## Granger causality (F-test from the VAR(4), anomalies)
+Granger (VAR F-tests):
 ```
              spec               direction     F        df   p_value   verdict (5%)
-Anomalies, VAR(4)            Wind → PM2.5  35.7 (4, 5427) 1.734e-29 Granger-causes
-Anomalies, VAR(4)        Humidity → PM2.5 14.38 (4, 5427) 1.107e-11 Granger-causes
-Anomalies, VAR(4) Wind + Humidity → PM2.5 21.89 (8, 5427) 3.983e-33 Granger-causes
-Anomalies, VAR(4)            PM2.5 → Wind   1.8 (4, 5427)    0.1268    No evidence
-Anomalies, VAR(4)        PM2.5 → Humidity  0.67 (4, 5427)    0.6145    No evidence
+Anomalies, VAR(4)            Wind → PM2.5 35.95 (4, 5427) 1.076e-29 Granger-causes
+Anomalies, VAR(4)        Humidity → PM2.5 14.35 (4, 5427) 1.165e-11 Granger-causes
+Anomalies, VAR(4) Wind + Humidity → PM2.5 21.99 (8, 5427) 2.762e-33 Granger-causes
+Anomalies, VAR(4)            PM2.5 → Wind  1.82 (4, 5427)    0.1215    No evidence
+Anomalies, VAR(4)        PM2.5 → Humidity  0.66 (4, 5427)    0.6166    No evidence
 ```
-
-Robustness (BIC lag 2, first differences with VAR(14) by AIC):
+Robustness (BIC lag, first differences):
 ```
                             spec               direction     F         df   p_value   verdict (5%)
-         Anomalies, VAR(4) [AIC]            Wind → PM2.5  35.7  (4, 5427) 1.734e-29 Granger-causes
-         Anomalies, VAR(4) [AIC]        Humidity → PM2.5 14.38  (4, 5427) 1.107e-11 Granger-causes
-         Anomalies, VAR(4) [AIC] Wind + Humidity → PM2.5 21.89  (8, 5427) 3.983e-33 Granger-causes
-         Anomalies, VAR(4) [AIC]            PM2.5 → Wind   1.8  (4, 5427)    0.1268    No evidence
-         Anomalies, VAR(4) [AIC]        PM2.5 → Humidity  0.67  (4, 5427)    0.6145    No evidence
-         Anomalies, VAR(2) [BIC]            Wind → PM2.5 72.87  (2, 5451) 5.848e-32 Granger-causes
-         Anomalies, VAR(2) [BIC]        Humidity → PM2.5 28.56  (2, 5451) 4.578e-13 Granger-causes
-         Anomalies, VAR(2) [BIC] Wind + Humidity → PM2.5 44.65  (4, 5451) 6.086e-37 Granger-causes
-         Anomalies, VAR(2) [BIC]            PM2.5 → Wind   4.1  (2, 5451)   0.01657 Granger-causes
-         Anomalies, VAR(2) [BIC]        PM2.5 → Humidity  0.52  (2, 5451)    0.5929    No evidence
+         Anomalies, VAR(4) [AIC]            Wind → PM2.5 35.95  (4, 5427) 1.076e-29 Granger-causes
+         Anomalies, VAR(4) [AIC]        Humidity → PM2.5 14.35  (4, 5427) 1.165e-11 Granger-causes
+         Anomalies, VAR(4) [AIC] Wind + Humidity → PM2.5 21.99  (8, 5427) 2.762e-33 Granger-causes
+         Anomalies, VAR(4) [AIC]            PM2.5 → Wind  1.82  (4, 5427)    0.1215    No evidence
+         Anomalies, VAR(4) [AIC]        PM2.5 → Humidity  0.66  (4, 5427)    0.6166    No evidence
+         Anomalies, VAR(2) [BIC]            Wind → PM2.5 73.35  (2, 5451) 3.661e-32 Granger-causes
+         Anomalies, VAR(2) [BIC]        Humidity → PM2.5 28.44  (2, 5451) 5.139e-13 Granger-causes
+         Anomalies, VAR(2) [BIC] Wind + Humidity → PM2.5 44.82  (4, 5451)  4.36e-37 Granger-causes
+         Anomalies, VAR(2) [BIC]            PM2.5 → Wind  4.18  (2, 5451)   0.01532 Granger-causes
+         Anomalies, VAR(2) [BIC]        PM2.5 → Humidity  0.53  (2, 5451)    0.5881    No evidence
 First differences, VAR(14) [AIC]            Wind → PM2.5 10.84 (14, 5304) 7.847e-25 Granger-causes
 First differences, VAR(14) [AIC]        Humidity → PM2.5  5.47 (14, 5304)  1.47e-10 Granger-causes
 First differences, VAR(14) [AIC] Wind + Humidity → PM2.5  7.23 (28, 5304) 1.014e-27 Granger-causes
 First differences, VAR(14) [AIC]            PM2.5 → Wind  0.89 (14, 5304)    0.5686    No evidence
 First differences, VAR(14) [AIC]        PM2.5 → Humidity  1.19 (14, 5304)     0.276    No evidence
 ```
-
-Pairwise bivariate SSR F-tests by lag 1-7 (no controls):
-```
-      Unnamed: 0         1         2         3         4         5         6         7
-    Wind → PM2.5 3.348e-08  1.57e-25 9.439e-24  4.87e-23  3.06e-22 1.215e-21 7.652e-21
-Humidity → PM2.5 6.339e-06 2.795e-07 1.468e-06 5.451e-06 1.544e-05  3.85e-06 6.804e-06
-    PM2.5 → Wind 0.0009714 0.0004747  0.004117   0.01432   0.03751   0.05918   0.08459
-PM2.5 → Humidity    0.2354    0.5658    0.5739    0.6506    0.5535    0.5193    0.6188
-```
-
-**HAC (Newey-West, maxlags=10) Wald tests**, manual OLS equation-by-equation with 4 lags of each variable (target equation), plus rain control:
+HAC Wald:
 ```
                  spec        direction  wald_chi2   p_value
-PM2.5, wind, humidity     Wind → PM2.5       95.6 8.378e-20
-PM2.5, wind, humidity Humidity → PM2.5       55.2 2.936e-11
-       + rain control     Wind → PM2.5       92.4 4.165e-19
-       + rain control Humidity → PM2.5       40.9 2.792e-08
-       + rain control     Rain → PM2.5        1.3    0.8559
-PM2.5, wind, humidity     PM2.5 → Wind        7.8    0.1012
-PM2.5, wind, humidity PM2.5 → Humidity        3.1    0.5468
+PM2.5, wind, humidity     Wind → PM2.5       96.3 5.951e-20
+PM2.5, wind, humidity Humidity → PM2.5       54.8 3.518e-11
+       + rain control     Wind → PM2.5       93.2 2.814e-19
+       + rain control Humidity → PM2.5       40.7 3.036e-08
+       + rain control     Rain → PM2.5        1.2    0.8771
+PM2.5, wind, humidity     PM2.5 → Wind        7.9   0.09564
+PM2.5, wind, humidity PM2.5 → Humidity        3.1    0.5457
 ```
-
-Reading: weather -> PM2.5 overwhelming (p < 1e-10) in every specification; PM2.5 -> humidity never; PM2.5 -> wind borderline only at BIC lag 2 (p=0.017) and pairwise lags 1-4. Humidity survives a rain control; rain itself adds nothing (p=0.86).
-
-## Impulse responses (orthogonalised, Cholesky; response of log PM2.5 converted to % via exp(x)-1)
-Shock size = 1 SD of the VAR residual: wind 2.54 km/h, humidity 5.43 %RH.
+HAC robustness (temperature, trend, training-only climatology):
+```
+                           spec           direction  wald_chi2   p_value    n
+                 baseline (P=4)        Wind → PM2.5       96.3 5.951e-20 1822
+          + temperature control        Wind → PM2.5       88.7  2.48e-18 1822
+         + rain and temperature        Wind → PM2.5       86.1 9.061e-18 1822
+            + linear time trend        Wind → PM2.5       96.5 5.516e-20 1822
+climatology from 2015-2018 only        Wind → PM2.5         96 6.889e-20 1822
+                 baseline (P=4)    Humidity → PM2.5       54.8 3.518e-11 1822
+          + temperature control    Humidity → PM2.5       47.2 1.416e-09 1822
+         + rain and temperature    Humidity → PM2.5       39.1 6.799e-08 1822
+            + linear time trend    Humidity → PM2.5       56.9 1.317e-11 1822
+climatology from 2015-2018 only    Humidity → PM2.5       55.4 2.615e-11 1822
+          + temperature control Temperature → PM2.5       43.3 9.093e-09 1822
+                 baseline (P=4)        PM2.5 → Wind        7.9   0.09564 1822
+            + linear time trend        PM2.5 → Wind        9.6   0.04719 1822
+                 baseline (P=4)    PM2.5 → Humidity        3.1    0.5457 1822
+            + linear time trend    PM2.5 → Humidity        3.1     0.541 1822
+```
+Season-specific and interaction tests:
+```
+                                    test  wald_chi2   p_value    n
+     Wind → PM2.5, Winter (Nov–Jan) only       34.8 5.182e-07  456
+ Humidity → PM2.5, Winter (Nov–Jan) only       19.8 0.0005352  456
+    Wind → PM2.5, Monsoon (Jul–Sep) only       47.6 1.121e-09  460
+Humidity → PM2.5, Monsoon (Jul–Sep) only       28.3 1.098e-05  460
+Interaction: monsoon × humidity lags = 0          6    0.1985 1822
+     Interaction: winter × wind lags = 0       10.8   0.02934 1822
+```
+Joint tests by lag order:
+```
+       direction  lag_order  wald_chi2   p_value
+    Wind → PM2.5          1       39.7 2.944e-10
+Humidity → PM2.5          1       41.5 1.177e-10
+    PM2.5 → Wind          1        4.3   0.03771
+PM2.5 → Humidity          1        1.5    0.2172
+    Wind → PM2.5          2       96.3 1.197e-21
+Humidity → PM2.5          2       51.9 5.432e-12
+    PM2.5 → Wind          2        8.4   0.01502
+PM2.5 → Humidity          2        0.8    0.6538
+    Wind → PM2.5          3       95.8 1.235e-20
+Humidity → PM2.5          3       53.5 1.439e-11
+    PM2.5 → Wind          3        7.2   0.06479
+PM2.5 → Humidity          3        2.2    0.5364
+    Wind → PM2.5          4       96.3 5.951e-20
+Humidity → PM2.5          4       54.8 3.518e-11
+    PM2.5 → Wind          4        7.9   0.09564
+PM2.5 → Humidity          4        3.1    0.5457
+    Wind → PM2.5          5       96.6 2.814e-19
+Humidity → PM2.5          5       56.3 6.984e-11
+    PM2.5 → Wind          5        7.2    0.2035
+PM2.5 → Humidity          5        4.3    0.5134
+    Wind → PM2.5          6        100 2.532e-19
+Humidity → PM2.5          6       61.7 2.025e-11
+    PM2.5 → Wind          6        7.7    0.2575
+PM2.5 → Humidity          6        8.3    0.2167
+    Wind → PM2.5          7      100.2 9.674e-19
+Humidity → PM2.5          7       63.6 2.822e-11
+    PM2.5 → Wind          7        9.4    0.2259
+PM2.5 → Humidity          7        6.9    0.4382
+```
+IRF by ordering:
 ```
                       ordering    shock  day0_pct  day1_pct  day2_pct  day3_pct  day5_pct
-weather first (wind, rh, pm25)     Wind      -9.2     -11.9      -4.6      -1.9      -0.3
-weather first (wind, rh, pm25) Humidity      -4.5      -6.8      -5.7        -4      -1.4
+weather first (wind, rh, pm25)     Wind      -9.2       -12      -4.7      -1.9      -0.3
+weather first (wind, rh, pm25) Humidity      -4.5      -6.7      -5.7        -4      -1.4
   PM2.5 first (pm25, wind, rh)     Wind         0      -5.9      -1.1       0.9         1
-  PM2.5 first (pm25, wind, rh) Humidity         0        -4      -4.1      -2.8      -0.8
+  PM2.5 first (pm25, wind, rh) Humidity         0        -4      -4.1      -2.7      -0.7
 ```
-
-Weather-first ordering allows same-day (contemporaneous) weather -> PM2.5; PM2.5-first allows only lagged effects. The team reports the range: wind day-1 effect -6% to -12%, humidity -4% to -7%, fading within ~5-7 days.
-
-## FEVD of PM2.5 (share of forecast-error variance, %)
-Default ordering (wind, rh, pm25), by horizon:
+Generalised IRF:
 ```
- horizon (days)  Wind  Humidity  PM2.5
-              1  13.2         3   83.7
-              2  22.5       6.2   71.4
-              3  22.1       8.3   69.6
-              4  21.2       9.2   69.6
-              5  20.9       9.2   69.9
-              6  20.7       9.3     70
-              7  20.6       9.4   70.1
-              8  20.5       9.5   70.1
-              9  20.5       9.5   70.1
-             10  20.4       9.5   70.1
-             11  20.4       9.5   70.1
-             12  20.4       9.5   70.1
-             13  20.4       9.5   70.1
-             14  20.4       9.5   70.1
+   shock  day0_pct  day1_pct  day2_pct  day3_pct  day5_pct
+    Wind      -9.2       -12      -4.7      -1.9      -0.3
+Humidity      -3.3      -5.2      -5.1      -3.8      -1.4
 ```
-
-Both orderings:
+FEVD by ordering:
 ```
                       ordering variable  share_h1_pct  share_h14_pct
-weather first (wind, rh, pm25)     Wind          13.2           20.4
+weather first (wind, rh, pm25)     Wind          13.3           20.5
 weather first (wind, rh, pm25) Humidity             3            9.5
-weather first (wind, rh, pm25)    PM2.5          83.7           70.1
-  PM2.5 first (pm25, wind, rh)    PM2.5           100           93.6
-  PM2.5 first (pm25, wind, rh)     Wind             0              3
+weather first (wind, rh, pm25)    PM2.5          83.7             70
+  PM2.5 first (pm25, wind, rh)    PM2.5           100           93.7
+  PM2.5 first (pm25, wind, rh)     Wind             0            3.1
   PM2.5 first (pm25, wind, rh) Humidity             0            3.3
 ```
-
-Weather share at h=14: 29.9% (weather first) vs 6.3% (PM2.5 first: 3.0 + 3.3).
-
-## "Shock" illustration (results/shock_binned.json)
-VAR residual for wind on 2019-01-21: actual 14.8 km/h, VAR-predicted 7.42, shock +7.37. Days grouped by standardised shock size (z) and the mean PM2.5 deviation in %:
-```
-{
- "curves": {
-  "wind": {
-   "z": [
-    -1.78,
-    -1.05,
-    -0.51,
-    -0.01,
-    0.5,
-    1.08,
-    2.26
-   ],
-   "pct": [
-    32.0,
-    14.4,
-    5.9,
-    -1.9,
-    -6.0,
-    -10.9,
-    -23.7
-   ],
-   "n": [
-    82,
-    318,
-    398,
-    388,
-    264,
-    242,
-    129
-   ]
-  },
-  "rh": {
-   "z": [
-    -2.0,
-    -1.05,
-    -0.49,
-    -0.01,
-    0.49,
-    1.03,
-    2.22
-   ],
-   "pct": [
-    -1.4,
-    1.4,
-    5.6,
-    4.6,
-    2.5,
-    -7.8,
-    -21.3
-   ],
-   "n": [
-    96,
-    276,
-    358,
-    422,
-    325,
-    221,
-    123
-   ]
-  }
- },
- "jan21_shock_kmh": 7.375528187562479,
- "jan21_wind": 14.8,
- "jan21_pred": 7.424471812437521
-}
-```
-
-Reading by the team: unexpectedly windier day -> PM2.5 ~24% lower (z=+2.26), calmer day (z=-1.78) -> ~32% higher. Note the humidity curve is NON-monotonic (+5.6% at z=-0.5, -21% at z=+2.2).
-
-## Weekly-scale check (does weather help beyond a week?)
-Weekly anomalies (week-of-year mean from 2015-2018), regression of this week's PM2.5 anomaly on last week's values, HAC errors:
+Weekly lag regression:
 ```
                model                 term    coef  p_value  r2_model
    same-week weather                 wind -0.0402   0.0013    0.1403
@@ -212,51 +151,52 @@ last-week predictors    PM2.5 (last week)  0.3621        0    0.1391
 last-week predictors     wind (last week)  0.0066   0.4576    0.1391
 last-week predictors humidity (last week) -0.0013   0.4799    0.1391
 ```
-
-Last week's wind (p=0.46) and humidity (p=0.48) add nothing (R2 0.139 vs same-week model 0.140). This is the basis for dropping weather from the 12-month model.
-
-## Key numbers JSON (results/key_numbers_var.json)
+Nested comparison:
+```
+ R2_lagged_pm25_only  R2_plus_lagged_weather  delta_R2  joint_wald_p_weather
+              0.1341                  0.1391     0.005                0.5146
+```
+Key numbers:
 ```
 {
   "var_sample": "2015-01-01 to 2019-12-31 (1826 days)",
   "var_lag_aic": 4,
   "var_lag_bic": 2,
   "var_stable": true,
-  "portmanteau_p": 0.173,
-  "max_eigen_modulus": 0.811,
+  "portmanteau_p": 0.168,
+  "max_eigen_modulus": 0.813,
   "irf": {
     "wind": {
-      "peak_pct": -11.9,
+      "peak_pct": -12.0,
       "peak_day": 1,
       "shock_sd": 2.54,
       "unit": "km/h"
     },
     "rh": {
-      "peak_pct": -6.8,
+      "peak_pct": -6.7,
       "peak_day": 1,
       "shock_sd": 5.43,
       "unit": "% RH"
     }
   },
-  "fevd_weather_share_h14": 29.9,
-  "fevd_wind_h14": 20.4,
+  "fevd_weather_share_h14": 30.0,
+  "fevd_wind_h14": 20.5,
   "fevd_rh_h14": 9.5,
   "granger": {
-    "Wind → PM2.5": 1.73e-29,
-    "Humidity → PM2.5": 1.11e-11,
-    "Wind + Humidity → PM2.5": 3.98e-33,
-    "PM2.5 → Wind": 0.127,
-    "PM2.5 → Humidity": 0.615
+    "Wind → PM2.5": 1.08e-29,
+    "Humidity → PM2.5": 1.16e-11,
+    "Wind + Humidity → PM2.5": 2.76e-33,
+    "PM2.5 → Wind": 0.122,
+    "PM2.5 → Humidity": 0.617
   },
   "granger_hac": {
-    "Wind → PM2.5 | PM2.5, wind, humidity": 8.38e-20,
-    "Humidity → PM2.5 | PM2.5, wind, humidity": 2.94e-11,
-    "Wind → PM2.5 | + rain control": 4.17e-19,
-    "Humidity → PM2.5 | + rain control": 2.79e-08,
-    "Rain → PM2.5 | + rain control": 0.856,
-    "PM2.5 → Wind | PM2.5, wind, humidity": 0.101,
-    "PM2.5 → Humidity | PM2.5, wind, humidity": 0.547
+    "Wind → PM2.5 | PM2.5, wind, humidity": 5.95e-20,
+    "Humidity → PM2.5 | PM2.5, wind, humidity": 3.52e-11,
+    "Wind → PM2.5 | + rain control": 2.81e-19,
+    "Humidity → PM2.5 | + rain control": 3.04e-08,
+    "Rain → PM2.5 | + rain control": 0.877,
+    "PM2.5 → Wind | PM2.5, wind, humidity": 0.0956,
+    "PM2.5 → Humidity | PM2.5, wind, humidity": 0.546
   }
 }
 ```
-

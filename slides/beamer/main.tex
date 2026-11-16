@@ -67,7 +67,7 @@
 
 \title{Forecasting Delhi's PM$_{2.5}$ Air Pollution}
 \author{Kushagra Singh \and Yatin JM \and Aryan Choudhary}
-\date{October 2026}
+\date{November 2026}
 
 \begin{document}
 
@@ -78,9 +78,9 @@
     \fill[porange] ([xshift=0.9cm,yshift=-2.15cm]current page.north west) rectangle +(1.4cm,0.09cm);
     \node[anchor=north west,text=white,text width=12cm,inner sep=0] at ([xshift=0.9cm,yshift=-2.4cm]current page.north west)
       {{\fontsize{24}{28}\selectfont\bfseries Forecasting Delhi's PM$_{2.5}$\\[2pt] Air Pollution}\\[8pt]
-       {\large Time-series analysis with VAR, Granger causality and SARIMA}\\[14pt]
+       {\large Time-series analysis: VAR, Granger causality and seasonal forecasting}\\[14pt]
        {\normalsize Kushagra Singh \;$\cdot$\; Yatin JM \;$\cdot$\; Aryan Choudhary}\\[3pt]
-       {\small BITS Pilani, Goa \;$\cdot$\; MATH F428 Project Presentation \;$\cdot$\; October 2026}};
+       {\small BITS Pilani, Goa \;$\cdot$\; MATH F428 Project Presentation \;$\cdot$\; November 2026}};
     \node[anchor=south west,text=white!85!navy,text width=10cm,inner sep=0] at ([xshift=0.9cm,yshift=0.8cm]current page.south west)
       {\small Can weather explain Delhi's smog, and can we forecast it a year ahead?};
     \node[anchor=north east,fill=white,circle,inner sep=2pt] at ([xshift=-0.8cm,yshift=-0.8cm]current page.north east)
@@ -93,7 +93,7 @@
   \centering
   \includegraphics[width=\linewidth]{fig/problem_aqi.pdf}\\[3pt]
   \begin{defbox}{PM$_{2.5}$ and AQI:}
-    particles under 2.5 $\mu$m that reach the lungs and blood, in \ugm{} (micrograms per m$^3$). \textbf{AQI} = India's colour-coded Air Quality Index; the bands show its PM$_{2.5}$ categories (Poor starts above 90 \ugm{}).
+    particles under 2.5 $\mu$m that reach the lungs and blood, in \ugm{} (micrograms per m$^3$). \textbf{AQI} = India's colour-coded Air Quality Index; the bands show its PM$_{2.5}$ categories (Poor starts above 90 \ugm{}). The official AQI takes the worst pollutant; we use the PM$_{2.5}$ band only.
   \end{defbox}
   \begin{takeaway}
     \textbf{\pctPoor\%} of days (2015--2020) were Poor or worse, and the pattern repeats yearly: winter averages \textbf{\winterMean} \ugm{}, the monsoon \textbf{\monsoonMean}: winter is \textbf{\ratioWM$\times$} higher.
@@ -107,11 +107,11 @@
     \node[draw=navy,fill=navy,text=white,rounded corners=2pt,align=center,text width=2.3cm,minimum height=3.6cm,inner sep=4pt] (data)
       at (1.15,2.0) {\bfseries Data\\[3pt]\footnotesize daily \pmtwo{}, wind, humidity\\ 2015--2020\\[3pt] weekly means for forecasting};
     \node[sbox=pblue] (q1) at (6.0,3.6) {\textbf{Q1. Explain.} Does weather drive \pmtwo{}?\\ Daily VAR + Granger causality};
-    \node[sbox=graytxt] (q2a) at (6.0,2.0) {\textbf{Q2a. Next week.} SARIMAX with that week's wind and humidity};
-    \node[sbox=graytxt] (q2b) at (6.0,0.4) {\textbf{Q2b. Next 12 months.} SARIMA, no weather inputs};
+    \node[sbox=graytxt] (q2a) at (6.0,2.0) {\textbf{Q2a. Next week.} Does weather improve a 1-week forecast?};
+    \node[sbox=graytxt] (q2b) at (6.0,0.4) {\textbf{Q2b. Next 12 months.} Fourier+ARMA vs SARIMA and baselines, no weather inputs};
     \node[sres=pgreen] (r1) at (12.3,3.6) {\textbf{Done:} wind and humidity Granger-cause \pmtwo{}; effects fade within about a week};
-    \node[sres=graytxt] (r2) at (12.3,2.0) {\textbf{Next phase:} test whether weather improves a 1-week forecast};
-    \node[sres=graytxt] (r3) at (12.3,0.4) {\textbf{Next phase:} 52-week forecast, validated on 2019};
+    \node[sres=pgreen] (r2) at (12.3,2.0) {\textbf{Done:} yesterday's weather adds nothing; same-week weather (unknowable in advance) helps only \fcOneOracle\%};
+    \node[sres=pgreen] (r3) at (12.3,0.4) {\textbf{Done:} 52-week forecasts backtested on 2017--19; outlook for 2020};
     \draw[sarr] (data.east) -- ++(0.35,0) |- (q1.west);
     \draw[sarr] (data.east) -- (q2a.west);
     \draw[sarr] (data.east) -- ++(0.35,0) |- (q2b.west);
@@ -119,7 +119,7 @@
   \end{tikzpicture}\\[4pt]
   \begin{takeaway}
     \textbf{Why two horizons?} Q1 shows a weather shock moves \pmtwo{} for only about a week: weather may help a short-term forecast, but it is unknown a year ahead, so the 12-month model will use no weather inputs.
-    The final output is a month-by-month AQI outlook for health advisories.
+    The final output is a month-by-month PM$_{2.5}$ outlook with prediction intervals.
   \end{takeaway}
 \end{frame}
 
@@ -140,7 +140,7 @@
   \begin{itemize}\setlength\itemsep{2pt}
     \item \textbf{CPCB} (India's pollution board): \href{https://www.kaggle.com/datasets/rohanrao/air-quality-data-in-india}{\textbf{Kaggle: Air Quality Data in India}}, Delhi rows.
     \item \textbf{ERA5} = a \emph{reanalysis} (observations blended into a weather model, gap-free): \href{https://open-meteo.com/en/docs/historical-weather-api}{\textbf{Open-Meteo Historical API}}, central Delhi.
-    \item \textbf{2{,}009 days}, 1 Jan 2015 -- 1 Jul 2020; 2 \pmtwo{} values interpolated. \textbf{Daily} data for causality, \textbf{weekly means} (287 weeks) for forecasting.
+    \item \textbf{2{,}009 days}, 1 Jan 2015 -- 1 Jul 2020; 2 \pmtwo{} values interpolated. \textbf{Daily} data for causality, \textbf{weekly means} (287 weeks) for forecasting; validated on three rolling origins.
   \end{itemize}
   \vspace{1pt}
   \centering
@@ -149,7 +149,7 @@
     \fill[porange] (4,0) rectangle (5,0.55);      \node[text=white] at (4.5,0.275) {\textbf{Test: 2019}};
     \fill[gray!45] (5,0) rectangle (5.5,0.55);    \node at (5.25,0.275) {2020};
     \foreach \y/\l in {0/2015,1/2016,2/2017,3/2018,4/2019,5/2020} \node[text=graytxt,anchor=north] at (\y,-0.02) {\l};
-    \node[text=graytxt,anchor=south,align=center] at (5.25,0.58) {lockdown: excluded};
+    \node[text=graytxt,anchor=south,align=center] at (5.25,0.58) {lockdown: case study only};
   \end{tikzpicture}
 \end{frame}
 
@@ -162,7 +162,7 @@
     Seasonal strength $F_S=1-\mathrm{Var}(\text{residual})/\mathrm{Var}(\text{seasonal}+\text{residual})$: 0 = no seasonality, 1 = purely seasonal.
   \end{defbox}
   \begin{takeaway}
-    $F_S=\mathbf{\Fs}$: the yearly cycle dominates, so the model must be \textbf{seasonal} (period $s=52$ weeks).
+    $F_S=\mathbf{\Fs}$ (2015--18 weeks): the yearly cycle dominates, so the model must be \textbf{seasonal} (period $s=52$ weeks).
   \end{takeaway}
 \end{frame}
 
@@ -197,7 +197,7 @@
     = the mean, spread and autocorrelation do not drift over time, so patterns learned from the past still apply. ARIMA-type models need it; if a series drifts, we \emph{difference} it ($d$ = ordinary difference, $D$ = difference at the seasonal lag).
   \end{defbox}
   \begin{takeaway}
-    Weekly log \pmtwo{} (2015--18): the rolling mean is flat and the rolling spread varies only modestly, so the yearly cycle is a repeating pattern, not a drifting trend. (Raw daily \pmtwo{} also passes ADF and KPSS in our checks: the log is for variance, not for stationarity.)
+    Weekly log \pmtwo{} (2015--18): the rolling mean is flat and the rolling spread varies only modestly, so the yearly cycle is a repeating pattern. Without the cycle a slow \emph{downward drift} appears (about $-$\declAll\% 2016--19). (The log is for variance, not stationarity.)
   \end{takeaway}
 \end{frame}
 
@@ -217,8 +217,8 @@
   \end{columns}
   \vspace{4pt}
   \begin{takeaway}
-    \textbf{Both tests pass} for log \pmtwo{} and for its seasonal difference $\Rightarrow$ $d=0$. A further difference over-differences (lag-1 autocorrelation $-0.46$, near the $-0.5$ warning level) and is dropped.
-    \textbf{Seasonal difference $D$} (0 or 1) is chosen in the next phase, when we fit the seasonal models, using a validation year, not the test year.
+    \textbf{Both tests are consistent with stationarity} for log \pmtwo{} and its seasonal difference $\Rightarrow$ $d=0$. A further difference over-differences (lag-1 autocorrelation $-0.46$, near the $-0.5$ warning level) and is dropped.
+    A seasonal difference $D=1$ is not needed: a $D=1$ SARIMA's seasonal MA coefficient is $\fcMaCoef$ with a standard error above 1, the sign of over-differencing, so we model the cycle with Fourier terms instead.
   \end{takeaway}
 \end{frame}
 
@@ -233,7 +233,7 @@
   \end{tikzpicture}\\[3pt]
   \includegraphics[width=\linewidth]{fig/granger_hac.pdf}\\[2pt]
   \begin{takeaway}
-    \textbf{Mainly one way.} Wind and humidity help predict \pmtwo{} at every lag from 1 to 7 days ($p<10^{-9}$; bars: 4 lags), and humidity still matters given rain. The reverse is absent for humidity and weak for wind (lags 1--2 only, $p\approx0.02$--$0.04$). {\footnotesize Predictive, not proof of cause.}
+    \textbf{Mainly one way.} Wind and humidity help predict \pmtwo{} in joint tests at every lag order from 1 to 7 days ($p<10^{-9}$; bars: 4 lags), also given rain and temperature. The reverse is absent for humidity and weak for wind (lag orders 1--2 only, $p\approx0.02$--$0.04$). {\footnotesize Predictive, not proof of cause.}
   \end{takeaway}
 \end{frame}
 
@@ -245,7 +245,7 @@
     the part of today's wind (or humidity) the model could \emph{not} predict from the previous 4 days (plus the seasonal level). \textbf{SD} = typical shock size: 1 SD $\approx$ 2.5 km/h (wind), 5.4\% (humidity).
   \end{defbox}
   \begin{takeaway}
-    Grouping all days by shock size: after an unexpectedly windier day (+\shockWindBigZ\,SD), \pmtwo{} is \textbf{\shockWindBig\%} lower the next day than the day before; after a calmer one ($-$\shockWindCalmZ\,SD), \textbf{\shockWindCalm\%} higher.
+    Grouping all days by shock size: after an unexpectedly windier day (+\shockWindBigZ\,SD), \pmtwo{} is \textbf{\shockWindBig\%} lower on day $t+1$ than on day $t-1$; after a calmer one ($-$\shockWindCalmZ\,SD), \textbf{\shockWindCalm\%} higher.
   \end{takeaway}
 \end{frame}
 
@@ -258,54 +258,146 @@
   \end{defbox}
   \begin{takeaway}
     A one-SD wind shock cuts \pmtwo{} by \irfWindA--\irfWindB\% the next day, humidity by \irfRhA--\irfRhB\%; both fade within about a week.
-    Weekly: \emph{last} week's weather adds nothing to predict this week's \pmtwo{} ($p=\lagWindP$ wind, \lagRhP\ humidity).
+    Weekly: \emph{last} week's weather adds nothing to last week's \pmtwo{} for predicting this week's ($p=\lagWindP$ wind, \lagRhP\ humidity).
   \end{takeaway}
 \end{frame}
 
 % ───────────────────────── 13. What we established ─────────────────────────
 \begin{frame}{What We Have Established So Far}
-  \begin{itemize}\setlength\itemsep{6pt}
+  \begin{itemize}\footnotesize\setlength\itemsep{3pt}
     \item \textbf{Seasonality:} a strong yearly cycle ($F_S=\Fs$; winter \ratioWM$\times$ the monsoon), so the forecasting model must be seasonal ($s=52$ weeks).
-    \item \textbf{Transformation:} the log stabilises the variance (monthly spread \sdRatioRaw$\times\to$\sdRatioLog$\times$, skewness \skewRaw\ $\to$ \skewLog); log \pmtwo{} is stationary on the training years, so $d=0$.
-    \item \textbf{Causality:} wind and humidity \textbf{Granger-cause} \pmtwo{} (robust to lag choice, differencing, robust errors and a rain control); the reverse is absent for humidity and weak for wind.
+    \item \textbf{Transformation:} the log stabilises the variance (monthly spread \sdRatioRaw$\times\to$\sdRatioLog$\times$, skewness \skewRaw\ $\to$ \skewLog); log \pmtwo{} is consistent with stationarity ($d=0$), with a slow downward level drift.
+    \item \textbf{Causality:} wind and humidity \textbf{Granger-cause} \pmtwo{} (robust to lag choice, differencing, robust errors, rain and temperature controls); the reverse is absent for humidity and weak for wind.
     \item \textbf{Size and timing:} a one-SD shock lowers \pmtwo{} by \irfWindA--\irfWindB\% (wind) and \irfRhA--\irfRhB\% (humidity) the next day, fading within about a week.
     \item \textbf{Horizon:} last week's weather adds nothing for predicting this week's \pmtwo{} ($p\approx0.5$), so weather is a short-memory driver and the 12-month model should not rely on it.
   \end{itemize}
   \vspace{4pt}
   \begin{takeaway}
-    Answer to Q1: \textbf{yes}, weather (wind, humidity) drives \pmtwo{} over the following days, which is the evidence that justifies testing weather inputs in the forecasting models next.
+    Answer to Q1: wind and humidity have a \textbf{robust predictive association} with \pmtwo{} over the following days (predictive, not proof of physical cause).
   \end{takeaway}
 \end{frame}
 
 % ───────────────────────── 14. Limits and next phase ─────────────────────────
-\begin{frame}{Limits and Next Phase}
+\begin{frame}{Forecasting: Models and How We Test Them}
+  \footnotesize
   \begin{columns}[T,onlytextwidth]
-    \column{0.485\linewidth}
-    \begin{card}[title={Limits to keep in mind}]{porange}\small
-      \begin{itemize}\setlength\itemsep{3pt}
-        \item Granger = predictive causality; mixing height, stubble burning and fireworks are not measured.
-        \item Weather's share of 14-day forecast error depends on the VAR ordering: \fevdA--\fevdB\%.
-        \item One city; data end in mid-2020.
+    \column{0.52\linewidth}
+    \begin{card}[title={Models (weekly log \pmtwo{}, no weather inputs)}]{pblue}\scriptsize
+      \begin{itemize}\setlength\itemsep{1pt}
+        \item \textbf{Benchmarks:} seasonal naive; \textbf{climatology} (mean of each calendar week); climatology + AR(1).
+        \item \textbf{Fourier + ARMA:} $K\le5$ yearly harmonics + ARMA errors; level = constant, linear or random walk, all chosen \emph{inside} each training window.
+        \item \textbf{SARIMA} $D=1$ and $D=0$ (with constant), Linear Regression, a tiny LSTM (16 units).
       \end{itemize}
     \end{card}
-    \column{0.485\linewidth}
-    \begin{card}[title={Next phase (Q2: forecasting)}]{pblue}\small
-      \begin{itemize}\setlength\itemsep{3pt}
-        \item SARIMA(X): order search by AIC/BIC, residual checks (Ljung-Box, ARCH).
-        \item Baselines: seasonal naive, climatology, Linear Regression, LSTM; compare test MAE on 2019.
-        \item Final 12-month forecast with 95\% intervals and a monthly AQI advisory table; 2020 lockdown as a case study.
+    \column{0.45\linewidth}
+    \begin{card}[title={Test design}]{porange}\scriptsize
+      \begin{itemize}\setlength\itemsep{1pt}
+        \item \textbf{Rolling origins:} train to end-2016, 2017, 2018; forecast the next 52 weeks each time; refit and re-select every time.
+        \item Main evidence: 2018 and 2019; 2017 (2 training years) is a stress test.
+        \item Compare to climatology with a block-bootstrap of paired errors; say ``indistinguishable'' when the interval contains 0.
       \end{itemize}
     \end{card}
   \end{columns}
-  \vspace{8pt}
+  \vspace{0pt}\centering
+  \begin{tikzpicture}[x=0.72cm,y=0.38cm,font=\scriptsize]
+    \foreach \i/\tr/\te in {0/4/2, 1/6/2, 2/8/2} {
+      \fill[pblue] (0,-\i) rectangle (\tr,-\i+0.38); \fill[porange] (\tr,-\i) rectangle (\tr+\te,-\i+0.38);}
+    \node[anchor=west,text=graytxt] at (6.4,0) {origin 1: train 2015--16, forecast 2017};
+    \node[anchor=west,text=graytxt] at (8.4,-1) {origin 2: train 2015--17, forecast 2018};
+    \node[anchor=west,text=graytxt] at (10.4,-2) {origin 3: train 2015--18, forecast 2019};
+  \end{tikzpicture}\\[3pt]
+  \begin{takeaway}
+    \textbf{Pre-declared headline:} Fourier+ARMA, selection inside each window. Other variants are comparisons, not cherry-picks.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{52-Week Backtest: Climatology Is Hard to Beat}
   \centering
-  \begin{tikzpicture}[font=\scriptsize,x=1cm,y=1cm]
-    \foreach \x/\c/\t in {1.1/pgreen/Data and cleaning, 3.58/pgreen/EDA and log, 6.06/pgreen/Stationarity and VAR, 8.54/pblue/SARIMA(X), 11.02/pblue/Baselines, 13.5/pblue/Forecast and AQI table}
-      {\node[draw=\c,fill=\c!12,rounded corners=2pt,minimum width=2.2cm,minimum height=0.95cm,align=center,text width=2.05cm] at (\x,0) {\t};}
-    \foreach \a in {2.3,4.78,7.26,9.74,12.22} {\draw[-{Stealth[length=1.5mm]},line width=0.7pt,graytxt] (\a,0) -- ++(0.16,0);}
-    \node[text=pgreen,anchor=south west] at (0.1,0.6) {\textbf{Done}};
-    \node[text=pblue,anchor=south west] at (7.44,0.6) {\textbf{Next phase}};
-  \end{tikzpicture}
+  \includegraphics[width=0.86\linewidth]{fig/fc_backtest.pdf}\\[3pt]
+  \begin{takeaway}
+    MAE in \ugm{}; 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen, SARIMA $D=1$ \fcMaeSarimaNineteen\ (but \fcMaeSarimaSeventeen\ in 2017). A year ahead, the calendar is most of the signal: a smooth Fourier model matches climatology, while SARIMA $D=0$ (\fcMaeSarimaZeroNineteen) and the LSTM (\fcMaeLstmNineteen) are clearly worse.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{Backtest Table: Which Models Beat Climatology?}
+  \centering\footnotesize
+  \input{tables/fc_backtest.tex}\par\vspace{6pt}
+  \begin{takeaway}
+    MAE in \ugm{} (lower is better). The last column is a moving-block bootstrap of the paired error differences to climatology over the 2018 and 2019 forecasts: the seasonal naive, SARIMA $D=0$ and the LSTM are \emph{clearly worse}. The linear-trend Fourier variant looks better on 2018--19 but not over all three origins, and it was not our pre-declared choice, so we do not claim it. With three origins we cannot rank the rest.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{Diagnostics and Intervals: Two Pitfalls Fixed}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.485\linewidth}
+    \begin{card}[title={Residual checks}]{pblue}\footnotesize
+      \begin{itemize}\setlength\itemsep{3pt}
+        \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact}: the first 52 residuals of a $D=1$ model are diffuse-initialisation values. Removed, the SARIMA residuals pass at lags 10 and 26.
+        \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: the seasonal difference is not needed.
+        \item Honest limit: the Fourier model still shows some autocorrelation at lags 26 and 52.
+      \end{itemize}
+    \end{card}
+    \column{0.485\linewidth}
+    \begin{card}[title={Prediction intervals (95\%)}]{porange}\footnotesize
+      \begin{itemize}\setlength\itemsep{3pt}
+        \item Model-based intervals covered \fcCovRaw\% of 2019 weeks. All misses were on the low side (2019 was cleaner than 2015--18).
+        \item Scaling the spread by season, using only 2017--18 errors, gives \fcCovCal\% coverage on 2019. We re-centre only if the bias had the same sign and was large in both earlier years; it was not.
+      \end{itemize}
+    \end{card}
+  \end{columns}
+  \vspace{6pt}
+  \begin{takeaway}
+    Two earlier ``problems'' were measurement errors, not model failures. Residual structure and a falling level (see the station check) remain real limits.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{One Week Ahead: Does Weather Help?}
+  \centering
+  \includegraphics[width=0.82\linewidth]{fig/fc_oneweek.pdf}\\[2pt]
+  \begin{takeaway}
+    Using \emph{last} week's wind and humidity changes the error by \fcOneLagged\% (last 3 days: \fcOneLastThree\%): no gain. Using the \emph{same} week's weather, which is unknown in advance (ERA5 is observed, not forecast), improves by only \fcOneOracle\% ($p\approx0.07$). Weather is explanatory over days, but a poor forecasting input.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{Outlook for 2020, Month by Month}
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig/fc_outlook.pdf}\\[2pt]
+  \begin{takeaway}
+    Fitted on 2015--2019 only. \textbf{Validation of the same pipeline on 2019:} all \fcValInside\ monthly means fell inside the 95\% interval, but the model over-predicted the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), the same level bias as before. In 2020, Jan--Feb fall inside the interval; March--May fall below it (lockdown). Bands are \pmtwo{} sub-index bands, not the official AQI.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{Case Study: The 2020 Lockdown}
+  \centering
+  \includegraphics[width=0.88\linewidth]{fig/fc_lockdown.pdf}\\[2pt]
+  \begin{takeaway}
+    From 29 Mar to 31 May 2020, \pmtwo{} was about \textbf{\fcLockPct\%} below the no-lockdown forecast (95\% interval \fcLockLo--\fcLockHi\%). Adjusting the forecast for the actual wind and humidity of those weeks, the gap is \textbf{\fcLockWxPct\%}: most of the drop is not weather. Descriptive: it relies on the model's 2020 level being right.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{What We Established, and the Limits}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.485\linewidth}
+    \begin{card}[title={Established}]{pgreen}\scriptsize
+      \begin{itemize}\setlength\itemsep{2pt}
+        \item Strong yearly cycle (winter \ratioWM$\times$ the monsoon); log stabilises variance.
+        \item Wind and humidity anomalies robustly \emph{predict} PM$_{2.5}$ for about a week; effect \irfWindA--\irfWindB\% (wind), \irfRhA--\irfRhB\% (humidity) the next day.
+        \item At a weekly-to-yearly horizon weather adds nothing usable; a Fourier+ARMA model matches or slightly beats climatology; SARIMA, LSTM do not help.
+        \item The 2016--19 decline is real (about $-$\declPanel\% on a fixed station panel).
+        \item The lockdown cut PM$_{2.5}$ by about \fcLockPct\% relative to forecast.
+      \end{itemize}
+    \end{card}
+    \column{0.485\linewidth}
+    \begin{card}[title={Limits}]{porange}\scriptsize
+      \begin{itemize}\setlength\itemsep{2pt}
+        \item Granger = predictive; mixing height, stubble burning, fireworks are unmeasured.
+        \item Weather's share of 14-day error depends on the VAR ordering (\fevdA--\fevdB\%).
+        \item Three backtest origins: few independent tests; most model differences are not significant.
+        \item Level bias in 2019; residual autocorrelation at long lags.
+        \item One city; data end in mid-2020; ERA5 is a grid cell; PM$_{2.5}$ band $\ne$ official AQI.
+      \end{itemize}
+    \end{card}
+  \end{columns}
 \end{frame}
 
 % ───────────────────────── Backup A: glossary ─────────────────────────
@@ -315,7 +407,7 @@
   \begin{columns}[T,onlytextwidth]
     \column{0.485\linewidth}
     \textbf{PM$_{2.5}$}: particles under 2.5 $\mu$m, \ugm{}.\\[2pt]
-    \textbf{AQI}: India's Air Quality Index, CPCB categories.\\[2pt]
+    \textbf{AQI}: India's Air Quality Index (worst pollutant); we use only the PM$_{2.5}$ band.\\[2pt]
     \textbf{Reanalysis (ERA5)}: observations blended into a weather model.\\[2pt]
     \textbf{STL, $F_S$}: trend/seasonal/residual split; seasonal strength.\\[2pt]
     \textbf{Log transform}: makes percentage swings equal; stabilises variance.\\[2pt]
@@ -327,7 +419,7 @@
     \textbf{HAC errors}: standard errors robust to autocorrelation and changing variance.\\[2pt]
     \textbf{Shock}: the unpredictable part of a variable today; \textbf{SD} = its typical size.\\[2pt]
     \textbf{Impulse response}: path of PM$_{2.5}$ after a shock; \textbf{FEVD}: share of forecast error due to each variable.\\[2pt]
-    \textbf{SARIMA(X)} (next phase): seasonal ARIMA, optionally with external regressors such as weather.
+    \textbf{SARIMA}: seasonal ARIMA. \textbf{Fourier+ARMA}: yearly sine/cosine terms + ARMA errors. \textbf{Climatology}: the average of each calendar week. \textbf{MAE}: mean absolute error.
   \end{columns}
 \end{frame}
 
@@ -349,6 +441,22 @@
   \begin{takeaway}
     Box = middle 50\% of days, line = median, dots = unusually high days. Orange: winter (Nov--Jan); blue: monsoon (Jul--Sep).
   \end{takeaway}
+\end{frame}
+
+
+% ───────────────────────── Backup D/E: station check, outlook table ─────────────────────────
+\begin{frame}{Backup: Is the 2016--19 Decline Real? Station Check}
+  \centering
+  \includegraphics[width=0.85\linewidth]{fig/fc_station.pdf}\\[2pt]
+  \begin{takeaway}
+    The city series is the mean of the stations (corr.\ 0.995) and the number of stations rose from 8--10 to 37, so a mix effect is possible. But a fixed panel of six long-running stations falls by \declPanel\%, all stations by \declAll\%, and the weather-adjusted city series by \declWx\% (2016 $\to$ 2019): most of the decline is real.
+  \end{takeaway}
+\end{frame}
+
+\begin{frame}{Backup: 2020 Outlook Table}
+  \centering\scriptsize\setlength{\tabcolsep}{5pt}
+  \input{tables/fc_outlook.tex}\par\vspace{2pt}
+  {\tiny Monthly mean \pmtwo{} (\ugm{}); P(mean$>$90) = probability the monthly mean exceeds 90; Days Poor+ = expected days with daily \pmtwo{} above 90 (PM$_{2.5}$ band, not official AQI). Actual shown for full months only.}
 \end{frame}
 
 \end{document}
