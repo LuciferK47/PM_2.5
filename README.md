@@ -59,8 +59,9 @@ src/               data.py, aqi.py, tsa.py (ADF/KPSS, climatology, week index),
 notebooks/         01_data_prep, 02_eda, 03_var_granger, 04_forecasting (executed, outputs saved)
 results/           CSV/JSON tables; fc_* files belong to the forecasting study
 figures/           PNG figures from the notebooks
-slides/beamer/     main.tex (deck source), make_figures.py, verify_numbers.py, tables/
-report/            report.tex (written report source)
+slides/beamer/     main.tex (final presentation, ~43 frames), make_figures.py, verify_numbers.py, tables/
+report/            report.tex (final report, 7 pages, two-column)
+HANDOFF.md         full project guide for a new team member: theory, data quirks, limitations, viva Q&A, reference audit
 tools/             build_nb04.py (regenerates notebook 04)
 ```
 
@@ -94,6 +95,8 @@ cd ../../report && tectonic report.tex
 ```
 
 PDFs are not tracked in the repository (`*.pdf` is git-ignored); build them with the commands above.
+
+**New to the project?** Read [HANDOFF.md](HANDOFF.md) first.
 
 `verify_numbers.py` re-derives selected numbers from the raw files and saved forecasts and fails on any mismatch. It covers the headline tables and macros, not every figure in the deck.
 

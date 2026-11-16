@@ -271,8 +271,10 @@ def sci(p):
 
 
 def write(name, spec, header, rows):
-    body = " \\\\\n".join(" & ".join(str(c) for c in r) for r in rows)
-    (TAB / f"{name}.tex").write_text(f"\\begin{{tabular}}{{{spec}}}\n\\toprule\n{header} \\\\\n\\midrule\n{body} \\\\\n\\bottomrule\n\\end{{tabular}}\n")
+    """Fully boxed table (course-report style): vertical rules between columns, a rule under every row."""
+    cols = "|" + "|".join(spec) + "|"
+    body = " \\\\\\hline\n".join(" & ".join(str(c) for c in r) for r in rows)
+    (TAB / f"{name}.tex").write_text(f"\\begin{{tabular}}{{{cols}}}\n\\hline\n{header} \\\\\\hline\n{body} \\\\\\hline\n\\end{{tabular}}\n")
 
 
 tex_pm = lambda s: s.replace("→", r"$\to$").replace("PM2.5", r"PM$_{2.5}$")  # noqa: E731
@@ -417,6 +419,28 @@ if FCN is not None:
         rows.append([m_, f"{r['median']:.0f}", f"{r['lo95']:.0f}--{r['hi95']:.0f}", f"{r['P(mean>90)'] * 100:.0f}\\%", f"{pp:.0f}", act])
     write("fc_outlook", "lrrrrr", r"\textbf{Month} & \textbf{Median} & \textbf{95\% interval} & \textbf{P(mean$>$90)} & \textbf{Days Poor+} & \textbf{Actual}", rows)
 
+    # extra tables for the final deck and report
+    gr = pd.read_csv(RES / "granger_hac_robust.csv")
+    pick = [("baseline (P=4)", "baseline"), ("+ rain and temperature", "+ rain, temperature"), ("+ linear time trend", "+ linear trend"), ("climatology from 2015-2018 only", "training-only climatology")]
+    rows = []
+    for key_, lab_ in pick:
+        w_ = gr[(gr.spec == key_) & (gr.direction == "Wind → PM2.5")].iloc[0]; h_ = gr[(gr.spec == key_) & (gr.direction == "Humidity → PM2.5")].iloc[0]
+        rows.append([lab_, sci(w_.p_value), sci(h_.p_value)])
+    write("granger4", "lrr", r"\textbf{Specification} & \textbf{Wind $\to$ PM$_{2.5}$} & \textbf{Humidity $\to$ PM$_{2.5}$}", rows)
+    ls_ = pd.read_csv(RES / "fc_lockdown_sensitivity.csv")
+    rows = []
+    for _, r in ls_.iterrows():
+        nm = r["counterfactual"].replace("selected spec (linear, K=5, AR1), headline", "Headline (linear level)").replace("random-walk level (ARIMA errors)", "Random-walk level").replace("constant level", "Constant level")
+        nm = nm.replace("headline + shrunk mean-bias shift (post-hoc)", "Headline + bias shift (post hoc)").replace("PLACEBO: same weeks of 2019 vs 2019 forecast", "Placebo: same weeks of 2019")
+        adj = "--" if pd.isna(r["lockdown_gap_adjusted_for_pre_gap_pct"]) else f"{r['lockdown_gap_adjusted_for_pre_gap_pct']:.0f}\\%"
+        rows.append([nm, f"{r['pre_lockdown_gap_pct']:.0f}\\%".replace("-", "$-$"), f"{r['lockdown_gap_10wk_pct']:.0f}\\%".replace("-", "$-$"), adj.replace("-", "$-$")])
+    write("lock_sens", "lrrr", r"\textbf{Counterfactual} & \textbf{Pre-lockdown gap} & \textbf{Lockdown gap} & \textbf{Adjusted}", rows)
+    ck_ = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
+    rows = [[nm.replace(" (post-hoc sensitivity)", " (post hoc)"), f"{r['coverage'] * 100:.0f}\\%", f"{r['width']:.0f}", f"{r['winkler']:.0f}", f"{r['bias']:+.1f}".replace("-", "$-$")] for nm, r in ck_.iterrows()]
+    write("calib", "lrrrr", r"\textbf{2019 intervals} & \textbf{Coverage} & \textbf{Width} & \textbf{Winkler} & \textbf{Bias}", rows)
+    dz = pd.read_csv(RES / "fc_sarima_d0_constant.csv", index_col=0)
+    rows = [[{"no constant": "SARIMA $D=0$, no constant", "with constant": "SARIMA $D=0$, with constant", "Climatology (reference)": "Climatology"}[i_]] + [f"{dz.loc[i_, c]:.1f}" for c in ["2017", "2018", "2019"]] for i_ in dz.index]
+    write("d0const", "lrrr", r"\textbf{MAE ($\mu$g/m$^3$)} & \textbf{2017} & \textbf{2018} & \textbf{2019}", rows)
     ck = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
     _bm = pd.read_csv(RES / "fc_backtest_metrics.csv").set_index(["model", "fold"])["MAE"]   # unrounded: avoids double rounding
     mae_ = lambda m_, f_: f"{_bm[(m_, f_)]:.1f}"  # noqa: E731
@@ -426,7 +450,18 @@ if FCN is not None:
         "fcMaeLstmNineteen": mae_("LSTM (small)", 2019), "fcMaeLstmEighteen": mae_("LSTM (small)", 2018), "fcMaeSarimaZeroNineteen": mae_("SARIMA D=0", 2019),
         "fcCalWidthRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['width']:.0f}", "fcCalWidthCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['width']:.0f}",
         "fcCalWinkRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['winkler']:.0f}", "fcCalWinkCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['winkler']:.0f}",
-        "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}",
+        "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}", "fcCovEighteen": f"{FCN['backtest']['coverage_selected']['2018'] * 100:.0f}",
+        "fcSelDiff": f"{ld.loc[SELN, 'mean_MAE_diff_vs_climatology']:+.1f}".replace("-", "$-$"), "fcSelLo": f"{ld.loc[SELN, 'ci_lo']:+.1f}".replace("-", "$-$"), "fcSelHi": f"{ld.loc[SELN, 'ci_hi']:+.1f}",
+        "fcLinMae": f"{mae.loc['Fourier+ARMA linear', 'mean 2018-19']:.1f}", "fcSelMae": f"{mae.loc[SELN, 'mean 2018-19']:.1f}", "fcClimMae": f"{mae.loc['Climatology', 'mean 2018-19']:.1f}",
+        "fcLockActual": f"{FCN['lockdown']['plain']['actual_mean']:.1f}", "fcLockCf": f"{FCN['lockdown']['plain']['cf_median']:.1f}",
+        "fcZa": f"{FCN['calibration_rule_2019']['by_fold_mean_z']['2017']:.2f}".replace("-", "$-$"), "fcZb": f"{FCN['calibration_rule_2019']['by_fold_mean_z']['2018']:.2f}".replace("-", "$-$"),
+        "fcFwNineteen": f"{FCN['calibration_rule_2019']['f']['true']:.2f}", "fcFnNineteen": f"{FCN['calibration_rule_2019']['f']['false']:.2f}",
+        "fcFwTwenty": f"{FCN['outlook_2020_rule']['f']['true']:.2f}", "fcFnTwenty": f"{FCN['outlook_2020_rule']['f']['false']:.2f}",
+        "fcShiftBias": f"{FCN['calibration_2019_all']['Season scale + shrunk shift (post-hoc sensitivity)']['bias']:+.1f}", "fcRawBias": f"{FCN['calibration_2019_all']['Model-based Gaussian']['bias']:+.1f}".replace("-", "$-$"),
+        "fcShiftWink": f"{FCN['calibration_2019_all']['Season scale + shrunk shift (post-hoc sensitivity)']['winkler']:.0f}",
+        "fcLBten": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag10']:.3f}", "fcLBtwentysix": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag26']:.3f}",
+        "fcLBfiftytwo": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag52']:.3f}", "fcARCHp": f"{FCN['diagnostics_selected_2019_fold']['ARCH4_p']:.2f}",
+        "fcOneDhr": f"{FCN['oneweek_mae']['DHR, no weather']:.1f}", "fcOneOracleMae": f"{FCN['oneweek_mae']['+ same-week weather (ORACLE)']:.1f}",
         "fcLockPre": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['pre_lockdown_gap_pct']):.0f}",
         "fcLockAdj": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['lockdown_gap_adjusted_for_pre_gap_pct']):.0f}",
         "fcLockPlacebo": f"{abs(FCN['lockdown_sensitivity']['PLACEBO: same weeks of 2019 vs 2019 forecast']['lockdown_gap_10wk_pct']):.0f}",
@@ -489,5 +524,13 @@ nums.update({"shockWindBig": f"{abs(sb['curves']['wind']['pct'][-1]):.0f}", "sho
 bm_ = pd.read_csv(RES / "monthly_mean_sd.csv", index_col=0)
 nums.update({"sdNov": f"{bm_.loc[11, 'sd_raw']:.0f}", "sdAug": f"{bm_.loc[8, 'sd_raw']:.0f}"})
 nums.update(FC_NUMS)
+_dg2 = pd.read_csv(RES / "fc_diagnostics.csv", index_col=0).iloc[1]; _st2 = pd.read_csv(RES / "stationarity_train.csv", index_col=0); _sc2 = pd.read_csv(RES / "station_check.csv", index_col=0)
+nums.update({"sLBten": f"{_dg2.LB_p_lag10:.2f}", "sLBtwentysix": f"{_dg2.LB_p_lag26:.2f}", "sLBfiftytwo": f"{_dg2.LB_p_lag52:.3f}",
+             "acfOver": f"{_st2.iloc[3].lag1_acf:.2f}".replace("-", "$-$"), "panelDaysSev": f"{int(_sc2.loc[2017, 'panel_days'])}", "nTrain": f"{int(_st2.iloc[0].n)}"})
+_gr = pd.read_csv(RES / "granger_hac_robust.csv"); _nest = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
+_g = lambda spec_, d_: _gr[(_gr.spec == spec_) & (_gr.direction == d_)].iloc[0]  # noqa: E731
+nums.update({"gWindP": sci(_g("baseline (P=4)", "Wind → PM2.5").p_value), "gRhP": sci(_g("baseline (P=4)", "Humidity → PM2.5").p_value),
+             "gWindPc": sci(_g("+ rain and temperature", "Wind → PM2.5").p_value), "gRhPc": sci(_g("+ rain and temperature", "Humidity → PM2.5").p_value),
+             "nestDR": f"{_nest.delta_R2:.3f}", "nestP": f"{_nest.joint_wald_p_weather:.2f}", "nestRone": f"{_nest.R2_lagged_pm25_only:.3f}", "nestRtwo": f"{_nest.R2_plus_lagged_weather:.3f}"})
 (TAB / "numbers.tex").write_text("\n".join(f"\\newcommand{{\\{k}}}{{{v}}}" for k, v in nums.items()) + "\n")
 print("numbers:", len(nums))

@@ -34,7 +34,7 @@ def close(a, b, tol):
     return abs(float(a) - float(b)) <= tol
 
 
-macros = dict(re.findall(r"\\newcommand\{\\(\w+)\}\{(.*?)\}", (TAB / "numbers.tex").read_text()))
+macros = dict(re.findall(r"\\newcommand\{\\(\w+)\}\{(.*)\}$", (TAB / "numbers.tex").read_text(), re.M))  # whole line, so macros containing braces (e.g. 10^{-20}) are kept intact
 
 # ── 1. rebuild the data from the raw files ─────────────────────────────────────────────────────────────
 raw = pd.read_csv(ROOT / "data/raw/city_day.csv", parse_dates=["Date"])
@@ -401,6 +401,47 @@ d0_ = pd.read_csv(RES / "fc_sarima_d0_constant.csv", index_col=0)
 check("SARIMA D=0 with/without constant table present and both far above climatology in 2018 and 2019", bool((d0_.loc[["no constant", "with constant"], ["2018", "2019"]].min().min() > 1.3 * d0_.loc["Climatology (reference)", ["2018", "2019"]].max())))
 sg_ = pd.read_csv(RES / "granger_hac_seasonal.csv")
 check("seasonal Granger tests: every winter/monsoon p-value < 0.001 (the report's stated bound)", bool((sg_[~sg_.test.str.startswith("Interaction")].p_value < 1e-3).all()))
+
+# ── 12. Macros added for the final deck and report: re-derived from the saved results ─────────────────
+_hr = pd.read_csv(RES / "granger_hac_robust.csv")
+def _pp(spec_, d_):
+    return float(_hr[(_hr.spec == spec_) & (_hr.direction == d_)].p_value.iloc[0])
+_fmt = lambda p_: "${:.1f}\\times10^{{{}}}$".format(float(f"{p_:.1e}".split("e")[0]), int(f"{p_:.1e}".split("e")[1]))  # noqa: E731
+check("Granger macros (wind/humidity p, baseline and with rain+temperature) match granger_hac_robust.csv",
+      macros["gWindP"] == _fmt(_pp("baseline (P=4)", "Wind → PM2.5")) and macros["gRhP"] == _fmt(_pp("baseline (P=4)", "Humidity → PM2.5"))
+      and macros["gWindPc"] == _fmt(_pp("+ rain and temperature", "Wind → PM2.5")) and macros["gRhPc"] == _fmt(_pp("+ rain and temperature", "Humidity → PM2.5")))
+_ne = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
+check("weekly nested-test macros (dR2, p, both R2) match weekly_lag_nested.csv", macros["nestDR"] == f"{_ne.delta_R2:.3f}" and macros["nestP"] == f"{_ne.joint_wald_p_weather:.2f}" and macros["nestRone"] == f"{_ne.R2_lagged_pm25_only:.3f}" and macros["nestRtwo"] == f"{_ne.R2_plus_lagged_weather:.3f}")
+_ldv = pd.read_csv(RES / "fc_loss_diff.csv"); _ldv = _ldv[(_ldv.folds == "folds 2018+2019") & (_ldv.model == "Fourier+ARMA (selected)")].iloc[0]
+check("bootstrap macros for the selected model (diff, CI) match fc_loss_diff.csv, recomputed from saved forecasts",
+      macros["fcSelDiff"].replace("$-$", "-") == f"{_ldv.mean_MAE_diff_vs_climatology:+.1f}" and macros["fcSelLo"].replace("$-$", "-") == f"{_ldv.ci_lo:+.1f}" and macros["fcSelHi"] == f"{_ldv.ci_hi:+.1f}")
+_cov = {f_: float(((g_.actual >= np.exp(g_.mu - 1.96 * g_.sd)) & (g_.actual <= np.exp(g_.mu + 1.96 * g_.sd))).mean()) for f_, g_ in bf[bf.model == "Fourier+ARMA (selected)"].groupby("fold")}
+check(f"coverage macros: 2017 {_cov[2017]:.2f}, 2018 {_cov[2018]:.2f}, 2019 {_cov[2019]:.2f} recomputed from saved forecasts",
+      macros["fcCovSeventeen"] == f"{_cov[2017] * 100:.0f}" and macros["fcCovEighteen"] == f"{_cov[2018] * 100:.0f}" and macros["fcCovRaw"] == f"{_cov[2019] * 100:.0f}")
+_mm = bf.groupby(["model", "fold"]).ae.mean().unstack()
+check("2018-19 mean MAE macros (selected, linear, climatology) match saved forecasts",
+      macros["fcSelMae"] == f"{_mm.loc['Fourier+ARMA (selected)', [2018, 2019]].mean():.1f}" and macros["fcLinMae"] == f"{_mm.loc['Fourier+ARMA linear', [2018, 2019]].mean():.1f}" and macros["fcClimMae"] == f"{_mm.loc['Climatology', [2018, 2019]].mean():.1f}")
+_wlk = pd.read_csv(RES / "fc_weekly_2020.csv", parse_dates=["date"]).set_index("date")
+check("lockdown actual mean macro matches the 10 weekly actuals", close(float(macros["fcLockActual"]), _wlk.loc["2020-03-29":"2020-05-31", "actual"].mean(), 0.06))
+_lsv = pd.read_csv(RES / "fc_lockdown_sensitivity.csv")
+check("lockdown headline macros (gap, pre-gap, adjusted, sensitivity range, placebo) match fc_lockdown_sensitivity.csv",
+      macros["fcLockPre"] == f"{abs(_lsv.pre_lockdown_gap_pct.iloc[0]):.0f}" and macros["fcLockAdj"] == f"{abs(_lsv.lockdown_gap_adjusted_for_pre_gap_pct.iloc[0]):.0f}"
+      and macros["fcLockPlacebo"] == f"{abs(_lsv.lockdown_gap_10wk_pct.iloc[-1]):.0f}" and macros["fcLockSensLo"] == f"{_lsv.lockdown_gap_10wk_pct.iloc[:-1].abs().min():.0f}" and macros["fcLockSensHi"] == f"{_lsv.lockdown_gap_10wk_pct.iloc[:-1].abs().max():.0f}")
+
+_dg = pd.read_csv(RES / "fc_diagnostics.csv", index_col=0).iloc[0]
+check("residual-test macros (Ljung-Box lags 10/26/52, ARCH) for the selected model match fc_diagnostics.csv",
+      macros["fcLBten"] == f"{_dg.LB_p_lag10:.3f}" and macros["fcLBtwentysix"] == f"{_dg.LB_p_lag26:.3f}" and macros["fcLBfiftytwo"] == f"{_dg.LB_p_lag52:.3f}" and macros["fcARCHp"] == f"{_dg.ARCH4_p:.2f}")
+
+_cr = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
+check("calibration-rule macros (mean z by fold, scale factors, post-hoc shift bias and Winkler) match key_numbers_forecast.json and fc_calibration_2019.csv",
+      macros["fcShiftBias"] == f"{_cr.iloc[2].bias:+.1f}" and macros["fcShiftWink"] == f"{_cr.iloc[2].winkler:.0f}"
+      and macros["fcFwNineteen"] == f"{FC['calibration_rule_2019']['f']['true']:.2f}" and macros["fcFnTwenty"] == f"{FC['outlook_2020_rule']['f']['false']:.2f}"
+      and macros["fcZa"].replace("$-$", "-") == f"{FC['calibration_rule_2019']['by_fold_mean_z']['2017']:.2f}")
+
+_d2 = pd.read_csv(RES / "fc_diagnostics.csv", index_col=0).iloc[1]; _s2 = pd.read_csv(RES / "stationarity_train.csv", index_col=0); _c2 = pd.read_csv(RES / "station_check.csv", index_col=0)
+check("SARIMA D=1 residual-test macros (burn-in removed), over-differenced ACF, 2017 panel days and training-weeks macros match the results tables",
+      macros["sLBten"] == f"{_d2.LB_p_lag10:.2f}" and macros["sLBtwentysix"] == f"{_d2.LB_p_lag26:.2f}" and macros["sLBfiftytwo"] == f"{_d2.LB_p_lag52:.3f}"
+      and macros["acfOver"].replace("$-$", "-") == f"{_s2.iloc[3].lag1_acf:.2f}" and macros["panelDaysSev"] == f"{int(_c2.loc[2017, 'panel_days'])}" and macros["nTrain"] == f"{int(_s2.iloc[0].n)}")
 
 bad = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(bad)}/{len(results)} checks passed")
