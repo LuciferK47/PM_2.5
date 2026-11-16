@@ -4,10 +4,39 @@
   "monsoon_mean_pm25": 48.1,
   "winter_to_monsoon_ratio": 4.43,
   "nov_to_aug_median_ratio": 4.9,
-  "seasonal_strength": 0.89,
-  "trend_strength": 0.34,
+  "seasonal_strength_full": 0.89,
+  "trend_strength_full": 0.34,
+  "seasonal_strength": 0.9,
+  "trend_strength": 0.09,
   "spearman_pm25_wind": -0.24,
   "spearman_pm25_rh": -0.2,
   "boxcox_lambda_daily": 0.045,
-  "boxcox_lambda_weekly": 0.028
+  "boxcox_lambda_weekly": 0.028,
+  "boxcox_lambda_daily_train": 0.097,
+  "boxcox_lambda_weekly_train": 0.108,
+  "kpss_stat_level_daily_log": 0.366,
+  "kpss_stat_anomaly_train_2015_2018": 0.896,
+  "kpss_stat_anomaly_2015_2019": 1.997,
+  "city_vs_station_mean_corr": 0.995,
+  "stations_by_year": {
+    "2015": 10,
+    "2016": 8,
+    "2017": 17,
+    "2018": 37,
+    "2019": 37,
+    "2020": 36
+  },
+  "panel_stations": [
+    "DL002",
+    "DL013",
+    "DL019",
+    "DL021",
+    "DL028",
+    "DL031"
+  ],
+  "decline_2016_2019_pct": {
+    "all_stations": -24.7,
+    "fixed_panel": -19.7,
+    "weather_adjusted": -17.7
+  }
 }
