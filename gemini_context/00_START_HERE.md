@@ -2,9 +2,9 @@
 You cannot open the original project, so everything is in these text files. The project (Delhi PM2.5 time-series study, MATH F428) is **finished**; your job is a **final independent audit**.
 ## Context in 5 lines
 - Daily PM2.5 for Delhi 2015-2020 (CPCB) + ERA5 weather. Q1: does weather predict PM2.5? Q2: how well can PM2.5 be forecast 1 and 52 weeks ahead?
-- Weather has a short-memory predictive association (days); at 52 weeks climatology is hard to beat; a Fourier+ARMA model matches/slightly beats it; SARIMA/LSTM do not help.
+- Weather has a short-memory predictive association (days); at 52 weeks climatology is hard to beat; no model is significantly better than it (Fourier+ARMA is indistinguishable); SARIMA D=0 and a small LSTM are worse.
 - Data end July 2020, so it is a historical forecasting study (2017-19 backtests + 2020 outlook).
-- A draft had several bugs and over-claims; three reviewers (Claude, Gemini, GPT) found them; each claim was re-tested (file 06).
+- A draft had bugs and over-claims; reviews by Claude, Gemini and GPT (two rounds, the second a recomputation audit) found them; each claim was re-tested and fixed (file 06).
 - Everything (code, tables, numbers) is included. Be critical and specific; do not just agree.
 ## Files
 | File | Content |

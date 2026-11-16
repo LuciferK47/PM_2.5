@@ -2,6 +2,7 @@
 
 ## git log (main..HEAD)
 ```
+76e359e Add verification pack (recompute data, code, results, claims ledger) for external audit
 3397b23 Deck, report, review-response log, README, presentation script, LLM briefs, verification (65 checks)
 9b351f9 Notebook 04: rolling-origin backtest, diagnostics, calibration, 1-week weather test, 2020 outlook, lockdown case study; archive SARIMA draft
 2a3d6bc Notebooks 02-03: training-only headline stats, level-drift and station check, extra Granger robustness (temp, trend, seasonal, by-lag), GIRF, nested weekly test; re-executed
@@ -9,129 +10,7 @@ d671a29 src: leap-safe climatology, week index, forecasting toolkit, PM2.5-band 
 982b5ab Baseline: hygiene (.gitignore, untrack pycache) and existing phase 2-3 rework, beamer deck, SARIMA draft, review inputs
 ```
 
-## diffstat of source and notebook changes
-```
- notebooks/01_data_prep.ipynb             |   58 +-
- notebooks/02_eda.ipynb                   | 1088 +++++++++++--
- notebooks/03_var_granger.ipynb           | 1889 +++++++++++++++++++----
- notebooks/04_forecasting.ipynb           | 2477 ++++++++++++++++++++++++++++++
- src/__pycache__/__init__.cpython-312.pyc |  Bin 166 -> 0 bytes
- src/__pycache__/aqi.cpython-312.pyc      |  Bin 1606 -> 0 bytes
- src/__pycache__/data.cpython-312.pyc     |  Bin 7282 -> 0 bytes
- src/__pycache__/plots.cpython-312.pyc    |  Bin 3597 -> 0 bytes
- src/__pycache__/tsa.cpython-312.pyc      |  Bin 4587 -> 0 bytes
- src/aqi.py                               |   13 +-
- src/forecast.py                          |  367 +++++
- src/tsa.py                               |   42 +-
- tools/build_llm_context.py               |   88 ++
- tools/build_nb04.py                      |  448 ++++++
- tools/edit_deck.py                       |  175 +++
- 15 files changed, 6185 insertions(+), 460 deletions(-)
-```
-
-## diff of src/tsa.py and src/aqi.py vs main
-```diff
-diff --git a/src/aqi.py b/src/aqi.py
-index 6a7daa2..ebee7e8 100644
---- a/src/aqi.py
-+++ b/src/aqi.py
-@@ -1,4 +1,7 @@
--"""CPCB (India) National AQI categories for 24-hour average PM2.5 (µg/m³)."""
-+"""CPCB (India) National AQI PM2.5 sub-index bands for 24-hour average PM2.5 (µg/m³).
-+
-+The official AQI is the MAXIMUM sub-index over all pollutants, so a band here is a "PM2.5 sub-index band", not the AQI.
-+"""
- import numpy as np
- import pandas as pd
- 
-@@ -28,3 +31,11 @@ def band_edges():
-         out.append((name, lower, upper, colour))
-         lower = upper
-     return out
-+
-+
-+def band_probabilities(mu, sd):
-+    """P(PM2.5 in each band) for a lognormal log-PM2.5 ~ N(mu, sd^2). Returns array (len(CATEGORIES),)."""
-+    from scipy.stats import norm
-+    edges = [b[1] for b in CPCB_PM25_BANDS[:-1]]
-+    cdf = np.r_[0.0, norm.cdf((np.log(edges) - mu) / sd), 1.0]
-+    return np.diff(cdf)
-diff --git a/src/tsa.py b/src/tsa.py
-index 56da05e..3cbfb0e 100644
---- a/src/tsa.py
-+++ b/src/tsa.py
-@@ -9,7 +9,7 @@ from statsmodels.tsa.stattools import adfuller, grangercausalitytests, kpss
- def adf_kpss(series, name, alpha=0.05):
-     """ADF (H0: unit root) and KPSS (H0: level-stationary) on one series, with a combined verdict."""
-     s = pd.Series(series).dropna()
--    adf_stat, adf_p, adf_lags, *_ = adfuller(s, autolag="AIC")
-+    adf_stat, adf_p, adf_lags, _, adf_crit, _ = adfuller(s, autolag="AIC")
-     with warnings.catch_warnings():
-         warnings.simplefilter("ignore")  # KPSS warns when p is outside its lookup table
-         kpss_stat, kpss_p, *_ = kpss(s, regression="c", nlags="auto")
-@@ -24,8 +24,9 @@ def adf_kpss(series, name, alpha=0.05):
-         verdict = "Mixed (KPSS says stationary, ADF can't reject unit root)"
-     return {
-         "series": name, "n": len(s),
--        "adf_stat": round(adf_stat, 3), "adf_p": round(adf_p, 4), "adf_lags": adf_lags,
--        "kpss_stat": round(kpss_stat, 3), "kpss_p": round(kpss_p, 4),
-+        "adf_stat": round(adf_stat, 3), "adf_p": float(f"{adf_p:.3g}"), "adf_lags": adf_lags,
-+        **{f"adf_crit_{k}": round(v, 3) for k, v in adf_crit.items()},
-+        "kpss_stat": round(kpss_stat, 3), "kpss_p": float(f"{kpss_p:.3g}"),
-         "verdict": verdict,
-     }
- 
-@@ -34,20 +35,39 @@ def stationarity_table(series_dict):
-     return pd.DataFrame([adf_kpss(s, name) for name, s in series_dict.items()]).set_index("series")
- 
- 
-+def doy365(index):
-+    """Calendar day-of-year on a fixed 1..365 scale: Feb 29 maps to day 59, later leap-year days shift by -1."""
-+    idx = pd.DatetimeIndex(index)
-+    doy = np.asarray(idx.dayofyear)
-+    leap_after_feb = idx.is_leap_year & (doy > 59)
-+    return np.where(leap_after_feb, doy - 1, doy).clip(1, 365)
-+
-+
- def doy_climatology(s, window=31):
--    """Smoothed day-of-year mean (circular rolling window), indexed 1..365."""
--    doy = np.minimum(s.index.dayofyear, 365)
--    clim = s.groupby(doy).mean().reindex(range(1, 366)).interpolate()
-+    """Smoothed day-of-year mean (circular rolling window), indexed 1..365. Fit on whatever sample is passed."""
-+    clim = s.groupby(doy365(s.index)).mean().reindex(range(1, 366)).interpolate()
-     half = window // 2
-     padded = pd.concat([clim.iloc[-half:], clim, clim.iloc[:half]])
-     return padded.rolling(window, center=True).mean().iloc[half:-half]
- 
- 
--def doy_anomaly(s, window=31):
--    """Deseasonalised series: value minus its smoothed day-of-year climatology."""
--    clim = doy_climatology(s, window)
--    doy = np.minimum(s.index.dayofyear, 365)
--    return s - clim.reindex(doy).to_numpy()
-+def apply_climatology(s, clim):
-+    """Subtract a previously fitted climatology (from `doy_climatology`) from any series."""
-+    return s - clim.reindex(doy365(s.index)).to_numpy()
-+
-+
-+def doy_anomaly(s, window=31, ref=None):
-+    """Deseasonalised series: value minus its smoothed day-of-year climatology.
-+
-+    The climatology is fitted on `ref` (default: `s` itself). Pass a training slice as `ref` to avoid leakage.
-+    """
-+    return apply_climatology(s, doy_climatology(s if ref is None else ref, window))
-+
-+
-+def week_index(index):
-+    """1..52 calendar-week index for weekly (W-SUN) dates: day-of-year of the week's Thursday, in 7-day blocks."""
-+    thu = pd.DatetimeIndex(index) - pd.Timedelta(days=3)
-+    return np.minimum((doy365(thu) - 1) // 7 + 1, 52)
- 
- 
- def pairwise_granger(df, pairs, maxlag=7):
-```
-
-## Review responses (each earlier claim, verdict, evidence)
+## Review responses (every claim from five reviews, with verdict, evidence, fix; Round 2 at the end)
 # Review responses: every claim checked against the data
 
 Three independent reviews of the project (Claude: `gemini_context/06_critical_review.md` before the final rewrite; Gemini: `docs/reviews/Geminiplan.md`; GPT: `docs/reviews/gpt.md`) raised the points below.
@@ -181,8 +60,157 @@ Each was **re-checked on the data** before acting. "Where" gives the notebook/fi
 
 ## C. New findings from the rework (not raised by any review)
 
-1. The pre-declared headline model is **not** significantly better than climatology (2018–19 MAE 24.6 vs 24.8); the variant with a linear trend is better on 2018–19 (CI excludes 0) but not over all three origins and was not chosen in advance. We report both and claim neither.
+1. The headline Fourier+ARMA procedure is **not** significantly better than climatology (2018-19 MAE 24.6 vs 24.8); neither is the linear-trend variant (21.9, interval -6.1 to +0.7), so nothing beats climatology (Round 2, R12).
 2. In the 2-year-training fold (2017) SARIMA D=1 collapses (MAE 54 vs 31 for climatology): another reason to avoid unnecessary seasonal differencing.
-3. The calibrated 2020 forecast intervals are *narrower* than those for 2019 (scale factors 1.09/0.95 vs 1.33/1.42): the calibration is fold-dependent, which we report instead of hiding.
-4. The 2020 forecast correctly flags the lockdown: March–May means fall below the 95% interval; PM2.5 was ≈ 43% below the no-lockdown forecast (≈ 38% after weather adjustment).
+3. The calibrated 2020 forecast intervals are *narrower* than those for 2019 (scale factors 1.09/0.95 vs 1.33/1.42): the calibration is fold-dependent, which we report instead of hiding; calibration also widens intervals and worsens the Winkler score.
+4. The observed March-June 2020 monthly means fall below the 95% interval; lockdown-period PM2.5 was about 43% below the model's no-lockdown median (35-51% across adjustments; a 2019 placebo gives 15%): descriptive, not causal.
 5. The pipeline over-predicts the share of Poor-or-worse days in 2019 (55% vs 45%): the level bias noted above carries into the band table.
+
+## Round 2: outside verification audits of the finished project (Gemini and GPT)
+Both audits (`docs/reviews/round2/`) received `verification_pack/` and recomputed the headline numbers. Every number they recomputed matched. They also reported code bugs, checker defects and over-claims, each re-tested against the code and data before acting. Gemini's statement that it ran `verify_numbers.py` (63/65) could not have been done from the pack, which did not contain the raw data, so it is not relied on.
+
+| # | Claim (source) | Verdict | Evidence and fix |
+|---|---|---|---|
+| R1 | LSTM recursive input pairs each anomaly with the calendar row of the *next* week (GPT) | **Accepted, confirmed** | `forecast.py` built the window as `Cp[j+1:] + Cf[:j+1]`. Now one helper (`lstm_window`) builds training and forecast windows, with a unit test. Rerun: MAE 36.3 / 28.3 / 54.3 (was 36.3 / 49.2 / 52.9): 2018 improves, still clearly worse than climatology over 2018-19. |
+| R2 | verify_numbers checks April-June against March-May intervals (GPT) | **Accepted, confirmed** | `month == i_ + 1`. Fixed; each month now compared with its own interval and June added. Conclusion unchanged (Mar-Jun all below). |
+| R3 | Persistence check skips the first test week (GPT) | **Accepted** | `.iloc[1:]` removed, tolerance 0.6 -> 0.01. |
+| R4 | Link checks fail offline (Gemini) | **Accepted** | HTTP 000 is reported as offline and the local raw files are checked instead. |
+| R5 | Report: seasonal Granger "p <= 5e-4"; winter humidity is 5.35e-4 (GPT) | **Accepted** | Report now says all p < 1e-3; a verify check enforces it. |
+| R6 | Report: D=0 MAE "39.7 -> 30.6" with a constant has no saved evidence (GPT) | **Accepted** | Came from a planning run, not a saved result. Replaced by a matched table (`fc_sarima_d0_constant.csv`): without constant 76.9 / 61.0 / 92.1, with 44.9 / 42.8 / 44.1, climatology 31.0 / 21.8 / 27.8. |
+| R7 | June 2020 omitted (GPT) | **Accepted** | June actual 46.7 < lower bound 48.7. Deck and report now say March-June; verify check extended. |
+| R8 | Calibration raises coverage but widens intervals and worsens the Winkler score (GPT) | **Accepted** | Width 125 -> 179, Winkler 175 -> 193; now stated everywhere; "calibrated" reworded to "interval widths rescaled". 2017 coverage 69% is also reported. |
+| R9 | "ARMA" label although the rw level is ARIMA(p,1,q) (GPT) | **Accepted** | Wording changed in definitions (label kept). |
+| R10 | `_best_by_aicc` accepts non-converged fits; warnings suppressed globally (GPT) | **Accepted** | Fits with `converged = False` are rejected and counted (6 / 3 / 5 per origin); warnings now suppressed only inside the fit call. Selected specs unchanged. |
+| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.1% predicted vs 45.2% actual (unchanged story). |
+| R12 | Block bootstrap joins forecast years (Gemini, GPT) | **Accepted; found a second bug** | Blocks are now drawn within each fold. My first version (non-circular) under-sampled the first and last weeks and gave biased intervals (it declared the linear variant and the selected model "better"); the final version is circular. Result: **no model beats climatology significantly**; the linear variant (-2.9, CI -6.1 to +0.7) is indistinguishable. Seasonal naive, SARIMA D=0 and the LSTM are clearly worse; SARIMA D=1 is worse over all three folds. |
+| R13 | Constant predictive sd for linear regression and LSTM (Gemini) | **Accepted** | Linear regression: OLS prediction sd with parameter uncertainty. LSTM: sd from in-sample recursive h-step errors (non-decreasing, capped). Climatology and seasonal naive now carry an sd, so RMSE uses the mean forecast for every model. |
+| R14 | Calibration threshold ignores consistent negative bias (Gemini) | **Partly** | The step rule was fixed before 2019 was seen; replacing it afterwards would tune on the test year. Added as a labelled post-hoc sensitivity: a shrunk shift gives 2019 bias +4.3, MAE 23.6, Winkler 161, but is not adopted. |
+| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -35%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
+| R16 | Over-claims: "matches or slightly beats", "weather adds nothing", "decline is real", "cut PM2.5 by 43%", "65 checks verify every number", "pre-declared / untouched 2019", "LSTM clearly worse" (both) | **Accepted** | Reworded across deck, report, script and README; 2019 described as examined in earlier iterations. |
+| R17 | Bootstrap and tests rest on only three origins (both) | **Accepted** | Stated in limitations; no stronger claim made. |
+| R18 | Report omits lag-10 Ljung-Box p = 0.088 (Gemini) | **Accepted** | Added. |
+| R19 | 52-week fold naming and week-53 cap (GPT) | **Accepted** | Notebook text: the 2017 fold ends 24 Dec 2017; week 53 is folded into 52; seasonal naive is 52 weeks back. |
+| R20 | `verify_numbers.py` is not comprehensive (both) | **Accepted** | Described as selected checks. New checks: LSTM alignment, daily-path coherence, saved-forecast recomputation of all MAEs, bootstrap table, one-step MAEs, lockdown sensitivity arithmetic, calibration direction, D=0 table, Granger bound. |
+| R21 | Fixed 6-station panel does not prove the decline is real (GPT) | **Accepted** | Wording: "consistent with a genuine decline; network effect not fully excluded". |
+| R22 | Gemini: Granger "drive/explain" wording | **Accepted** | "Predictive association" throughout; deck question changed to "Does weather predict PM2.5?". |
+| R23 | Gemini: LSTM strawman | **Partly** | It is a small untuned baseline, stated as such; no claim about neural networks. |
+
+## Round 2 audit documents
+### GPT
+# Independent verification audit — Delhi PM2.5 (`phase4-final`)
+
+Scope: `00_VERIFY_README.md` and supplied files 01–09. Recomputed from the **rounded** weekly data (287 records) and raw backtest predictions (1,560 records) in `06_raw_data_for_recompute.md`. Source-line pointers refer to the supplied Markdown files. No original daily CPCB/ERA5 files, station-level CSVs, actual `numbers.tex`, or simulation-path records were supplied. Consequently, statements dependent on these assets are **internally checked, not independently reproduced**. This audit does not claim to have run `verify_numbers.py` end-to-end.
+
+## I. Ledger of 15 claims
+
+| Ledger | Independent finding | Status |
+|---|---|---|
+| 1. Forecast MAE for 2017/18/19 | Independently recomputed all ten models, all three folds. Selected model 31.483/23.426/25.695; climatology 30.998/21.774/27.818; SARIMA D=1 53.827/21.083/27.452; D=0 44.874/42.834/44.103; LSTM 36.291/49.231/52.869. | **PASS** (stored forecast rows) |
+| 2. Calendar-week climatology | Rebuilt group means of log weekly PM2.5 using the training years and `week_index`. Stored predictions agree to <0.00008 log units, explained by input rounding. | **PASS** |
+| 3. Seasonal naive | Stored median forecasts match the observed PM2.5 52 weeks earlier exactly, across all three folds. | **PASS** |
+| 4. Moving-block CI | Re-ran RNG seed=0, block length 8, 4,000 replications. Selected minus climatology (2018–19) mean difference −0.235 µg/m³, CI [−3.558,+1.806]; Fourier linear −2.942, CI [−6.430,−0.357]. | **PASS arithmetic**, inferential caveat (few origins) |
+| 5. Raw/calibrated intervals | Raw selected 2019: 47/52 =90.3846%. Applying stored seasonal scale factors 1.33430955 winter, 1.42153240 non-winter: 50/52 =96.1538%. | **PASS**, calibration score worsens |
+| 6. Misses by year | 2017: 10 below/6 above, 36/52=69.23%; 2018: 2 below/1 above, 49/52=94.23%; 2019: 5 below/0 above, 47/52=90.38%. | **PASS** |
+| 7. One-week weather | From `05` table: no weather 22.39; lagged 22.92 (−2.4% gain), prior-last-3-days 22.24 (+0.7%), same-week oracle 20.84 (+6.9%); DM/HLN approx 0.074. Raw one-step forecasts are **not** supplied in `06`, so cannot independently recompute its errors or p-value. | **Consistent, unverified from raw** |
+| 8. Daily Granger | Report values match `05` tables (base HAC p roughly 6e−20 and 4e−11; with rain/temp roughly 9e−18 and 7e−8). Full daily anomaly inputs absent; exact p-values not independently re-estimated. | **Table-consistent, not independently reproduced** |
+| 9. Weekly nested weather | Independently implemented the lag-1 nested regression on supplied weekly data. R² base 0.13408324, full 0.13908401, ΔR²=0.00500077, joint HAC Wald p=0.5146397. | **PASS** |
+| 10. 2019 monthly pipeline | `05` reports 12/12 monthly means inside 95% and Poor+ 55.0% predicted vs 45.2% actual. Weekly raw file cannot reconstruct daily observed counts, stochastic daily profiles, or Monte Carlo draws. | **Unverifiable from raw pack** |
+| 11. Lockdown contrast | Ten weeks 29 Mar–31 May 2020: actual mean 48.66972 (from `06`) vs reported model counterfactual median 85.14075 (`05`), (actual/median−1)=−42.836%; weather-adjusted median 78.46681, −37.974%. Counterfactual simulation distribution and interval **not supplied**. | **Percent arithmetic PASS; causal meaning NOT established** |
+| 12. Station-panel decline | Reported log-anomaly changes imply exp(−0.163−0.121)−1=−24.72%; fixed panel exp(−0.132−0.088)−1=−19.75%; weather-adjusted exp(−0.110−0.085)−1=−17.72%. **Required raw station_day.csv absent**: cannot verify 6-station panel or composition claims. | **Arithmetic PASS; underlying evidence unavailable** |
+| 13. SARIMA diffuse burn-in | `04` reports drop initial 52 residuals, Ljung–Box p=.49 (lag10), .10 (lag26), .016 (lag52). Without original full-precision series cannot independently refit identical parameters. | **Code/output-consistent** |
+| 14. Seasonal MA −.988, SE 8.26 | Reported in notebook and `05`; cannot refit exactly. Very high SE signals weak identification, rather than quantitatively proving over-differencing. | **Code/output-consistent** |
+| 15. Leap-year `doy365` | Code maps Feb29 to Feb28 index, subtracts 1 from Mar1–Dec31 during leap years, giving 365-day seasonal alignment. | **PASS**, residual 53-week-compression caveat |
+
+## II. Independently recalculated MAE (µg/m³)
+
+| Model | 2017 | 2018 | 2019 |
+|---|---:|---:|---:|
+| Fourier+ARMA selected |31.483|23.426|25.695|
+| Climatology |30.998|21.774|27.818|
+| SARIMA D1 |53.827|21.083|27.452|
+| SARIMA D0 |44.874|42.834|44.103|
+| Fourier+ARMA linear |35.856|19.733|23.974|
+| Climatology+AR1 |30.701|21.668|27.327|
+| Fourier+ARMA const |30.593|22.048|29.262|
+| Linear regression |35.893|19.991|24.944|
+| LSTM |36.291|49.231|52.869|
+| Seasonal naive |38.438|28.965|30.306|
+
+Computed 287 equally spaced weekly observations (2015-01-04–2020-06-28). Weekly ln(PM2.5) differs from supplied rounded log column by no more than 0.00005.
+
+## III. Report/deck vs tables — specific mismatches or unsupported numbers
+
+1. **Seasonal Granger p-value overstatement** — `08_report_and_deck_text.md`, report Granger paragraph, ~line 46: claims both wind and humidity significant in winter and monsoon at *p* ≤ 5×10^-4. `05_all_results_tables.md`, `granger_hac_seasonal.csv`, winter humidity **p=0.00053516**, which is slightly GREATER than 0.0005. Change to `p < 0.001` or quote exact maximum.
+2. **Missing-constant D0 MAE 39.7→30.6 unsupported** — `08` report ~line 61 says introducing constant improves validation MAE from 39.7 to 30.6; current `05` table `fc_backtest_mae.csv` lists D0 MAEs **44.9, 42.8, 44.1**, and the value 30.6 belongs to `Fourier+ARMA const`, 2017. These may refer to distinct draft configurations/horizons; without a saved matched-pair output, the exact 30.6 improvement is **not supported by current results**, and attribution solely to constant is unwarranted.
+3. **2020 month omission** — Deck ~line 459 says January–February inside, March–May below interval. `05`, `fc_outlook_2020.csv` also shows **June** actual 46.695 below lower 48.702, and June is a full observed month. Include June or explain why excluded. Related plotted title “Jan–May full months” is inaccurate.
+4. **Calibration is presented as improvement while interval quality worsens** — `05`, `fc_calibration_2019.csv`: raw 90.4% to calibrated 96.2% coverage, but average interval width **125.08→178.66** (+42.8%) and mean Winkler score **174.88→192.72** (+10.2%; lower is better). Code correct for coverage but the evidence does not show uniformly *better* predictive intervals.
+5. **Title/model-class mismatch** — `08` calls the selected model Fourier+ARMA. `02_src_code.md`, `TREND_SPECS['rw']`, specifies **ARIMA(p,1,q) errors** for selected 2017 and 2019 folds. More accurate: Fourier regression with ARIMA errors, or DHR with candidate ARMA/ARIMA error structures.
+6. **Unverifiable ‘predetermined’ claim** — `08` ~line 54 and deck ~line403 claim the headline rule was decided before test years were inspected. The prior project material already included 2019 results and iterative model development. Current code can be internally chronological while the **research process** reuses 2019 as a model development reference. Do not describe 2019 as a pristine untouched prospective holdout.
+7. **Numerical statements otherwise agree** — headline MAEs, 2017–2019 interval miss counts, calibration coverage, bootstrapped loss differences, weekly ΔR² and p=.51, one-week MAE improvements *as tabulated*, forecast-day shares *as tabulated*, station-change percentages *as tabulated*, IRF and FEVD summaries *as tabulated*, and lockdown gap arithmetic match to published rounding. This is a comparison of the provided LaTeX and `05` tables, **not** a check of actual `numbers.tex` macro contents; the macro file was not included.
+
+## IV. Confirmed code defects and verification blind spots
+
+**P0: Recursive LSTM feature alignment** — `02_src_code.md`, `src/forecast.py`, line ~456: `cc = np.vstack([Cp, Cf[:j + 1]])[-lag:] if j else Cp` but input anomaly history `hist[-lag:]` stops at previous week. For j≥1, `cc` contains next/current week's calendar vector, one step ahead of the corresponding anomaly input. Correct to `Cf[:j]` and rerun LSTM baseline. The existing backtest MAE computed from *saved predictions* is correct, but the training/forecast implementation is wrong; do not draw general conclusions about LSTM performance from uncorrected runs. Independent refit of the code on rounded weekly data was unstable/did not reproduce stored LSTM metrics (especially 2018 and 2019), so include a complete locked environment and raw unrounded inputs for reproducibility.
+
+**P0: Independent verifier off by one month** — `07_verification_and_figure_code.md`, `verify_numbers.py`, ~line 327: `for i_,m_ in zip((3,4,5), ['Mar','Apr','May'])` then selects `a20_.index.month==i_+1`. This checks April, May, June observed concentrations against March, April, May intervals. Fix to `index.month==i_`. A PASS from this code cannot validate the intended claim.
+
+**P1: Persistence checker drops first week** — `07`, ~line 314: `.iloc[1:]` is applied to both actual and previous-week reference even though previous-week observations are available. It skips one complete test week. The computed persistence MAE changes, but generous tolerance currently masks the error. Check every available weekly forecast and eliminate the tolerance masking.
+
+**P1: Non-converged model selection** — `02`, `_best_by_aicc` ~line 340 accepts any finite AICc without testing optimizer convergence. Global warning suppression hides warnings. Check `res.mle_retvals['converged']`, covariance warnings and invalid seasonal/invertibility parameters and document excluded candidates.
+
+**P1: Incoherent daily simulations vs weekly forecasts** — `02`, `daily_band_days` ~lines 583–619 constructs daily exceedance counts from separately sampled patterns, while monthly PM2.5 means are generated from a separate weekly trajectory (`monthly_mean_paths`). Their daily profiles are not constrained to exactly reproduce that same simulation's weekly means. A single coherent daily-to-weekly simulation should produce both monthly mean and counts. The 2019 daily band validation needs raw daily data/simulation paths to independently verify.
+
+**P1: 'Independent' verification is not comprehensive** — `07`, `verify_numbers.py` depends on original raw CPCB/ERA5, processed files, station files, and generated macro files not provided in this bundle; therefore its 65/65 claim cannot be independently rerun from this upload alone. Some checks compare saved result tables or selected model specifications rather than recomputing model selection or full uncertainty procedure. It does not fully certify weather one-step, LSTM refits, station panel, outlook simulation or every report/deck number.
+
+**P1: Block bootstrap effective sample size** — `02`, `block_bootstrap_diff` resamples concatenated weekly loss differences across yearly origin boundaries, assuming weak stationarity. The 104 2018+19 weekly errors represent only two highly dependent forecast paths. Its percentiles reproduce as coded, but inferential significance is fragile.
+
+**P2: Horizon/calendar naming** — A 52-step weekly forecast from 2016-12-25 ends 2017-12-24, not on 2017-12-31. This is legitimate for a fixed 52-week horizon but should not be confused with a full calendar-year forecast. `week_index` caps week 53 at 52; the baseline still matched observed stored forecasts here. Annual calendar reporting must address 53-week years explicitly. Full 2019/2020 monthly outlooks use 53 projected weeks to cover all days, which is the appropriate distinct design.
+
+**Leakage conclusion**: Model selection in `select_dhr` and seasonal calibration uses data restricted to each backtest origin according to the supplied code. The apparent “same-week ERA5” model is explicitly marked oracle and is not used for operational forecasts. I found **no certain direct look-ahead in the main 52-week selected-model backtest**; the serious issues are (a) test-year reuse during iterative model development, (b) LSTM time-feature misalignment, and (c) uncertainty/verification design. Do not call every retrospective climatology or contemporaneous weather analysis “leakage”.
+
+## V. Interpretative overclaims
+
+- **“Weather adds nothing”** is stronger than a non-significant p=.515 and modest test-set accuracy changes. Better: no convincing *additional predictive benefit detected* in tested weekly specifications. In-sample Granger predictability does not establish physical causal ‘driving’.
+- **“Fourier+ARMA beats climatology”** only weakly: MAE 2018–19 average selected 24.56 vs climatology 24.80; block CI includes zero. The 2017 fold slightly favors climatology. The linear trend variant is apparently stronger on 2018–19, but selecting it after reviewing test results would require new evaluation.
+- **“Calibration works”** because 2019 coverage 96% omits the increase in interval width and worsening Winkler score; 2017 coverage is just 69%. No reliability guarantee over future years from three forecast origins.
+- **“Lockdown cut PM2.5 by 43%”** is an unjustified causal statement. This is a comparison to a projected counterfactual (median 85.14 vs observed 48.67). Forecast model was already high by ~8.5% relative to observed January–March pre-lockdown weeks, using available weekly 2020 records. The 10 Sunday weeks cover 23 Mar–31 May, including 23–24 Mar before 25 Mar lockdown. Weather adjustment does not resolve all competing confounders. Write “observed mean was approximately 43% below the model’s no-lockdown median projection over the 10 selected weeks.”
+- **“Most monitoring decline is real”** is not proven by a six-station fixed panel with differing year coverage; raw station file absent and weather covariates do not establish emissions causality.
+- **“LSTM clearly worse”** as a conclusion about a fairly evaluated baseline must wait for its recursive alignment fix and a reproducible rerun. It is not evidence that deep learning generally underperforms.
+- **“Monthly risk bands”** refer to PM2.5 sub-indices rather than full CPCB AQI, an appropriate distinction the revised report largely makes. Daily category probabilities derived from weekly means need a single coherent daily simulation and daily data for checking.
+
+## VI. Priority fixes
+
+1. Fix LSTM time-feature alignment, rerun all LSTM folds and store full-precision reproducibility inputs, seeds, PyTorch/version and outputs.
+2. Fix verifier’s month off-by-one and persistence skipped-week bugs; add true raw-output recomputation checks for all 15 ledger items, including one-week forecasts, station panel and simulated monthly outlook.
+3. Remove/correct report's winter-humidity p cutoff and unsubstantiated D0 validation “39.7→30.6” assertion; amend June 2020 omission.
+4. Show coverage, interval width **and Winkler score** together; avoid calling wider intervals uniformly “calibrated improvement.”
+5. Rebuild coherent daily trajectories whose weekly means match forecast draws; validate monthly risk-band counts from the actual historical daily series.
+6. Change causal lockdown language to explicit model-based counterfactual and clearly state 10 selected weeks begin 23 March.
+7. Temper significance and model-selection claims given only two main 52-step origins and reuse of the 2019 holdout; accurately label integrated DHR errors.
+
+Source: files 00–09 uploaded for this audit. Calculated supporting CSV: `audit_recomputed_metrics.csv`.
+
+### Gemini
+# Gemini verification audit (round 2), condensed transcription
+
+Source: pasted by the user from Gemini's reply to `verification_pack/`. Numeric tables omitted where they only confirm values already in `results/`.
+
+**Claimed run results (not reproducible from the pack: raw CPCB/ERA5/station files were not included, so these cannot have come from the supplied files alone):** verify_numbers.py 63/65 (the two failures were live link checks); make_figures.py exit 0.
+
+**Reproduced from the raw pack (all matched):** backtest MAEs (all models, 3 folds), climatology and seasonal naive, interval coverage and miss counts (2017 69.2% 10 below/6 above; 2018 94.2% 2/1; 2019 90.4% 5/0; calibrated 96.2%), bootstrap loss differences, one-week MAE changes, HAC Granger p-values, weekly nested test (R2 0.1341 to 0.1391, p = 0.5146), 2019 pipeline validation, lockdown arithmetic (48.67 vs 85.14 = -42.8%; weather-adjusted -38.0%), station-decline arithmetic, Ljung-Box with/without burn-in, seasonal MA -0.988 SE 8.26, doy365.
+
+**Mismatches / discrepancies reported:**
+1. verify_numbers.py makes live curl calls; fails offline.
+2. Some macros rounded to integers (MAE 54, LSTM 53, D0 44; lockdown bounds).
+3. Ledger said lockdown "25 Mar - 31 May"; the series uses 10 Sunday-ending weeks 29 Mar - 31 May.
+4. Report Section 5.3 omits that lag 10 is only marginal (p = 0.088).
+
+**Code findings:**
+- linreg and lstm return a constant predictive sd across horizons (LSTM: one-step residual sd, hence 0% coverage in 2018).
+- block_bootstrap_diff concatenates folds, blocks straddle the year boundary.
+- Calibration step rule (|mean z| > 0.5 in both folds) did not re-centre in 2019 (z = -0.66, -0.45; actual 2019 -0.53).
+- RMSE uses the lognormal mean for models with sd but the median for those without.
+
+**Over-claims:** "matches or slightly beats climatology" (CI spans 0); lockdown 43% confounded with model level bias (model already high in 2019); LSTM comparison is a strawman; "drive/explain" language for Granger results.
+
+**Prioritised fixes:** make verifier sandbox-safe; reword abstract; smooth the calibration rule; horizon-dependent sd for linreg/LSTM; sensitivity bounds for the lockdown gap (constant and random-walk level).

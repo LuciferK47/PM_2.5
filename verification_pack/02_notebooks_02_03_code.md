@@ -1,4 +1,4 @@
-# 03 Notebooks 02 and 03: code and printed output
+# 02 Notebooks 02 and 03: code and printed output
 
 ## notebooks/02_eda.ipynb
 

@@ -1,4 +1,4 @@
-# 05 All results tables (results/)
+# 04 All results tables (results/)
 
 ## annual_drift.csv
 ```
@@ -22,38 +22,38 @@ Fourier+ARMA (selected)  31.5  23.4  25.7          24.6        26.9
             Climatology    31  21.8  27.8          24.8        26.9
      Fourier+ARMA const  30.6    22  29.3          25.7        27.3
          Seasonal naive  38.4    29  30.3          29.6        32.6
+           LSTM (small)  36.3  28.3  54.3          41.3        39.7
              SARIMA D=0  44.9  42.8  44.1          43.5        43.9
-           LSTM (small)  36.3  49.2  52.9          51.1        46.1
 ```
 
 ## fc_backtest_metrics.csv
 ```
  fold                   model  n_train    MAE   RMSE  logMAE     bias  MAE_winter  MAE_other  coverage  winkler  width
- 2017          Seasonal naive      104 38.438 61.872  0.2968   -13.56      65.098     25.489       NaN      NaN    NaN
- 2017             Climatology      104 30.999 43.309 0.28271  -1.2015      43.078     25.131       NaN      NaN    NaN
+ 2017          Seasonal naive      104 38.438 65.597  0.2968   -13.56      65.098     25.489   0.88462   261.55 167.09
+ 2017             Climatology      104 30.999 43.409 0.28271  -1.2015      43.078     25.131   0.61538   399.77 76.866
  2017     Climatology + AR(1)      104 30.701 43.396 0.28125  -1.9062      42.167     25.131   0.61538    401.9 76.751
- 2017       Linear regression      104 35.893 50.825 0.31948  -11.367      55.353     26.441   0.73077   313.76 118.15
- 2017            LSTM (small)      104 36.291 50.161 0.32118  -10.286      52.828     28.259   0.11538   1224.5 12.651
+ 2017       Linear regression      104 35.893 51.028 0.31948  -11.367      55.353     26.441      0.75   286.47 127.27
+ 2017            LSTM (small)      104 36.339 50.931 0.32186   2.7608      53.916     27.802   0.42308   575.48 55.528
  2017      Fourier+ARMA const      104 30.592 47.655  0.2773  0.18211      45.602     23.302      0.75    327.5  104.6
  2017     Fourier+ARMA linear      104 35.856 50.717 0.31914  -11.087      55.358     26.383   0.69231   330.84 112.71
  2017 Fourier+ARMA (selected)      104 31.483 44.063 0.28597  -5.7257      48.805      23.07   0.69231   266.41 100.75
  2017              SARIMA D=1      104 53.827 102.13 0.34136  -31.352      101.23     30.802   0.76923   537.52 160.32
  2017              SARIMA D=0      104 44.874  62.59 0.44952   -12.49       47.85     43.428   0.84615   332.58 270.65
- 2018          Seasonal naive      157 28.965 41.961 0.25023  -9.8967      41.972     22.648       NaN      NaN    NaN
- 2018             Climatology      157 21.772 28.356 0.19972    -9.09      33.224      16.21       NaN      NaN    NaN
+ 2018          Seasonal naive      157 28.965 46.452 0.25023  -9.8967      41.972     22.648   0.94231    223.9 175.04
+ 2018             Climatology      157 21.772 29.614 0.19972    -9.09      33.224      16.21   0.92308    142.8 104.61
  2018     Climatology + AR(1)      157 21.667 29.605 0.19932  -9.4044      32.903      16.21   0.92308   142.76 104.61
- 2018       Linear regression      157  19.99  28.81 0.17624 -0.51377      36.009     12.209   0.96154   145.04 122.51
- 2018            LSTM (small)      157 49.231 75.089 0.34473  -32.394      75.802     36.325         0   1757.9 11.262
+ 2018       Linear regression      157  19.99 28.849 0.17624 -0.51377      36.009     12.209   0.96154   147.81 127.88
+ 2018            LSTM (small)      157 28.318  37.99 0.25825  -7.0718      43.681     20.856   0.69231   337.18 77.581
  2018      Fourier+ARMA const      157 22.049  30.44 0.19919  -7.8222      36.286     15.134   0.96154   146.63 126.92
  2018     Fourier+ARMA linear      157 19.733 28.354 0.17299  -1.8157      35.817      11.92   0.96154   146.26 121.18
  2018 Fourier+ARMA (selected)      157 23.426 34.432 0.20086  -8.4162      42.257      14.28   0.94231   142.22 116.16
  2018              SARIMA D=1      157 21.084  31.49 0.18417  -8.6636      32.766     15.409   0.94231   169.08 151.11
  2018              SARIMA D=0      157 42.835 53.791 0.41929  -9.4661      53.492     37.659   0.96154   262.74  260.7
- 2019          Seasonal naive      209 30.306  44.17 0.27952  -6.3698      56.268     17.696       NaN      NaN    NaN
- 2019             Climatology      209 27.818 41.121 0.26091  -12.562      46.588     18.701       NaN      NaN    NaN
+ 2019          Seasonal naive      209 30.306  46.29 0.27952  -6.3698      56.268     17.696   0.92308   179.51 159.62
+ 2019             Climatology      209 27.818 42.136 0.26091  -12.562      46.588     18.701   0.80769   224.74 102.84
  2019     Climatology + AR(1)      209 27.326 41.786 0.25875  -13.083      45.084     18.701   0.80769   225.24 102.93
- 2019       Linear regression      209 24.945 42.603  0.2177    1.068      50.845     12.365   0.92308   228.96 109.89
- 2019            LSTM (small)      209  52.87 80.833 0.40125  -39.458      95.145     32.337   0.13462     1798 18.426
+ 2019       Linear regression      209 24.945 42.606  0.2177    1.068      50.845     12.365   0.92308   227.11 113.25
+ 2019            LSTM (small)      209 54.347 84.461 0.43056  -40.157      96.898      33.68   0.44231   920.58 107.48
  2019      Fourier+ARMA const      209 29.261 44.632 0.26435  -11.842      51.324     18.545   0.88462   242.05 122.86
  2019     Fourier+ARMA linear      209 23.974 41.773 0.21215 -0.39285      48.416     12.101   0.92308    235.4 109.17
  2019 Fourier+ARMA (selected)      209 25.694 39.869 0.23295  -8.4921      46.324     15.674   0.90385   174.88 125.08
@@ -63,9 +63,10 @@ Fourier+ARMA (selected)  31.5  23.4  25.7          24.6        26.9
 
 ## fc_calibration_2019.csv
 ```
-               Unnamed: 0    MAE  coverage  width  winkler   bias
-     Model-based Gaussian 25.694     0.904 125.08   174.88 -8.492
-Calibrated (season scale) 25.694     0.962 178.66   192.72 -8.492
+                                        Unnamed: 0    MAE  coverage  width  winkler   bias
+                              Model-based Gaussian 25.694     0.904 125.08   174.88 -8.492
+                         Calibrated (season scale) 25.694     0.962 178.66   192.72 -8.492
+Season scale + shrunk shift (post-hoc sensitivity) 23.598     0.962 158.88   161.03  4.328
 ```
 
 ## fc_diagnostics.csv
@@ -78,31 +79,41 @@ Fourier+ARMA (selected) (rw, K=5, p=1, q=1)     1      208   0.22653    0.088338
 ## fc_lockdown.csv
 ```
                                 Unnamed: 0  actual_mean  cf_median  gap_median_pct  gap_lo95_pct  gap_hi95_pct
-                      no-lockdown forecast         48.7       85.1           -42.8         -52.2         -31.5
-weather-adjusted forecast (oracle weather)          NaN       78.5             -38         -47.8         -26.2
+                      no-lockdown forecast         48.7         85           -42.8         -52.1         -31.8
+weather-adjusted forecast (oracle weather)          NaN       78.6           -38.1         -47.5         -26.7
+```
+
+## fc_lockdown_sensitivity.csv
+```
+                              counterfactual  pre_lockdown_gap_pct  lockdown_gap_10wk_pct  lo95  hi95  gap_9wk_from_5Apr_pct  lockdown_gap_adjusted_for_pre_gap_pct
+  selected spec (linear, K=5, AR1), headline                 -11.3                  -42.8 -52.1 -31.8                  -41.5                                  -35.5
+                              constant level                 -22.6                  -50.8 -59.6   -40                  -49.8                                  -36.5
+            random-walk level (ARIMA errors)                  -9.9                  -43.1 -54.5 -28.5                  -41.7                                  -36.9
+headline + shrunk mean-bias shift (post-hoc)                  -2.4                    -37 -47.3   -25                  -35.6                                  -35.5
+PLACEBO: same weeks of 2019 vs 2019 forecast                  -8.9                  -14.9 -43.9  28.2                    NaN                                    NaN
 ```
 
 ## fc_loss_diff.csv
 ```
           folds                   model  mean_MAE_diff_vs_climatology  ci_lo  ci_hi           verdict
-folds 2018+2019          Seasonal naive                          4.84   0.19   8.53             worse
-folds 2018+2019     Climatology + AR(1)                          -0.3  -0.75   0.05 indistinguishable
-folds 2018+2019       Linear regression                         -2.33  -6.17   0.77 indistinguishable
-folds 2018+2019            LSTM (small)                         26.26    8.8   42.3             worse
-folds 2018+2019      Fourier+ARMA const                          0.86   -2.1   2.72 indistinguishable
-folds 2018+2019     Fourier+ARMA linear                         -2.94  -6.43  -0.36            better
-folds 2018+2019 Fourier+ARMA (selected)                         -0.23  -3.56   1.81 indistinguishable
-folds 2018+2019              SARIMA D=1                         -0.53  -2.32   1.02 indistinguishable
-folds 2018+2019              SARIMA D=0                         18.67  12.96  23.98             worse
-all three folds          Seasonal naive                          5.71   1.22    9.4             worse
-all three folds     Climatology + AR(1)                          -0.3   -0.6   0.02 indistinguishable
-all three folds       Linear regression                          0.08  -3.71   3.97 indistinguishable
-all three folds            LSTM (small)                         19.27   7.53  30.95             worse
-all three folds      Fourier+ARMA const                          0.44  -1.91   2.12 indistinguishable
-all three folds     Fourier+ARMA linear                         -0.34  -3.96   3.24 indistinguishable
-all three folds Fourier+ARMA (selected)                             0  -2.49   1.97 indistinguishable
-all three folds              SARIMA D=1                          7.26  -0.57  14.21 indistinguishable
-all three folds              SARIMA D=0                         17.07   11.1  22.85             worse
+folds 2018+2019          Seasonal naive                          4.84   0.94   8.96             worse
+folds 2018+2019     Climatology + AR(1)                          -0.3   -0.8   0.02 indistinguishable
+folds 2018+2019       Linear regression                         -2.33  -5.83   1.91 indistinguishable
+folds 2018+2019            LSTM (small)                         16.54   6.62  27.75             worse
+folds 2018+2019      Fourier+ARMA const                          0.86  -2.09   4.32 indistinguishable
+folds 2018+2019     Fourier+ARMA linear                         -2.94  -6.12   0.68 indistinguishable
+folds 2018+2019 Fourier+ARMA (selected)                         -0.23  -2.91   2.77 indistinguishable
+folds 2018+2019              SARIMA D=1                         -0.53  -1.91   0.98 indistinguishable
+folds 2018+2019              SARIMA D=0                         18.67  13.13  23.88             worse
+all three folds          Seasonal naive                          5.71   2.04  10.07             worse
+all three folds     Climatology + AR(1)                          -0.3  -0.68      0 indistinguishable
+all three folds       Linear regression                          0.08  -3.19    3.6 indistinguishable
+all three folds            LSTM (small)                         12.81   6.07  20.63             worse
+all three folds      Fourier+ARMA const                          0.44  -1.84   2.94 indistinguishable
+all three folds     Fourier+ARMA linear                         -0.34  -3.45   3.04 indistinguishable
+all three folds Fourier+ARMA (selected)                             0   -2.2   2.28 indistinguishable
+all three folds              SARIMA D=1                          7.26   0.37  14.97             worse
+all three folds              SARIMA D=0                         17.07  11.68  22.58             worse
 ```
 
 ## fc_oneweek.csv
@@ -127,84 +138,61 @@ Unnamed: 0    coef      p
 ## fc_outlook_2020.csv
 ```
 month  median   lo95   hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  days_Severe  actual_mean_2020  actual_days_covered
-  Jan  189.08 140.98  251.5           1           1        0.999          0              0.131          1.033      3.072          21.209        5.555            157.11                   31
-  Feb  120.77 91.615 163.52           1        0.98        0.516      0.036              1.867          6.313      7.632          12.413        0.739            121.48                   29
-  Mar  84.893 66.636 108.82       0.998       0.321        0.003      0.314              6.371          12.58      7.834           3.894        0.006            57.506                   31
-  Apr  85.919 66.921 110.71       0.997       0.357        0.005      0.141              5.208         12.618       8.13           3.896        0.007             44.94                   30
-  May  83.789 64.619 108.23       0.996       0.291        0.003      0.189              6.736         12.848      7.459           3.753        0.015            55.449                   31
-  Jun   62.54 48.702 82.009       0.622       0.004            0      1.268             13.905         10.726      3.265           0.836            0            46.695                   30
-  Jul  38.973 30.403 49.911           0           0            0      9.212             19.269          2.323      0.178           0.018            0             54.01                    1
-  Aug  35.721 27.954 45.801           0           0            0     10.383             19.098          1.456      0.061           0.002            0               NaN                  NaN
-  Sep   46.32 36.193 59.279        0.02           0            0      6.022             17.694          5.314      0.843           0.129            0               NaN                  NaN
-  Oct  119.52 91.451 157.82           1       0.983        0.488      0.058              3.023          7.403      7.244          12.267        1.006               NaN                  NaN
-  Nov  189.92 141.14 255.66           1           1        0.999      0.002              0.235          1.191      3.174          19.476        5.923               NaN                  NaN
-  Dec  168.89 127.25 225.88           1           1        0.993          0              0.229          2.116       4.95          19.969        3.736               NaN                  NaN
+  Jan  190.41 141.68 254.94           1           1        0.999          0              0.117          0.985      3.013          21.182        5.703            157.11                   31
+  Feb  121.89 90.349 164.84           1       0.976        0.541       0.04              1.832          6.283      7.817          12.297        0.731            121.48                   29
+  Mar  84.449 66.285 108.66       0.994       0.304        0.001      0.261              6.036         12.707      8.084           3.909        0.003            57.506                   31
+  Apr  85.706 66.921 110.66       0.997       0.348        0.005      0.151              5.439          12.56      7.906           3.936        0.008             44.94                   30
+  May  84.108  65.63 108.65       0.995       0.297        0.003      0.159              6.384         12.856      7.787           3.804        0.011            55.449                   31
+  Jun  62.753 47.927 81.704        0.64       0.004            0      1.365             13.898         10.643      3.267           0.826        0.001            46.695                   30
+  Jul  38.892 30.275  50.51           0           0            0      8.796              19.52          2.475      0.195           0.014            0             54.01                    1
+  Aug  35.517  27.55 46.091           0           0            0     11.047              18.51           1.38      0.063           0.001            0               NaN                  NaN
+  Sep  45.561 35.291 58.631       0.018           0            0      5.867             18.061          5.369      0.645           0.058            0               NaN                  NaN
+  Oct  120.12 91.856 155.92           1       0.983        0.503      0.028              2.755          7.582      7.479          12.218        0.938               NaN                  NaN
+  Nov  192.13 143.31 259.61           1           1            1      0.001              0.206          1.127      2.988           19.63        6.048               NaN                  NaN
+  Dec  169.29 126.12 225.66           1           1         0.99          0              0.237          2.157      4.964          19.858        3.784               NaN                  NaN
 ```
 
 ## fc_outlook_validation_2019_days.csv
 ```
 Unnamed: 0 predicted  predicted.1 predicted.2 predicted.3 predicted.4 predicted.5 actual     actual.1 actual.2 actual.3  actual.4 actual.5
        NaN      Good Satisfactory    Moderate        Poor   Very Poor      Severe   Good Satisfactory Moderate     Poor Very Poor   Severe
-       Jan       0.0          0.0         0.6         2.2        19.6         8.5      0            1        1        2        16       11
-       Feb       0.0          1.0         3.8         5.9        15.0         2.2      0            3        6        6        12        1
-       Mar       0.3          4.9         9.3         7.7         8.4         0.3      0            5       13       13         0        0
-       Apr       0.1          4.1         9.0         7.7         8.7         0.4      1            6       12        9         2        0
-       May       0.3          5.0         9.2         7.5         8.6         0.4      0            6       12        8         5        0
-       Jun       1.2          9.9        10.0         5.2         3.6         0.1      1           12       14        3         0        0
-       Jul       7.1         17.0         5.4         1.2         0.4         0.0      4           17       10        0         0        0
-       Aug       7.9         17.1         4.8         0.9         0.2         0.0     11           19        1        0         0        0
-       Sep       4.4         13.6         7.7         2.8         1.5         0.0      8           18        4        0         0        0
-       Oct       0.1          2.2         5.2         5.8        13.9         3.7      0            8        2        8         9        4
-       Nov       0.0          0.1         0.9         2.2        15.6        11.3      0            2        1        6        12        9
-       Dec       0.0          0.2         1.6         3.5        17.7         8.0      0            0        2        3        17        9
+       Jan       0.0          0.0         0.6         2.2        19.5         8.6      0            1        1        2        16       11
+       Feb       0.0          1.1         4.0         6.0        14.9         1.9      0            3        6        6        12        1
+       Mar       0.3          4.5         9.0         7.8         9.0         0.4      0            5       13       13         0        0
+       Apr       0.1          4.2         9.0         7.6         8.6         0.4      1            6       12        9         2        0
+       May       0.2          5.0         9.1         7.6         8.7         0.4      0            6       12        8         5        0
+       Jun       1.3         10.0         9.8         5.2         3.7         0.1      1           12       14        3         0        0
+       Jul       6.8         16.9         5.6         1.3         0.4         0.0      4           17       10        0         0        0
+       Aug       7.9         17.1         4.9         0.9         0.2         0.0     11           19        1        0         0        0
+       Sep       4.2         13.6         7.8         2.9         1.5         0.0      8           18        4        0         0        0
+       Oct       0.1          2.3         5.4         5.9        13.9         3.4      0            8        2        8         9        4
+       Nov       0.0          0.1         0.7         1.9        15.6        11.6      0            2        1        6        12        9
+       Dec       0.0          0.2         1.6         3.5        17.6         8.1      0            0        2        3        17        9
 ```
 
 ## fc_outlook_validation_2019_monthly.csv
 ```
 Unnamed: 0  actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-       Jan        204.3        209.4      148.8      304.2      True
-       Feb        122.3        144.1       97.9      212.1      True
-       Mar         84.2        101.5       66.3      154.8      True
-       Apr         82.3        101.5       63.7      161.4      True
-       May         89.7        100.7       62.3        163      True
-       Jun         63.8         74.6       45.4      122.9      True
-       Jul         46.7           46       27.4         78      True
-       Aug         34.1         42.8       24.8       73.6      True
-       Sep         40.1           57       32.7       98.7      True
-       Oct        123.7        144.7       83.5      255.5      True
-       Nov        205.4        229.7      130.9      401.4      True
-       Dec        205.2        199.6      112.4      355.5      True
+       Jan        204.3        209.8        147      301.4      True
+       Feb        122.3        141.9       95.2        213      True
+       Mar         84.2        101.7       65.5      156.9      True
+       Apr         82.3        101.5       63.8      160.2      True
+       May         89.7        100.2       61.5      163.3      True
+       Jun         63.8         75.4       45.7      122.8      True
+       Jul         46.7         46.2       27.3       77.3      True
+       Aug         34.1         43.2       25.3       73.8      True
+       Sep         40.1         57.3       32.7       99.3      True
+       Oct        123.7        141.9       80.7      250.8      True
+       Nov        205.4        234.6      133.6      403.4      True
+       Dec        205.2        199.2      113.8      346.7      True
 ```
 
-## fc_weekly_2020.csv
+## fc_sarima_d0_constant.csv
 ```
-      date   lo95  median   hi95  weather_adj_median  actual
-2020-01-05 117.43  197.22 326.23              199.29  271.12
-2020-01-12 115.59  192.53 322.58               177.2  139.48
-2020-01-19 112.08  188.49 320.19              167.73  134.75
-2020-01-26 106.09  178.63 301.57              176.13  150.87
-2020-02-02 96.131  162.39 271.34              156.84  115.57
-2020-02-09 83.778   141.1  238.5              142.96  149.55
-2020-02-16 72.098   120.5 202.45              110.41  129.76
-2020-02-23 61.826  103.65 174.75              90.204  106.28
-2020-03-01 58.667  92.037 146.05              78.434  90.536
-2020-03-08 55.011  85.389 134.07              72.546  62.044
-2020-03-15 51.937  82.039 129.49              71.268  60.517
-2020-03-22 52.485  81.863 127.95              75.622  77.453
-2020-03-29 52.078  82.411 129.87              68.353  38.483
-2020-04-05 53.864  83.636 130.34              75.303  36.531
-2020-04-12 53.228  84.018 131.26              83.312  44.019
-2020-04-19 53.039  84.333 133.77              86.219  48.349
-2020-04-26 54.213  84.322 134.28              77.837   48.89
-2020-05-03 53.898  84.065 130.64              62.269  43.191
-2020-05-10 54.315  84.188 131.34              75.335    46.7
-2020-05-17 53.674  83.937 131.55              76.421  62.766
-2020-05-24  52.06  81.986 130.55              94.091  79.433
-2020-05-31 50.673  78.187 123.11              70.176  38.336
-2020-06-07 47.475  73.799 115.14              74.586  46.196
-2020-06-14   42.5  67.022 106.03              75.895  58.957
-2020-06-21 37.817  58.649 93.832              60.644  41.859
-2020-06-28 32.637  51.362 80.133               54.48  41.014
+                  model  2017  2018  2019
+            no constant  76.9    61  92.1
+          with constant  44.9  42.8  44.1
+Climatology (reference)    31  21.8  27.8
 ```
 
 ## fevd_orderings.csv
@@ -621,6 +609,28 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
 ## key_numbers_forecast.json
 ```
 {
+  "sarima_d0_const": {
+    "2017": {
+      "no constant": 76.92,
+      "with constant": 44.87,
+      "Climatology (reference)": 31.0
+    },
+    "2018": {
+      "no constant": 60.98,
+      "with constant": 42.84,
+      "Climatology (reference)": 21.77
+    },
+    "2019": {
+      "no constant": 92.11,
+      "with constant": 44.1,
+      "Climatology (reference)": 27.82
+    }
+  },
+  "nonconverged_rejected_per_origin": {
+    "2017": 6,
+    "2018": 3,
+    "2019": 5
+  },
   "sarima_D1_maS_coef": -0.988,
   "sarima_D1_maS_se": 8.259,
   "calibration_rule_2019": {
@@ -637,6 +647,30 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   },
   "coverage_2019_raw": 0.9038461538461539,
   "coverage_2019_calibrated": 0.9615384615384616,
+  "calibration_2019_all": {
+    "Model-based Gaussian": {
+      "MAE": 25.694,
+      "coverage": 0.904,
+      "width": 125.08,
+      "winkler": 174.878,
+      "bias": -8.492
+    },
+    "Calibrated (season scale)": {
+      "MAE": 25.694,
+      "coverage": 0.962,
+      "width": 178.655,
+      "winkler": 192.721,
+      "bias": -8.492
+    },
+    "Season scale + shrunk shift (post-hoc sensitivity)": {
+      "MAE": 23.598,
+      "coverage": 0.962,
+      "width": 158.878,
+      "winkler": 161.033,
+      "bias": 4.328
+    }
+  },
+  "shrunk_shift_2019": -0.445110367609404,
   "oneweek_mae": {
     "Persistence": 30.69,
     "Climatology": 24.79,
@@ -656,9 +690,9 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
     "annual_days_pred": {
       "Good": 21.0,
       "Satisfactory": 75.0,
-      "Moderate": 67.0,
+      "Moderate": 68.0,
       "Poor": 53.0,
-      "Very Poor": 113.0,
+      "Very Poor": 114.0,
       "Severe": 35.0
     },
     "annual_days_actual": {
@@ -669,15 +703,16 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.88,
-    "poor_or_worse_pred_pct": 55.0,
+    "mean_abs_days_error_per_band_month": 1.9,
+    "poor_or_worse_pred_pct": 55.1,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
     "trend": "linear",
     "K": 5,
     "p": 1,
-    "q": 0
+    "q": 0,
+    "n_rejected_nonconverged": 13
   },
   "outlook_2020_rule": {
     "f": {
@@ -694,16 +729,58 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.140752539336,
-      "gap_median_pct": -42.83617088073022,
-      "gap_lo95_pct": -52.21475468260452,
-      "gap_hi95_pct": -31.53328399642168
+      "cf_median": 85.04899262695417,
+      "gap_median_pct": -42.77449646078571,
+      "gap_lo95_pct": -52.11359900861902,
+      "gap_hi95_pct": -31.819259395224652
     },
     "weather_adjusted": {
-      "cf_median": 78.46680894643731,
-      "gap_median_pct": -37.97413844184731,
-      "gap_lo95_pct": -47.76977454856694,
-      "gap_hi95_pct": -26.19979951798827
+      "cf_median": 78.5752915693168,
+      "gap_median_pct": -38.059772562764856,
+      "gap_lo95_pct": -47.516118559968525,
+      "gap_hi95_pct": -26.675729977641215
+    }
+  },
+  "lockdown_sensitivity": {
+    "selected spec (linear, K=5, AR1), headline": {
+      "pre_lockdown_gap_pct": -11.32,
+      "lockdown_gap_10wk_pct": -42.77,
+      "lo95": -52.11,
+      "hi95": -31.82,
+      "gap_9wk_from_5Apr_pct": -41.49,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+    },
+    "constant level": {
+      "pre_lockdown_gap_pct": -22.6,
+      "lockdown_gap_10wk_pct": -50.84,
+      "lo95": -59.58,
+      "hi95": -40.01,
+      "gap_9wk_from_5Apr_pct": -49.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+    },
+    "random-walk level (ARIMA errors)": {
+      "pre_lockdown_gap_pct": -9.87,
+      "lockdown_gap_10wk_pct": -43.11,
+      "lo95": -54.55,
+      "hi95": -28.55,
+      "gap_9wk_from_5Apr_pct": -41.74,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+    },
+    "headline + shrunk mean-bias shift (post-hoc)": {
+      "pre_lockdown_gap_pct": -2.43,
+      "lockdown_gap_10wk_pct": -37.02,
+      "lo95": -47.3,
+      "hi95": -24.97,
+      "gap_9wk_from_5Apr_pct": -35.61,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+    },
+    "PLACEBO: same weeks of 2019 vs 2019 forecast": {
+      "pre_lockdown_gap_pct": -8.88,
+      "lockdown_gap_10wk_pct": -14.87,
+      "lo95": -43.9,
+      "hi95": 28.17,
+      "gap_9wk_from_5Apr_pct": NaN,
+      "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }
   },
   "backtest": {
@@ -733,28 +810,31 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
       "2019": 44.1
     },
     "lstm_mae": {
-      "2017": 36.29,
-      "2018": 49.23,
-      "2019": 52.87
+      "2017": 36.34,
+      "2018": 28.32,
+      "2019": 54.35
     },
     "specs": {
       "2017": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 6
       },
       "2018": {
         "trend": "const",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 3
       },
       "2019": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 5
       }
     }
   },

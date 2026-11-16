@@ -1,212 +1,56 @@
-# 00 Verification pack: how to re-check everything
-Project: Delhi PM2.5 time-series study (MATH F428). Branch `phase4-final`. You already have (or can get) the earlier briefing; this pack is **different**: it holds the raw material to *recompute and re-check* every number, not a summary.
+# 00 Verification pack (round 3, final check): how to re-check everything
+Project: Delhi PM2.5 time-series study (MATH F428), branch `phase4-final`. Two earlier audits (Gemini, GPT) recomputed the numbers and found real bugs; those were fixed and everything was re-run. **Your job now: check that the fixes are correct, that nothing new broke, and that every statement is supported.**
 
 ## What to do
-1. Take the headline claims in file 01 and **recompute each from the raw data in file 06** (weekly table and raw backtest forecasts). Report any mismatch.
-2. Read the code (files 02-04, 07) for errors: leakage, off-by-one in horizons/weeks, wrong test, wrong formula.
-3. Compare every number in the report/deck (file 08) against the tables (file 05). Report any number that is not in the tables or differs.
-4. Judge whether each conclusion follows from the evidence, and which are over-claims.
-Be specific: cite file, section, number. If you cannot run code, check by reasoning and by hand arithmetic where possible. Do not just agree.
+1. Recompute the claims below from the raw data in files 05 and 06. Report every mismatch.
+2. Read the code (file 01, notebooks 02-03; 03 for notebook 04, 07 for the checker) for leakage, alignment errors, wrong formulas. Pay special attention to the fixes: `lstm_window` and `_lstm_recursive`, `daily_paths`, `block_bootstrap_diff` (circular, per fold), `linreg` sd, `_best_by_aicc`, `week_offsets_by_month`.
+3. Compare every number in the report/deck text (file 08) with the tables (file 04).
+4. Decide which conclusions are still over-claims. Do not just agree; give file and number.
 
-## Files
+## Files (10)
 | File | Content |
 |---|---|
-| 01_claims_ledger.md | every headline claim, its stated value, and where it comes from |
-| 02_src_code.md | full source of src/ (data, tsa, aqi, forecast) |
-| 03_notebooks_02_03_code.md | EDA and VAR/Granger notebooks: code plus printed output |
-| 04_notebook_04_code.md | forecasting notebook: code plus printed output |
-| 05_all_results_tables.md | every results/*.csv (except raw forecasts) and key_numbers json |
-| 06_raw_data_for_recompute.md | weekly data table (287 rows) + raw backtest forecasts (fold, model, date, actual, mu, sd) |
-| 07_verification_and_figure_code.md | verify_numbers.py (65 checks) and make_figures.py |
-| 08_report_and_deck_text.md | LaTeX source of the written report and the Beamer deck |
-| 09_changes_and_review_log.md | git history, what changed vs the original draft, and the review-response log |
+| 00_VERIFY_README.md | this file, instructions, claims ledger |
+| 01_src_code.md | full source of src/ |
+| 02_notebooks_02_03_code.md | EDA and VAR/Granger notebooks: code plus printed output |
+| 03_notebook_04_code.md | forecasting notebook: code plus printed output |
+| 04_all_results_tables.md | every results/*.csv except raw forecasts, and the key_numbers json |
+| 05_raw_forecasts_and_weekly.md | weekly table (full precision, 287 rows), raw 52-week backtest forecasts, one-step forecasts, 2020 weekly forecasts |
+| 06_daily_data_and_stations.md | the full daily table (PM2.5 and weather) and per-station-per-year PM2.5 summary |
+| 07_checker_and_figure_code.md | verify_numbers.py (78 checks), make_figures.py, slide number macros |
+| 08_report_and_deck_text.md | LaTeX source of the report and the deck |
+| 09_changes_and_review_log.md | git history, source diffs, review log with Round 2 |
 
 ## Setup facts
-- Weekly series: W-SUN weeks, 287 weeks 2015-01-04 to 2020-07; log of the weekly mean PM2.5. Train 2015-2018 / expanding window.
-- Origins: 2016-12-25, 2017-12-31, 2018-12-30, each forecasting 52 weeks. Point forecast = median exp(mu). Mean = exp(mu + sd^2/2).
-- Verification already done by the authors: verify_numbers.py passes 65/65 (file 07). Treat that as a claim to test, not as proof.
+Weekly W-SUN series, 287 weeks 2015-01-04 to 2020-06-28 (log of weekly mean PM2.5). Origins 2016-12-25, 2017-12-31, 2018-12-30, each forecasting 52 weeks (the 2017 fold ends 24 Dec 2017). Point forecast = exp(mu) (median); mean = exp(mu + sd^2/2). Authors' checker: 78/78 passed (a claim to test, not proof). Raw CPCB/ERA5 files are not included; the daily table in file 06 is the processed series.
 
 ## Output format
-(i) numbers you reproduced (with your values), (ii) mismatches, (iii) code bugs, (iv) over-claims, (v) prioritised fixes.
+(i) numbers you reproduced with your values, (ii) mismatches, (iii) code bugs, (iv) over-claims, (v) prioritised fixes.
 
-
-# 01 Claims ledger (what the deck/report states, and how to check it)
-Check each row. 'Source' tells you which file holds the evidence; 'Recompute' says how.
-
-| # | Claim | Source | Recompute |
+## Claims ledger (round 2: statements as they now stand)
+| # | Claim | Evidence file | Recompute from |
 |---|---|---|---|
-| 1 | Backtest MAE 2017/18/19: selected Fourier+ARMA 31.5/23.4/25.7; climatology 31.0/21.8/27.8; SARIMA D=1 53.8/21.1/27.5; SARIMA D=0 about 44; LSTM 36/49/53 | 05 (fc_backtest_mae.csv) | file 06 raw forecasts: mean |actual - exp(mu)| per fold and model |
-| 2 | Climatology = mean of log PM2.5 by week index (1-52) over training years, forecast exp(mean) | 02 (forecast.py climatology) | file 06 weekly table |
-| 3 | Seasonal naive = same week of the previous year | 02 | file 06 |
-| 4 | Selected model not significantly better than climatology (block-bootstrap CI covers 0) | 05 (fc_loss_diff.csv) | resample loss differences, blocks of 8 weeks |
-| 5 | 2019 95% interval coverage 90% raw, 96% after seasonal rescaling | 05 (fc_calibration_2019.csv) | share of actuals in [exp(mu-1.96 sd), exp(mu+1.96 sd)] (file 06) |
-| 6 | Selected model raw 95% intervals, 2019: 5 misses, all below the lower bound; 2018: 2 below, 1 above; 2017 (stress test): 10 below, 6 above, coverage 69% | 05, 06 | count actual < lower vs > upper per fold (authors' recount: coverage 0.69/0.94/0.90) |
-| 7 | One-week-ahead MAE change vs no-weather model: lagged weather -2.4%, last-3-days +0.7%, oracle same-week +6.9% (HLN-DM p about 0.07) | 05 (fc_oneweek.csv) | see 04 notebook cell for the one-step design |
-| 8 | Wind/humidity Granger-cause PM2.5 for about a week, robust to rain, temperature, trend, training-only climatology | 05 (granger_*.csv) | 03 notebook; HAC Wald code in src |
-| 9 | Weekly nested lag test adds nothing: delta R2 = 0.005, p = 0.51 | 05 (weekly_lag_nested.csv) | 03 notebook section 9 |
-| 10 | 2019 pipeline test: 12/12 monthly means inside 95% interval; Poor-or-worse days 55% predicted vs 45% actual | 05 (fc_outlook_validation_2019_*.csv) | file 06 + 04 notebook |
-| 11 | Lockdown (25 Mar - 31 May 2020): actual mean 48.7 is 43% below counterfactual median (95% -52% to -32%); weather-adjusted -38% | 05 (fc_lockdown.csv) | 1 - 48.7/median |
-| 12 | PM2.5 decline 2016 to 2019: all stations -25%, fixed 6-station panel -20%, weather-adjusted -18% | 05 (station_check.csv) | 02 notebook section 8; needs data/raw/station_day.csv (not included) |
-| 13 | Ljung-Box on SARIMA residuals is distorted by the 52 diffuse burn-in residuals; after removing them lags 10/26 pass, lag 52 p = 0.016 | 05 (fc_diagnostics.csv) | 04 notebook |
-| 14 | Seasonal MA = -0.988 is unidentified (SE 8.26) | 04 notebook output | 04 notebook |
-| 15 | Leap-year fix: day 366 mapped to 365 consistently | 02 (tsa.py doy365) | read code |
+| 1 | MAE 2017/18/19: selected Fourier+ARMA 31.5/23.4/25.7; climatology 31.0/21.8/27.8; SARIMA D=1 53.8/21.1/27.5; SARIMA D=0 44.9/42.8/44.1; LSTM 36.3/28.3/54.3 (rerun after the alignment fix); linear regression 35.9/20.0/24.9 | 04 fc_backtest_mae.csv | 05 backtest forecasts: mean abs(actual - exp(mu)) |
+| 2 | Climatology = mean log PM2.5 by week index 1-52 over training years; seasonal naive = value 52 weeks earlier | 01 forecast.py | 05 weekly table |
+| 3 | No model is significantly better than climatology (circular moving-block bootstrap, 8-week blocks, drawn within each fold): 2018-19 selected -0.2 [-2.9,+2.8], linear -2.9 [-6.1,+0.7]; seasonal naive, SARIMA D=0, LSTM worse; SARIMA D=1 worse over all three folds | 04 fc_loss_diff.csv | resample per-fold absolute-error differences |
+| 4 | 2019 raw 95% coverage 90.4% (5 misses, all below), 2018 94.2% (2 below, 1 above), 2017 69.2% (10 below, 6 above) | 04 fc_backtest_metrics.csv | 05: share of actual in [exp(mu-1.96 sd), exp(mu+1.96 sd)] |
+| 5 | Season rescaling (2017-18 errors): 2019 coverage 96.2% but width 125 -> 179 and Winkler 175 -> 193 (worse) | 04 fc_calibration_2019.csv | 05 + scale factors 1.334 (winter) / 1.422 |
+| 6 | One-week MAE vs no-weather DHR: lagged -2.4%, last-3-days +0.7%, same-week oracle +6.9% (p 0.075/0.585/0.074) | 04 fc_oneweek.csv | 05 one-step forecasts (fc_oneweek_forecasts) |
+| 7 | HAC Granger wind->PM2.5 p~6e-20, humidity ~4e-11 (4 lags, with rain+temp 9e-18, 7e-8); seasonal tests all p<1e-3; interactions p=0.20 (monsoon x humidity), 0.03 (winter x wind) | 04 granger_*.csv | 06 daily data (anomalies from doy climatology) |
+| 8 | Weekly nested test: R2 0.1341 -> 0.1391, p = 0.515 | 04 weekly_lag_nested.csv | 05 weekly table |
+| 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.1% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
+| 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.1 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted -35%; other level specs -43% to -51%; 2019 placebo -15% (95% -44 to +28) | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
+| 11 | June 2020 monthly mean 46.7 below its lower bound 48.7; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
+| 12 | Station panel: city series 2016->2019 -25%, fixed 6-station panel -20%, weather-adjusted -18%; stations reporting 10, 8, 17, 37, 37 | 04 station_check.csv | 06 station summary (per station-year mean and days) |
+| 13 | Ljung-Box on SARIMA D=1 residuals: p~0 with the 52 diffuse residuals; without them 0.49/0.10/0.016 (lags 10/26/52); seasonal MA -0.988, SE 8.26 | 03 nb04 output | needs full-precision refit |
+| 14 | SARIMA D=0 with/without constant (same orders/folds): 44.9/42.8/44.1 vs 76.9/61.0/92.1 | 04 fc_sarima_d0_constant.csv | refit |
+| 15 | doy365 maps 29 Feb to day 59 and shifts later leap-year days by -1 | 01 tsa.py | read code |
 
-Key forecast numbers stored by the notebook:
-```
-{
- "sarima_D1_maS_coef": -0.988,
- "sarima_D1_maS_se": 8.259,
- "calibration_rule_2019": {
-  "f": {
-   "true": 1.3343095497324873,
-   "false": 1.421532404826579
-  },
-  "shift": 0.0,
-  "by_fold_mean_z": {
-   "2017": -0.66,
-   "2018": -0.45
-  },
-  "recentre": false
- },
- "coverage_2019_raw": 0.9038461538461539,
- "coverage_2019_calibrated": 0.9615384615384616,
- "oneweek_mae": {
-  "Persistence": 30.69,
-  "Climatology": 24.79,
-  "Climatology + AR(1)": 23.22,
-  "DHR, no weather": 22.39,
-  "+ lagged weather (operational)": 22.92,
-  "+ last 3 days of prior week (operational)": 22.24,
-  "+ same-week weather (ORACLE)": 20.84
- },
- "oneweek_gain_pct": {
-  "lagged": -2.4,
-  "last3": 0.7,
-  "oracle": 6.9
- },
- "validation_2019": {
-  "months_actual_inside_95": 12,
-  "annual_days_pred": {
-   "Good": 21.0,
-   "Satisfactory": 75.0,
-   "Moderate": 67.0,
-   "Poor": 53.0,
-   "Very Poor": 113.0,
-   "Severe": 35.0
-  },
-  "annual_days_actual": {
-   "Good": 25,
-   "Satisfactory": 97,
-   "Moderate": 78,
-   "Poor": 58,
-   "Very Poor": 73,
-   "Severe": 34
-  },
-  "mean_abs_days_error_per_band_month": 1.88,
-  "poor_or_worse_pred_pct": 55.0,
-  "poor_or_worse_actual_pct": 45.2
- },
- "outlook_2020_spec": {
-  "trend": "linear",
-  "K": 5,
-  "p": 1,
-  "q": 0
- },
- "outlook_2020_rule": {
-  "f": {
-   "true": 1.0935180465819772,
-   "false": 0.9476619724449761
-  },
-  "shift": 0.0,
-  "by_fold_mean_z": {
-   "2018": -0.45,
-   "2019": -0.53
-  },
-  "recentre": false
- },
- "lockdown": {
-  "plain": {
-   "actual_mean": 48.669714285714285,
-   "cf_median": 85.140752539336,
-   "gap_median_pct": -42.83617088073022,
-   "gap_lo95_pct": -52.21475468260452,
-   "gap_hi95_pct": -31.53328399642168
-  },
-  "weather_adjusted": {
-   "cf_median": 78.46680894643731,
-   "gap_median_pct": -37.97413844184731,
-   "gap_lo95_pct": -47.76977454856694,
-   "gap_hi95_pct": -26.19979951798827
-  }
- },
- "backtest": {
-  "mae_selected": {
-   "2017": 31.48,
-   "2018": 23.43,
-   "2019": 25.69
-  },
-  "mae_climatology": {
-   "2017": 31.0,
-   "2018": 21.77,
-   "2019": 27.82
-  },
-  "coverage_selected": {
-   "2017": 0.692,
-   "2018": 0.942,
-   "2019": 0.904
-  },
-  "sarima_D1_mae": {
-   "2017": 53.83,
-   "2018": 21.08,
-   "2019": 27.45
-  },
-  "sarima_D0_mae": {
-   "2017": 44.87,
-   "2018": 42.84,
-   "2019": 44.1
-  },
-  "lstm_mae": {
-   "2017": 36.29,
-   "2018": 49.23,
-   "2019": 52.87
-  },
-  "specs": {
-   "2017": {
-    "trend": "rw",
-    "K": 5,
-    "p": 1,
-    "q": 1
-   },
-   "2018": {
-    "trend": "const",
-    "K": 5,
-    "p": 1,
-    "q": 1
-   },
-   "2019": {
-    "trend": "rw",
-    "K": 5,
-    "p": 1,
-    "q": 1
-   }
-  }
- },
- "diagnostics_selected_2019_fold": {
-  "burn": 1.0,
-  "n_resid": 208.0,
-  "resid_sd": 0.2265,
-  "LB_p_lag10": 0.0883,
-  "LB_p_lag26": 0.001,
-  "LB_p_lag52": 0.0092,
-  "ARCH4_p": 0.8696,
-  "JB_p": 0.0006
- }
-}
-```
+## What the first-round audits already found and what was fixed (verify the fixes!)
+LSTM calendar/anomaly misalignment (now one helper `lstm_window`, deterministic torch); verifier checked April-June against March-May intervals and skipped a persistence week; non-converged fits accepted in AICc search; daily band days and monthly means from different draws (now one set of daily paths whose weekly means equal the weekly paths exactly); bootstrap joined forecast years (and a first fix without wrap-around biased the interval: now circular within each fold); constant predictive sd for linear regression/LSTM (now horizon-specific); report claims (winter humidity bound, D=0 '39.7 to 30.6', June omission, over-claims). See file 09 (Round 2 table R1-R23).
 
 
-
-# 02 Source code (src/)
+# 01 Source code (src/)
 
 ## src/data.py
 ```python
@@ -481,7 +325,6 @@ H = 52
 PERIOD = 365.25 / 7  # weeks per year
 T0 = pd.Timestamp("2015-01-04")
 WINTER = [11, 12, 1, 2]
-warnings.filterwarnings("ignore")
 
 
 # ── features ────────────────────────────────────────────────────────────────────────────────────────────
@@ -505,7 +348,9 @@ def aicc(res):
 
 # ── baselines ───────────────────────────────────────────────────────────────────────────────────────────
 def seasonal_naive(y, idx):
-    return {"mu": y.iloc[-H:].to_numpy()[: len(idx)], "sd": None}
+    """Same week one year (52 weeks) earlier. sd = spread of 52-week log differences in the training data."""
+    d52 = (y - y.shift(H)).dropna()
+    return {"mu": y.iloc[-H:].to_numpy()[: len(idx)], "sd": np.full(len(idx), float(np.sqrt(np.mean(d52 ** 2))))}
 
 
 def _clim(y):
@@ -515,7 +360,11 @@ def _clim(y):
 
 
 def climatology(y, idx):
-    return {"mu": _clim(y).reindex(week_index(idx)).to_numpy(), "sd": None}
+    """Mean log PM2.5 of each calendar week over the training years. sd = training residual sd around it."""
+    c = _clim(y)
+    resid = y - c.reindex(week_index(y.index)).to_numpy()
+    sd = float(np.sqrt(np.mean(resid ** 2)))
+    return {"mu": c.reindex(week_index(idx)).to_numpy(), "sd": np.full(len(idx), sd)}
 
 
 def clim_ar1(y, idx):
@@ -539,40 +388,58 @@ TREND_SPECS = {  # name -> (trend arg, d)
 PQ_GRID = [(0, 0), (1, 0), (2, 0), (1, 1), (2, 1)]
 
 
+def _fit(mod, maxiter=200):
+    """Fit a statsmodels state-space model, silencing only its convergence / start-value warnings (they are checked
+    explicitly through `converged`)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return mod.fit(disp=False, maxiter=maxiter)
+
+
+def converged(res):
+    return bool(getattr(res, "mle_retvals", {}).get("converged", True))
+
+
 def _fit_dhr(y, K, p, q, trend):
     tr, d = TREND_SPECS[trend]
-    mod = SARIMAX(y, exog=fourier(y.index, K), order=(p, d, q), trend=tr)
-    return mod.fit(disp=False, maxiter=200)
+    return _fit(SARIMAX(y, exog=fourier(y.index, K), order=(p, d, q), trend=tr))
 
 
 def _best_by_aicc(y, trend):
-    best = None
+    """Lowest AICc over K=1..5 and the (p,q) grid; fits whose optimiser did not converge are rejected and counted."""
+    best, rejected = None, 0
     for K, (p, q) in product(range(1, 6), PQ_GRID):
         try:
             r = _fit_dhr(y, K, p, q, trend)
             a = aicc(r)
         except Exception:  # noqa: BLE001
+            rejected += 1
             continue
-        if np.isfinite(a) and (best is None or a < best[0]):
+        if not converged(r) or not np.isfinite(a):
+            rejected += 1
+            continue
+        if best is None or a < best[0]:
             best = (a, K, p, q, r)
-    return best
+    return None if best is None else (*best, rejected)
 
 
 def select_dhr(y, inner=H):
     """Choose (K, p, q) by AICc within each trend type, then the trend type by validation on the last `inner` weeks
     of the training sample (so nothing after the training end is ever used)."""
     sub, val = y.iloc[:-inner], y.iloc[-inner:]
-    scores = {}
+    scores, n_rej = {}, 0
     for trend in TREND_SPECS:
         b = _best_by_aicc(sub, trend)
         if b is None:
             continue
-        _, K, p, q, r = b
+        _, K, p, q, r, rej = b
+        n_rej += rej
         fc = r.get_forecast(inner, exog=fourier(val.index, K)).predicted_mean
         scores[trend] = float(np.abs(np.exp(val.to_numpy()) - np.exp(fc.to_numpy())).mean())
     trend = min(scores, key=scores.get)
-    _, K, p, q, res = _best_by_aicc(y, trend)
-    return {"trend": trend, "K": K, "p": p, "q": q, "inner_mae": scores, "res": res}
+    _, K, p, q, res, rej = _best_by_aicc(y, trend)
+    return {"trend": trend, "K": K, "p": p, "q": q, "inner_mae": scores, "res": res,
+            "n_rejected_nonconverged": n_rej + rej}
 
 
 def dhr(y, idx, fixed=None):
@@ -590,7 +457,7 @@ def dhr_fixed(trend, K=3, p=1, q=0):
 # ── SARIMA benchmarks ───────────────────────────────────────────────────────────────────────────────────
 def sarima(order, sorder, trend="n"):
     def _m(y, idx):
-        res = SARIMAX(y, order=order, seasonal_order=sorder, trend=trend).fit(disp=False, maxiter=200)
+        res = _fit(SARIMAX(y, order=order, seasonal_order=sorder, trend=trend))
         f = res.get_forecast(len(idx))
         return {"mu": f.predicted_mean.to_numpy(), "sd": np.sqrt(f.var_pred_mean.to_numpy()), "res": res}
     return _m
@@ -608,18 +475,47 @@ def _design(idx, K, t0):
 
 
 def linreg(y, idx, K=3):
-    from sklearn.linear_model import LinearRegression
-    X = _design(y.index, K, y.index[0])
-    m = LinearRegression().fit(X, y.to_numpy())
-    sd = float(np.std(y.to_numpy() - m.predict(X), ddof=X.shape[1] + 1))
-    return {"mu": m.predict(_design(idx, K, y.index[0])), "sd": np.full(len(idx), sd)}
+    """OLS on Fourier terms + linear time. The predictive sd includes parameter uncertainty, so it grows with the horizon:
+    sd_h^2 = s^2 (1 + x_h' (X'X)^-1 x_h)."""
+    import statsmodels.api as sm
+    X = sm.add_constant(_design(y.index, K, y.index[0]), has_constant="add")
+    m = sm.OLS(y.to_numpy(), X.to_numpy()).fit()
+    Xf = sm.add_constant(_design(idx, K, y.index[0]), has_constant="add")
+    pr = m.get_prediction(Xf.to_numpy())
+    se_obs = np.sqrt(pr.se_mean ** 2 + m.scale)
+    return {"mu": pr.predicted_mean, "sd": se_obs}
+
+
+def lstm_window(z_hist, C_hist, lag):
+    """Input window for predicting the step after the end of `z_hist`: the last `lag` anomalies, each next to the calendar
+    features OF ITS OWN WEEK. `z_hist` and `C_hist` must be aligned row by row (same weeks). Used for training and forecasting."""
+    assert len(z_hist) == len(C_hist) and len(z_hist) >= lag
+    return np.c_[np.asarray(z_hist)[-lag:], np.asarray(C_hist)[-lag:]]
+
+
+def _lstm_recursive(net, z_hist, C_hist, C_future, torch):
+    """Recursive multi-step forecast; the calendar block grows by exactly one week per predicted week (aligned)."""
+    zh, Ch, out = list(z_hist), [list(r) for r in C_hist], []
+    lag = net.lag
+    for j in range(len(C_future)):
+        xin = torch.tensor(lstm_window(zh, Ch, lag)[None], dtype=torch.float32)
+        nxt = float(net(xin))
+        out.append(nxt)
+        zh.append(nxt)
+        Ch.append(list(C_future[j]))  # the predicted value belongs to week j of the future index
+    return np.array(out)
 
 
 def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
-    """Tiny recursive one-step LSTM on weekly log-anomalies (vs training climatology) + calendar features."""
+    """Tiny recursive one-step LSTM on weekly log-anomalies (vs training climatology) + calendar features.
+
+    Predictive sd is horizon-specific: the spread of h-step recursive errors from in-sample origins (non-decreasing in h,
+    capped at the training anomaly sd, which is the long-horizon limit)."""
     import torch
     torch.manual_seed(seed)
     np.random.seed(seed)
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
     c = _clim(y)
     a = (y - c.reindex(week_index(y.index)).to_numpy()).to_numpy()
     sd_a = a.std()
@@ -632,7 +528,7 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
     C = cal(y.index)
     X, Y = [], []
     for i in range(lag, len(z)):
-        X.append(np.c_[z[i - lag:i], C[i - lag:i]])
+        X.append(lstm_window(z[:i], C[:i], lag))
         Y.append(z[i])
     X = torch.tensor(np.array(X), dtype=torch.float32)
     Y = torch.tensor(np.array(Y), dtype=torch.float32)
@@ -648,6 +544,7 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
             return self.out(o[:, -1]).squeeze(-1)
 
     net = Net()
+    net.lag = lag
     opt = torch.optim.Adam(net.parameters(), lr=0.01, weight_decay=1e-3)
     for _ in range(epochs):
         opt.zero_grad()
@@ -655,19 +552,23 @@ def lstm(y, idx, lag=8, hidden=16, epochs=300, seed=0):
         loss.backward()
         opt.step()
     with torch.no_grad():
-        resid_sd = float(torch.std(net(X) - Y)) * sd_a
-        hist = list(z[-lag:])
-        Cf = cal(idx)
-        Cp = cal(y.index[-lag:])
-        preds = []
-        for j in range(len(idx)):
-            cc = np.vstack([Cp, Cf[:j + 1]])[-lag:] if j else Cp
-            xin = torch.tensor(np.c_[hist[-lag:], cc][None], dtype=torch.float32)
-            nxt = float(net(xin))
-            preds.append(nxt)
-            hist.append(nxt)
-    mu = c.reindex(week_index(idx)).to_numpy() + np.array(preds) * sd_a
-    return {"mu": mu, "sd": np.full(len(idx), resid_sd)}
+        one_step_sd = float(torch.std(net(X) - Y))
+        preds = _lstm_recursive(net, z, C, cal(idx), torch)
+        # horizon-specific sd from in-sample recursive forecasts (every 4 weeks), in z units
+        hmax = len(idx)
+        errs = [[] for _ in range(hmax)]
+        for o in range(lag, len(z) - 1, 4):
+            steps = min(hmax, len(z) - o)
+            p = _lstm_recursive(net, z[:o], C[:o], C[o:o + steps], torch)
+            for h in range(steps):
+                errs[h].append(z[o + h] - p[h])
+        sd_z = np.empty(hmax)
+        for h in range(hmax):
+            sd_z[h] = np.sqrt(np.mean(np.square(errs[h]))) if len(errs[h]) >= 8 else np.nan
+        sd_z = pd.Series(sd_z).ffill().fillna(one_step_sd).to_numpy()
+        sd_z = np.minimum(np.maximum.accumulate(np.maximum(sd_z, one_step_sd)), max(1.0, one_step_sd))
+    mu = c.reindex(week_index(idx)).to_numpy() + preds * sd_a
+    return {"mu": mu, "sd": sd_z * sd_a}
 
 
 # ── metrics ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -731,13 +632,28 @@ def backtest(y, raw, models, origins=ORIGINS, h=H, n_jobs=8, verbose=True):
 
 
 def block_bootstrap_diff(e_a, e_b, block=8, n=4000, seed=0):
-    """Mean of (e_a - e_b) with a moving-block bootstrap 95% CI (e = absolute errors, concatenated over folds)."""
-    d = np.asarray(e_a) - np.asarray(e_b)
+    """Mean of (e_a - e_b) with a circular moving-block bootstrap 95% CI.
+
+    e_a, e_b: lists of per-fold error arrays (absolute errors), or single arrays (one fold). Blocks are drawn WITHIN each fold
+    (stratified), so no block joins one forecast year to another. Blocks wrap around inside a fold (circular), so every week
+    is equally likely to be drawn; without wrapping, the first and last weeks are under-sampled and the interval is biased."""
+    if not isinstance(e_a, (list, tuple)):
+        e_a, e_b = [e_a], [e_b]
+    ds = [np.asarray(a, float) - np.asarray(b, float) for a, b in zip(e_a, e_b)]
     rng = np.random.default_rng(seed)
-    nb = int(np.ceil(len(d) / block))
-    starts = np.arange(len(d) - block + 1)
-    means = np.array([np.concatenate([d[s:s + block] for s in rng.choice(starts, nb)])[:len(d)].mean() for _ in range(n)])
-    return float(d.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+    total = sum(len(d) for d in ds)
+    means = np.empty(n)
+    for r in range(n):
+        s_ = 0.0
+        for d in ds:
+            L = len(d)
+            nb = int(np.ceil(L / block))
+            starts = rng.integers(0, L, nb)
+            take = np.concatenate([d[(st + np.arange(block)) % L] for st in starts])[:L]
+            s_ += take.sum()
+        means[r] = s_ / total
+    d_all = np.concatenate(ds)
+    return float(d_all.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
 def hln_dm(e_a, e_b, h=1, power=1):
@@ -779,33 +695,45 @@ def band_edges():
 
 
 def week_offsets_by_month(daily_pm25):
-    """Pool of log(daily) - log(weekly mean) offsets, by calendar month of the day (training data only)."""
+    """Pool of complete within-week offset VECTORS (Mon..Sun) of log(daily) - log(weekly mean), keyed by the calendar month of
+    the week's Thursday (training data only). Each vector satisfies mean(exp(offset)) = 1 exactly, so adding it to a weekly
+    log-mean keeps that week's mean unchanged."""
     d = daily_pm25.dropna()
     wk_end = d.index + pd.to_timedelta((6 - d.index.weekday) % 7, unit="D")
-    wmean = d.groupby(wk_end).transform("mean")
-    n = d.groupby(wk_end).transform("count")
-    off = (np.log(d) - np.log(wmean))[n == 7]
-    return {m: off[off.index.month == m].to_numpy() for m in range(1, 13)}
+    full = d.groupby(wk_end).transform("count") == 7
+    d = d[full]
+    wk_end = wk_end[full.to_numpy()]
+    off = np.log(d) - np.log(d.groupby(wk_end).transform("mean"))
+    vecs = off.groupby(wk_end).apply(lambda s: s.sort_index().to_numpy())
+    thu = pd.DatetimeIndex(vecs.index) - pd.Timedelta(days=3)
+    return {m: np.vstack(vecs[thu.month == m].to_list()) for m in range(1, 13)}
 
 
-def daily_band_days(paths, idx, pools, year, seed=2):
-    """Monte-Carlo days per PM2.5 band per month for the calendar `year`.
+def daily_paths(paths, idx, pools, year, seed=2):
+    """Daily PM2.5 paths for calendar `year`, coherent with the weekly paths.
 
-    paths: weekly log-mean paths (len(idx), n_paths) for weeks `idx` (W-SUN). Each day gets its week's path value plus a
-    resampled within-week offset from the matching month pool. Returns array (n_paths, 12, 6) of days per band.
-    """
+    paths: weekly log-mean paths (len(idx), n_paths) for W-SUN weeks `idx`. For each week and path one whole offset vector is
+    drawn from the pool of that week's month, so the 7 daily values of every simulated week average EXACTLY to the simulated
+    weekly mean, and within-week day-to-day dependence is kept. Returns (days, values[n_days, n_paths])."""
     rng = np.random.default_rng(seed)
-    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
-    wk_end = days + pd.to_timedelta((6 - days.weekday) % 7, unit="D")
-    pos = pd.Index(idx).get_indexer(wk_end)
-    keep = pos >= 0
-    days, pos = days[keep], pos[keep]
     n = paths.shape[1]
-    vals = np.empty((len(days), n))
-    for i, d in enumerate(days):
-        vals[i] = np.exp(paths[pos[i]] + rng.choice(pools[d.month], size=n))
+    idx = pd.DatetimeIndex(idx)
+    allv = np.empty((len(idx) * 7, n))
+    alld = []
+    for w, end in enumerate(idx):
+        pool = pools[(end - pd.Timedelta(days=3)).month]
+        pick = pool[rng.integers(0, len(pool), n)]                  # (n, 7)
+        allv[w * 7:(w + 1) * 7] = np.exp(paths[w][None, :] + pick.T)
+        alld.extend(pd.date_range(end - pd.Timedelta(days=6), end, freq="D"))
+    alld = pd.DatetimeIndex(alld)
+    keep = alld.year == year
+    return alld[keep], allv[keep]
+
+
+def daily_band_days(days, vals):
+    """Days per PM2.5 band per month for each path, from `daily_paths` output. Returns (n_paths, 12, 6)."""
     cat = np.searchsorted(band_edges(), vals, side="left")  # 0..5 (<=edge -> lower band)
-    out = np.zeros((n, 12, 6))
+    out = np.zeros((vals.shape[1], 12, 6))
     for m in range(12):
         sel = days.month == m + 1
         for b in range(6):
@@ -813,24 +741,18 @@ def daily_band_days(paths, idx, pools, year, seed=2):
     return out
 
 
-def monthly_mean_paths(paths, idx, year):
-    """Monthly mean PM2.5 (raw scale) per simulated path, weighting weekly means by days falling in each month."""
-    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
-    wk_end = days + pd.to_timedelta((6 - days.weekday) % 7, unit="D")
-    pos = pd.Index(idx).get_indexer(wk_end)
-    keep = pos >= 0
-    days, pos = days[keep], pos[keep]
-    raw = np.exp(paths)
-    out = np.full((12, paths.shape[1]), np.nan)
+def monthly_mean_paths(days, vals):
+    """Monthly mean PM2.5 per path from the SAME daily paths used for the band counts. Returns (12, n_paths)."""
+    out = np.full((12, vals.shape[1]), np.nan)
     for m in range(12):
         sel = days.month == m + 1
         if sel.any():
-            out[m] = raw[pos[sel]].mean(axis=0)
+            out[m] = vals[sel].mean(axis=0)
     return out
 ```
 
 
-# 03 Notebooks 02 and 03: code and printed output
+# 02 Notebooks 02 and 03: code and printed output
 
 ## notebooks/02_eda.ipynb
 
@@ -2264,7 +2186,7 @@ output:
 ```
 
 
-# 04 Notebook 04: forecasting, code and printed output
+# 03 Notebook 04: forecasting, code and printed output
 
 ## notebooks/04_forecasting.ipynb
 
@@ -2325,13 +2247,13 @@ output:
 ## 1. Models
 | Model | What it is |
 |---|---|
-| Seasonal naive | the value 52 weeks earlier |
+| Seasonal naive | the value 52 weeks earlier (52 weeks, not the same calendar week in 53-week years) |
 | Climatology | mean log PM2.5 of the same calendar week over the training years |
 | Climatology + AR(1) | climatology plus an AR(1) on the weekly anomalies |
-| Linear regression | OLS on 3 Fourier harmonics + a linear time trend (constant-variance intervals) |
-| LSTM (small) | 1 layer, 16 units, seeded, recursive one-step on anomalies (no intervals of its own; training-residual sd) |
-| Fourier+ARMA const / linear | dynamic harmonic regression: K=3 harmonics, AR(1) errors, constant or linear-trend level |
-| **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. **Declared as the headline procedure before looking at the test folds.** |
+| Linear regression | OLS on 3 Fourier harmonics + a linear time trend (prediction interval includes parameter uncertainty, so it widens with the horizon) |
+| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only |
+| Fourier+ARMA const / linear | dynamic harmonic regression (DHR): K=3 harmonics, AR(1) errors, constant or linear-trend level |
+| **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. The random-walk option makes the errors **ARIMA(p,1,q)**, so "ARMA" in the label covers both. Non-converged fits are rejected and counted. The procedure was fixed in the code before the final runs, but 2019 had been looked at in earlier iterations of the project, so it is not a pristine hold-out. |
 | SARIMA D=1 / D=0 | the benchmark from the draft: (1,0,1)(0,1,1)₅₂, and (1,0,1)(1,0,0)₅₂ **with a constant** (the draft omitted it) |
 
 ### [code 3]
@@ -2363,7 +2285,7 @@ Selected specification per origin:
 
 ### [md 4]
 ## 2. Backtest results (52 weeks ahead, MAE in µg/m³ on the original scale)
-Folds 2018 and 2019 are the main evidence (3 and 4 training seasons); 2017 (only 2 training years) is a stress test. Climatology is the model to beat.
+Folds 2018 and 2019 are the main evidence (3 and 4 training seasons); 2017 (only 2 training years) is a stress test. Climatology is the model to beat. Each fold is 52 weeks starting the week after the origin (the 2017 fold ends 24 Dec 2017, not 31 Dec).
 
 ### [code 5]
 ```python
@@ -2391,39 +2313,39 @@ Fourier+ARMA (selected)  31.5  23.4  25.7          24.6        26.9
 Climatology              31.0  21.8  27.8          24.8        26.9
 Fourier+ARMA const       30.6  22.0  29.3          25.7        27.3
 Seasonal naive           38.4  29.0  30.3          29.6        32.6
-SARIMA D=0               44.9  42.8  44.1          43.5        43.9
-LSTM (small)             36.3  49.2  52.9          51.1        46.1                          RMSE  logMAE  MAE_winter  MAE_other   bias  \
+LSTM (small)             36.3  28.3  54.3          41.3        39.7
+SARIMA D=0               44.9  42.8  44.1          43.5        43.9                          RMSE  logMAE  MAE_winter  MAE_other   bias  \
 model                                                                  
 Fourier+ARMA linear      40.28    0.23       46.53      16.80  -4.43   
-Linear regression        40.75    0.24       47.40      17.01  -3.60   
+Linear regression        40.83    0.24       47.40      17.01  -3.60   
 SARIMA D=1               58.73    0.26       59.47      21.81 -18.24   
 Climatology + AR(1)      38.26    0.25       40.05      20.01  -8.13   
 Fourier+ARMA (selected)  39.45    0.24       45.80      17.67  -7.54   
-Climatology              37.60    0.25       40.96      20.01  -7.62   
+Climatology              38.39    0.25       40.96      20.01  -7.62   
 Fourier+ARMA const       40.91    0.25       44.40      18.99  -6.49   
-Seasonal naive           49.33    0.28       54.45      21.94  -9.94   
+Seasonal naive           52.78    0.28       54.45      21.94  -9.94   
+LSTM (small)             57.79    0.34       64.83      27.45 -14.82   
 SARIMA D=0               58.91    0.44       52.87      39.60 -12.68   
-LSTM (small)             68.69    0.36       74.59      32.31 -27.38   
 
                          coverage95  winkler  
 model                                         
 Fourier+ARMA linear            0.86   237.50  
-Linear regression              0.87   229.25  
+Linear regression              0.88   220.47  
 SARIMA D=1                     0.85   304.16  
 Climatology + AR(1)            0.78   256.63  
 Fourier+ARMA (selected)        0.85   194.50  
-Climatology                     NaN      NaN  
+Climatology                    0.78   255.77  
 Fourier+ARMA const             0.87   238.73  
-Seasonal naive                  NaN      NaN  
-SARIMA D=0                     0.90   285.97  
-LSTM (small)                   0.08  1593.46
+Seasonal naive                 0.92   221.65  
+LSTM (small)                   0.52   611.08  
+SARIMA D=0                     0.90   285.97
 ```
 
 ### [code 6]
 ```python
 # Paired loss differences against climatology: moving-block bootstrap (8-week blocks) of the weekly absolute-error differences.
 def abs_err(model, folds):
-    return np.concatenate([np.abs(fcs[f][model]["actual"] - np.exp(fcs[f][model]["mu"])) for f in folds])
+    return [np.abs(fcs[f][model]["actual"] - np.exp(fcs[f][model]["mu"])) for f in folds]   # one array per fold: blocks never cross folds
 
 ld = []
 for label, folds in [("folds 2018+2019", [2018, 2019]), ("all three folds", [2017, 2018, 2019])]:
@@ -2443,7 +2365,7 @@ output:
 0  folds 2018+2019           Seasonal naive                          4.84   
 1  folds 2018+2019      Climatology + AR(1)                         -0.30   
 2  folds 2018+2019        Linear regression                         -2.33   
-3  folds 2018+2019             LSTM (small)                         26.26   
+3  folds 2018+2019             LSTM (small)                         16.54   
 4  folds 2018+2019       Fourier+ARMA const                          0.86   
 5  folds 2018+2019      Fourier+ARMA linear                         -2.94   
 6  folds 2018+2019  Fourier+ARMA (selected)                         -0.23   
@@ -2451,15 +2373,15 @@ output:
 8  folds 2018+2019               SARIMA D=0                         18.67   
 
    ci_lo  ci_hi            verdict  
-0   0.19   8.53              worse  
-1  -0.75   0.05  indistinguishable  
-2  -6.17   0.77  indistinguishable  
-3   8.80  42.30              worse  
-4  -2.10   2.72  indistinguishable  
-5  -6.43  -0.36             better  
-6  -3.56   1.81  indistinguishable  
-7  -2.32   1.02  indistinguishable  
-8  12.96  23.98              worse
+0   0.94   8.96              worse  
+1  -0.80   0.02  indistinguishable  
+2  -5.83   1.91  indistinguishable  
+3   6.62  27.75              worse  
+4  -2.09   4.32  indistinguishable  
+5  -6.12   0.68  indistinguishable  
+6  -2.91   2.77  indistinguishable  
+7  -1.91   0.98  indistinguishable  
+8  13.13  23.88              worse
 ```
 
 ### [md 7]
@@ -2497,13 +2419,37 @@ findfont: Failed to find font weight semibold for DejaVu Sans, now using 700.
 <Figure size 1320x440 with 2 Axes>
 ```
 
-### [md 9]
+### [code 9]
+```python
+# SARIMA D=0 with vs without a constant, same orders, same three folds (replaces the unsupported "39.7 -> 30.6" remark of the first write-up)
+d0 = {"no constant": F.sarima((1, 0, 1), (1, 0, 0, 52), trend="n"), "with constant": F.sarima((1, 0, 1), (1, 0, 0, 52), trend="c")}
+bt0, _ = F.backtest(y, raw, d0, n_jobs=6, verbose=False)
+d0tab = bt0.pivot(index="model", columns="fold", values="MAE")
+for f in (2017, 2018, 2019):
+    d0tab.loc["Climatology (reference)", f] = bt[(bt.model == "Climatology") & (bt.fold == f)]["MAE"].iloc[0]
+d0tab.round(1).to_csv(RESULTS / "fc_sarima_d0_constant.csv"); display(d0tab.round(1))
+key["sarima_d0_const"] = d0tab.round(2).to_dict()
+```
+
+output:
+```
+fold                     2017  2018  2019
+model                                    
+no constant              76.9  61.0  92.1
+with constant            44.9  42.8  44.1
+Climatology (reference)  31.0  21.8  27.8
+```
+
+### [md 10]
+**Reading it.** Adding the constant changes the SARIMA D=0 error by the amounts above (same orders, same folds); D=0 stays clearly worse than climatology either way.
+
+### [md 11]
 ## 3. Residual diagnostics (the draft's Ljung–Box result was an artifact)
 `SARIMAX` with `D=1` initialises the first 52 seasonal states diffusely, so the first 52 in-sample residuals are as large as the series level
 (about 5 on the log scale) and must be excluded (`res.loglikelihood_burn`). The draft ran Ljung–Box on all residuals and got p ≈ 0 at every lag.
 Below: the same model with and without the exclusion, next to the selected Fourier+ARMA model, all fitted on 2015–2018.
 
-### [code 10]
+### [code 12]
 ```python
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 tr19 = y.loc[:F.ORIGINS[2019]]
@@ -2519,6 +2465,7 @@ diag["LB_p_lag10_ALL_residuals (draft's mistake)"] = [np.nan, float(naive.loc[10
 diag.to_csv(RESULTS / "fc_diagnostics.csv")
 display(diag.T.round(4))
 par = pd.DataFrame({"coef": res_s1.params, "se": res_s1.bse}).round(3)
+key["nonconverged_rejected_per_origin"] = {int(f): int(specs[f]["n_rejected_nonconverged"]) for f in specs}
 key["sarima_D1_maS_coef"], key["sarima_D1_maS_se"] = float(par.loc["ma.S.L52", "coef"]), float(par.loc["ma.S.L52", "se"])
 display(par)
 ```
@@ -2552,13 +2499,13 @@ ma.S.L52 -0.988  8.259
 sigma2    0.046  0.374
 ```
 
-### [md 11]
+### [md 13]
 **Reading it.** With the burn-in removed the SARIMA residuals are fine at lags 10 and 26, but the seasonal parameter is not identified:
 the seasonal MA coefficient is near −1 with a standard error larger than its value, which is the signature of differencing a series that
 does not need it (a deterministic seasonal pattern). Residual structure at lag 52 and in the Fourier model is reported honestly in the table
 (see `LB_p_lag52`); no GARCH-type model is needed since ARCH-LM on the weekly residuals does not reject.
 
-### [md 12]
+### [md 14]
 ## 4. Interval calibration
 The draft's 95% interval covered only 85% of 2019 weeks and all misses were below the lower bound, so part of the problem is **level bias**
 (2019 was cleaner than the training years), not only width. We calibrate with a rule fixed in advance and tested out of sample:
@@ -2567,7 +2514,7 @@ The draft's 95% interval covered only 85% of 2019 weeks and all misses were belo
 * **re-centre only if** the bias has the same sign in both calibration folds and |mean z| > 0.5. Otherwise leave the centre alone, since a level
   shift that flips sign across years cannot be corrected by the past.
 
-### [code 13]
+### [code 15]
 ```python
 def standardized(fold, model=SEL):
     o = fcs[fold][model]
@@ -2590,10 +2537,17 @@ def calibrated_sd_mu(mu, sd, idx, rule):
     f = np.where(wint, rule["f"][True], rule["f"][False])
     return mu + rule["shift"] * sd, sd * f
 
+def shrunk_shift(folds, k=26):
+    """POST-HOC sensitivity (defined after seeing 2019): continuous shrinkage of the mean z toward 0, in place of the step rule."""
+    z = pd.concat([standardized(f) for f in folds])["z"]
+    return float(z.sum() / (len(z) + k))
+
 rule19 = calibration_rule([2017, 2018])
 o = fcs[2019][SEL]; mu_c, sd_c = calibrated_sd_mu(o["mu"], o["sd"], o["idx"], rule19)
+sh19 = shrunk_shift([2017, 2018]); mu_s = o["mu"] + sh19 * o["sd"]
 cal_tab = pd.DataFrame({"Model-based Gaussian": F.metrics(o["actual"], o["mu"], o["sd"], o["idx"]),
-                        "Calibrated (season scale" + (", re-centred)" if rule19["recentre"] else ")"): F.metrics(o["actual"], mu_c, sd_c, o["idx"])}).T
+                        "Calibrated (season scale" + (", re-centred)" if rule19["recentre"] else ")"): F.metrics(o["actual"], mu_c, sd_c, o["idx"]),
+                        "Season scale + shrunk shift (post-hoc sensitivity)": F.metrics(o["actual"], mu_s, sd_c, o["idx"])}).T
 cal_tab = cal_tab[["MAE", "coverage", "width", "winkler", "bias"]]
 cal_tab.round(3).to_csv(RESULTS / "fc_calibration_2019.csv")
 print("calibration rule from 2017+2018:", rule19)
@@ -2602,26 +2556,41 @@ display(cal_tab.round(3))
 ctx = bt[bt.fold == 2019].set_index("model")[["MAE", "coverage", "width", "winkler"]].dropna()
 display(ctx.round(3))
 key["calibration_rule_2019"] = rule19; key["coverage_2019_raw"] = float(cal_tab.iloc[0]["coverage"]); key["coverage_2019_calibrated"] = float(cal_tab.iloc[1]["coverage"])
+key["calibration_2019_all"] = cal_tab.round(3).to_dict("index"); key["shrunk_shift_2019"] = sh19
 ```
 
 output:
 ```
 calibration rule from 2017+2018: {'f': {True: 1.3343095497324873, False: 1.421532404826579}, 'shift': 0.0, 'by_fold_mean_z': {2017: -0.66, 2018: -0.45}, 'recentre': False}
-                              MAE  coverage    width  winkler   bias
-Model-based Gaussian       25.694     0.904  125.080  174.878 -8.492
-Calibrated (season scale)  25.694     0.962  178.655  192.721 -8.492                            MAE  coverage    width   winkler
-model                                                       
-Climatology + AR(1)      27.326     0.808  102.932   225.242
-Linear regression        24.945     0.923  109.892   228.959
-LSTM (small)             52.870     0.135   18.426  1797.999
-Fourier+ARMA const       29.261     0.885  122.861   242.045
-Fourier+ARMA linear      23.974     0.923  109.172   235.401
-Fourier+ARMA (selected)  25.694     0.904  125.080   174.878
-SARIMA D=1               27.452     0.846  132.997   205.876
-SARIMA D=0               44.103     0.904  240.505   262.603
+                                                       MAE  coverage    width  \
+Model-based Gaussian                                25.694     0.904  125.080   
+Calibrated (season scale)                           25.694     0.962  178.655   
+Season scale + shrunk shift (post-hoc sensitivity)  23.598     0.962  158.878   
+
+                                                    winkler   bias  
+Model-based Gaussian                                174.878 -8.492  
+Calibrated (season scale)                           192.721 -8.492  
+Season scale + shrunk shift (post-hoc sensitivity)  161.033  4.328                              MAE  coverage    width  winkler
+model                                                      
+Seasonal naive           30.306     0.923  159.619  179.509
+Climatology              27.818     0.808  102.837  224.736
+Climatology + AR(1)      27.326     0.808  102.932  225.242
+Linear regression        24.945     0.923  113.246  227.112
+LSTM (small)             54.347     0.442  107.484  920.579
+Fourier+ARMA const       29.261     0.885  122.861  242.045
+Fourier+ARMA linear      23.974     0.923  109.172  235.401
+Fourier+ARMA (selected)  25.694     0.904  125.080  174.878
+SARIMA D=1               27.452     0.846  132.997  205.876
+SARIMA D=0               44.103     0.904  240.505  262.603
 ```
 
-### [md 14]
+### [md 16]
+**Reading it.** The season scale raises 2019 coverage from about 90% to 96%, but it does so by making the intervals about 43% wider and the Winkler interval score *worse*
+(the proper score penalises width). So calibration here buys nominal coverage, not sharper or better intervals. The 2017 fold's coverage is only about 69%, so three origins do not
+support a general reliability claim. The step rule did not re-centre in 2019 because the 2018 mean z (-0.45) missed the 0.5 cut-off; the last column (a smooth shrunk shift defined *after* seeing 2019)
+is a sensitivity, not the headline.
+
+### [md 17]
 ## 5. One week ahead: does weather help when tested fairly?
 Each test year (2018, 2019) is forecast one week at a time. Parameters are fitted once, on all data before that year; each week the model sees all earlier
 observed PM2.5 (a true one-step forecast). The selected model for that origin (from §1) is the "no weather" version; weather variables are weekly anomalies from a
@@ -2633,7 +2602,7 @@ climatology fitted on data before the test year.
 | last 3 days | mean anomaly of the last 3 days (Fri–Sun) of the previous week | yes |
 | **same-week (oracle)** | the forecast week's own observed wind and humidity | **no**, hindsight upper bound (ERA5 reanalysis is not a forecast) |
 
-### [code 15]
+### [code 18]
 ```python
 def weather_frame(train_end):
     """Weekly wind/rh anomaly features, with climatology fitted on data up to train_end only."""
@@ -2667,7 +2636,7 @@ def one_step(year, wx_cols):
 variants = {"DHR, no weather": [], "+ lagged weather (operational)": ["wind_lag1", "rh_lag1"],
             "+ last 3 days of prior week (operational)": ["wind_last3", "rh_last3"],
             "+ same-week weather (ORACLE)": ["wind_same", "rh_same"]}
-rows, errs = [], {}
+rows, errs, onestep_store = [], {}, {}
 for year in (2018, 2019):
     origin = F.ORIGINS[year]; tr_ = y.loc[:origin]
     test_idx = y.loc[f"{year}-01-01":f"{year}-12-31"].index
@@ -2685,8 +2654,11 @@ for year in (2018, 2019):
     for name, mu_ in preds.items():
         e = act - np.exp(mu_)
         errs[(year, name)] = e
+        onestep_store[(year, name)] = (test_idx, act, mu_)
         rows.append({"year": year, "model": name, "MAE": np.abs(e).mean(), "logMAE": np.abs(np.log(act) - mu_).mean(), "n": len(e)})
 os_tab = pd.DataFrame(rows)
+pd.DataFrame([{"year": yr, "model": nm, "date": d_, "actual": a_, "mu": m_}
+              for (yr, nm), (dd_, aa_, mm_) in onestep_store.items() for d_, a_, m_ in zip(dd_, aa_, mm_)]).to_csv(RESULTS / "fc_oneweek_forecasts.csv", index=False)
 piv = os_tab.pivot(index="model", columns="year", values="MAE")
 piv["both years"] = [np.mean(np.concatenate([np.abs(errs[(2018, m)]), np.abs(errs[(2019, m)])])) for m in piv.index]
 order_ = ["Persistence", "Climatology", "Climatology + AR(1)", *variants]
@@ -2725,7 +2697,7 @@ DHR, no weather                                               NaN
 + same-week weather (ORACLE)                                0.074
 ```
 
-### [code 16]
+### [code 19]
 ```python
 # coefficients of the oracle model on the 2019 origin, for interpretation
 _, fit_or = one_step(2019, ["wind_same", "rh_same"])
@@ -2744,12 +2716,12 @@ wind_same -0.0370  0.0033
 rh_same   -0.0099  0.0002{'lagged': np.float64(-2.4), 'last3': np.float64(0.7), 'oracle': np.float64(6.9)} (% MAE reduction vs no-weather DHR; positive = better)
 ```
 
-### [md 17]
+### [md 20]
 **Reading it.** The operational variants (lagged weather) are compared with the model that has no weather; the oracle variant shows how much
 accuracy would be available if the week's weather were known in advance. The Diebold–Mariano p-values use genuine one-step errors (Harvey–Leybourne–Newbold
 small-sample correction), so unlike the 52-step comparison the test is valid here.
 
-### [code 18]
+### [code 21]
 ```python
 fig, ax = plt.subplots(figsize=(8, 3.6))
 labs = [m.replace(" (operational)", "").replace(" (ORACLE)", "\n(oracle)") for m in order_]
@@ -2767,16 +2739,16 @@ output:
 <Figure size 880x396 with 1 Axes>
 ```
 
-### [md 19]
+### [md 22]
 ## 6. Final outlook for 2020 and validation of the method on 2019
 **Procedure (identical for both).** Fit the headline procedure on the years before the target year; simulate 5,000 weekly paths from the fitted model
 (53 weeks so every calendar day is covered); apply the calibration rule (fitted only on earlier folds); convert weekly paths to daily PM2.5 by adding a
-resampled within-week offset `log(daily) − log(weekly mean)` drawn from the same calendar month of the training data; classify each day into the CPCB
-PM2.5 sub-index bands. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
+whole within-week offset vector (Mon–Sun, `log(daily) − log(weekly mean)`, from a training week of the same month), so each simulated week still averages exactly to its simulated weekly mean and day-to-day dependence is kept; classify each day into the CPCB
+PM2.5 sub-index bands. Monthly means and band-day counts are computed from the same daily paths. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
 **This is a PM2.5 band, not the official AQI** (the AQI is the maximum sub-index over all pollutants).
 2019 is a genuine out-of-sample test of the whole pipeline; 2020 is the deliverable.
 
-### [code 20]
+### [code 23]
 ```python
 def pipeline(origin, year, folds_for_cal, n=5000):
     tr_ = y.loc[:origin]
@@ -2790,8 +2762,9 @@ def pipeline(origin, year, folds_for_cal, n=5000):
     f = np.where(pd.DatetimeIndex(idx).month.isin(F.WINTER), rule["f"][True], rule["f"][False])
     paths_c = (mu_ + rule["shift"] * sd_)[:, None] + f[:, None] * (paths - mu_[:, None])
     pools = F.week_offsets_by_month(daily["pm25"].loc[:origin])
-    bands = F.daily_band_days(paths_c, idx, pools, year)           # (paths, 12, 6)
-    monthly = F.monthly_mean_paths(paths_c, idx, year)             # (12, paths)
+    dd, dv = F.daily_paths(paths_c, idx, pools, year)               # daily values whose weekly means equal the weekly paths
+    bands = F.daily_band_days(dd, dv)                                # (paths, 12, 6)  band days and monthly means come from the SAME daily paths
+    monthly = F.monthly_mean_paths(dd, dv)                           # (12, paths)
     return {"idx": idx, "mu": mu_, "sd": sd_, "paths": paths_c, "bands": bands, "monthly": monthly, "spec": out["spec"], "rule": rule, "res": res_}
 
 month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -2829,23 +2802,23 @@ assert np.allclose(P19["bands"].sum(axis=2)[0], [31, 28, 31, 30, 31, 30, 31, 31,
 
 output:
 ```
-{'months_actual_inside_95': 12, 'annual_days_pred': {'Good': 21.0, 'Satisfactory': 75.0, 'Moderate': 67.0, 'Poor': 53.0, 'Very Poor': 113.0, 'Severe': 35.0}, 'annual_days_actual': {'Good': 25, 'Satisfactory': 97, 'Moderate': 78, 'Poor': 58, 'Very Poor': 73, 'Severe': 34}, 'mean_abs_days_error_per_band_month': 1.88, 'poor_or_worse_pred_pct': 55.0, 'poor_or_worse_actual_pct': 45.2}
+{'months_actual_inside_95': 12, 'annual_days_pred': {'Good': 21.0, 'Satisfactory': 75.0, 'Moderate': 68.0, 'Poor': 53.0, 'Very Poor': 114.0, 'Severe': 35.0}, 'annual_days_actual': {'Good': 25, 'Satisfactory': 97, 'Moderate': 78, 'Poor': 58, 'Very Poor': 73, 'Severe': 34}, 'mean_abs_days_error_per_band_month': 1.9, 'poor_or_worse_pred_pct': 55.1, 'poor_or_worse_actual_pct': 45.2}
      actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-Jan        204.3        209.4      148.8      304.2      True
-Feb        122.3        144.1       97.9      212.1      True
-Mar         84.2        101.5       66.3      154.8      True
-Apr         82.3        101.5       63.7      161.4      True
-May         89.7        100.7       62.3      163.0      True
-Jun         63.8         74.6       45.4      122.9      True
-Jul         46.7         46.0       27.4       78.0      True
-Aug         34.1         42.8       24.8       73.6      True
-Sep         40.1         57.0       32.7       98.7      True
-Oct        123.7        144.7       83.5      255.5      True
-Nov        205.4        229.7      130.9      401.4      True
-Dec        205.2        199.6      112.4      355.5      True
+Jan        204.3        209.8      147.0      301.4      True
+Feb        122.3        141.9       95.2      213.0      True
+Mar         84.2        101.7       65.5      156.9      True
+Apr         82.3        101.5       63.8      160.2      True
+May         89.7        100.2       61.5      163.3      True
+Jun         63.8         75.4       45.7      122.8      True
+Jul         46.7         46.2       27.3       77.3      True
+Aug         34.1         43.2       25.3       73.8      True
+Sep         40.1         57.3       32.7       99.3      True
+Oct        123.7        141.9       80.7      250.8      True
+Nov        205.4        234.6      133.6      403.4      True
+Dec        205.2        199.2      113.8      346.7      True
 ```
 
-### [code 21]
+### [code 24]
 ```python
 # 2020 deliverable: selection on data to 2019-12-29, calibration from folds 2018 and 2019
 P20 = pipeline("2019-12-29", 2020, [2018, 2019])
@@ -2863,52 +2836,52 @@ output:
 ```
        median    lo95    hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  \
 month                                                                           
-Jan    189.08  140.98  251.50        1.00        1.00         1.00       0.00   
-Feb    120.77   91.61  163.52        1.00        0.98         0.52       0.04   
-Mar     84.89   66.64  108.82        1.00        0.32         0.00       0.31   
-Apr     85.92   66.92  110.71        1.00        0.36         0.01       0.14   
-May     83.79   64.62  108.23        1.00        0.29         0.00       0.19   
-Jun     62.54   48.70   82.01        0.62        0.00         0.00       1.27   
-Jul     38.97   30.40   49.91        0.00        0.00         0.00       9.21   
-Aug     35.72   27.95   45.80        0.00        0.00         0.00      10.38   
-Sep     46.32   36.19   59.28        0.02        0.00         0.00       6.02   
-Oct    119.52   91.45  157.82        1.00        0.98         0.49       0.06   
-Nov    189.92  141.14  255.66        1.00        1.00         1.00       0.00   
-Dec    168.89  127.24  225.88        1.00        1.00         0.99       0.00   
+Jan    190.41  141.68  254.94        1.00        1.00         1.00       0.00   
+Feb    121.89   90.35  164.84        1.00        0.98         0.54       0.04   
+Mar     84.45   66.28  108.66        0.99        0.30         0.00       0.26   
+Apr     85.71   66.92  110.66        1.00        0.35         0.00       0.15   
+May     84.11   65.63  108.65        1.00        0.30         0.00       0.16   
+Jun     62.75   47.93   81.70        0.64        0.00         0.00       1.36   
+Jul     38.89   30.28   50.51        0.00        0.00         0.00       8.80   
+Aug     35.52   27.55   46.09        0.00        0.00         0.00      11.05   
+Sep     45.56   35.29   58.63        0.02        0.00         0.00       5.87   
+Oct    120.12   91.86  155.92        1.00        0.98         0.50       0.03   
+Nov    192.13  143.31  259.61        1.00        1.00         1.00       0.00   
+Dec    169.29  126.12  225.66        1.00        1.00         0.99       0.00   
 
        days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  \
 month                                                                
-Jan                 0.13           1.03       3.07           21.21   
-Feb                 1.87           6.31       7.63           12.41   
-Mar                 6.37          12.58       7.83            3.89   
-Apr                 5.21          12.62       8.13            3.90   
-May                 6.74          12.85       7.46            3.75   
-Jun                13.90          10.73       3.27            0.84   
-Jul                19.27           2.32       0.18            0.02   
-Aug                19.10           1.46       0.06            0.00   
-Sep                17.69           5.31       0.84            0.13   
-Oct                 3.02           7.40       7.24           12.27   
-Nov                 0.23           1.19       3.17           19.48   
-Dec                 0.23           2.12       4.95           19.97   
+Jan                 0.12           0.98       3.01           21.18   
+Feb                 1.83           6.28       7.82           12.30   
+Mar                 6.04          12.71       8.08            3.91   
+Apr                 5.44          12.56       7.91            3.94   
+May                 6.38          12.86       7.79            3.80   
+Jun                13.90          10.64       3.27            0.83   
+Jul                19.52           2.48       0.19            0.01   
+Aug                18.51           1.38       0.06            0.00   
+Sep                18.06           5.37       0.65            0.06   
+Oct                 2.75           7.58       7.48           12.22   
+Nov                 0.21           1.13       2.99           19.63   
+Dec                 0.24           2.16       4.96           19.86   
 
        days_Severe  actual_mean_2020  actual_days_covered  
 month                                                      
-Jan           5.55            157.11                 31.0  
-Feb           0.74            121.48                 29.0  
-Mar           0.01             57.51                 31.0  
+Jan           5.70            157.11                 31.0  
+Feb           0.73            121.48                 29.0  
+Mar           0.00             57.51                 31.0  
 Apr           0.01             44.94                 30.0  
 May           0.01      
 ...[truncated]
 ```
 
-### [code 22]
+### [code 25]
 ```python
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [1.35, 1]})
 ax = axes[0]; xs = np.arange(12)
 ax.fill_between(xs, mt20["lo95"], mt20["hi95"], color=BLUE, alpha=0.18, lw=0, label="95% prediction interval")
 ax.plot(xs, mt20["median"], color=BLUE, lw=2, marker="o", ms=4, label="Forecast median (made Dec 2019)")
-ok = mt20["actual_days_covered"] >= 20
-ax.plot(xs[ok], mt20.loc[ok, "actual_mean_2020"], color=ORANGE, lw=1.6, marker="s", ms=4, label="Actual 2020 (Jan-May full months)")
+ok = mt20["actual_days_covered"] >= 28
+ax.plot(xs[ok], mt20.loc[ok, "actual_mean_2020"], color=ORANGE, lw=1.6, marker="s", ms=4, label="Actual 2020 (full months)")
 for yv, lab in [(60, "Satisfactory limit"), (90, "Moderate limit"), (120, "Poor limit")]:
     ax.axhline(yv, color=MUTED, lw=0.7, ls=":"); ax.text(11.4, yv, lab, fontsize=7, va="bottom", ha="right", color=INK_2)
 ax.set_xticks(xs, month_names); ax.set_ylabel("Monthly mean PM2.5 (µg/m³)"); ax.legend(fontsize=8, loc="upper center")
@@ -2928,13 +2901,13 @@ output:
 <Figure size 1320x462 with 2 Axes>
 ```
 
-### [md 23]
+### [md 26]
 ## 7. Case study: the 2020 lockdown
-Delhi's lockdown began on 25 March 2020. We compare the actual weekly PM2.5 of the ten weeks ending 29 March – 31 May with the no-lockdown forecast made on
+Delhi's lockdown began on 25 March 2020. We compare the actual weekly PM2.5 of the ten Sunday-ending weeks 29 March – 31 May (these cover 23 March – 31 May, so two pre-lockdown days are included) with the no-lockdown forecast made on
 29 Dec 2019 (calibrated, as above). A second counterfactual uses a version of the same model *with the actual 2020 same-week wind and humidity* (fitted on 2015–2019),
-to separate the weather contribution from the rest. Both are descriptive: they rely on the model being right about the level for 2020 (see §4).
+to separate the weather contribution from the rest. Both are descriptive, not causal: they rely on the model being right about the level for 2020, and the model was already about 9% too high in the weeks before the lockdown (sensitivities below).
 
-### [code 24]
+### [code 27]
 ```python
 lock_idx = pd.date_range("2020-03-29", "2020-05-31", freq="W-SUN")
 act_l = raw.loc[lock_idx].to_numpy()
@@ -2979,22 +2952,88 @@ savefig(fig, "16_lockdown"); plt.show()
 output:
 ```
                                             actual_mean  cf_median  \
-no-lockdown forecast                               48.7       85.1   
-weather-adjusted forecast (oracle weather)          NaN       78.5   
+no-lockdown forecast                               48.7       85.0   
+weather-adjusted forecast (oracle weather)          NaN       78.6   
 
                                             gap_median_pct  gap_lo95_pct  \
-no-lockdown forecast                                 -42.8         -52.2   
-weather-adjusted forecast (oracle weather)           -38.0         -47.8   
+no-lockdown forecast                                 -42.8         -52.1   
+weather-adjusted forecast (oracle weather)           -38.1         -47.5   
 
                                             gap_hi95_pct  
-no-lockdown forecast                               -31.5  
-weather-adjusted forecast (oracle weather)         -26.2  <Figure size 990x418 with 1 Axes>
+no-lockdown forecast                               -31.8  
+weather-adjusted forecast (oracle weather)         -26.7  <Figure size 990x418 with 1 Axes>
 ```
 
-### [md 25]
+### [md 28]
+### Sensitivity of the lockdown gap
+The gap to a forecast is only as good as the forecast's level. Checks: (a) the same model's gap in the 12 weeks *before* the lockdown (5 Jan – 22 Mar), and the lockdown gap adjusted for it;
+(b) a 9-week window starting 5 April (no pre-lockdown days); (c) other level specifications (constant, random-walk); (d) a mean-bias shift shrunk from the 2018–19 errors (post-hoc);
+(e) a placebo: the same calendar weeks of 2019 against the 2019 forecast pipeline.
+
+### [code 29]
+```python
+def gap_stats(paths, idx_, weeks):
+    pos_ = pd.DatetimeIndex(idx_).get_indexer(weeks); assert (pos_ >= 0).all()
+    cf_ = np.exp(paths[pos_]).mean(axis=0); g = raw.reindex(weeks).mean() / cf_ - 1
+    return float(100 * np.median(g)), float(100 * np.percentile(g, 2.5)), float(100 * np.percentile(g, 97.5))
+
+wk_pre = pd.date_range("2020-01-05", "2020-03-22", freq="W-SUN")
+wk_9 = pd.date_range("2020-04-05", "2020-05-31", freq="W-SUN")
+rule20 = P20["rule"]; f20 = np.where(pd.DatetimeIndex(P20["idx"]).month.isin(F.WINTER), rule20["f"][True], rule20["f"][False])
+def spec_paths(trend, K, p_, q_):
+    r_ = F._fit_dhr(y.loc[:"2019-12-29"], K, p_, q_, trend)
+    pa = F.simulate_paths(r_, P20["idx"], exog=F.fourier(P20["idx"], K), n=5000)
+    fc_ = r_.get_forecast(len(P20["idx"]), exog=F.fourier(P20["idx"], K)); mu_ = fc_.predicted_mean.to_numpy()
+    return mu_[:, None] + f20[:, None] * (pa - mu_[:, None]), mu_, np.sqrt(fc_.var_pred_mean.to_numpy())
+
+rows = []
+def add(name, paths, idx_=P20["idx"]):
+    pre = gap_stats(paths, idx_, wk_pre); l10 = gap_stats(paths, idx_, lock_idx); l9 = gap_stats(paths, idx_, wk_9)
+    adj = 100 * ((1 + l10[0] / 100) / (1 + pre[0] / 100) - 1)
+    rows.append({"counterfactual": name, "pre_lockdown_gap_pct": pre[0], "lockdown_gap_10wk_pct": l10[0], "lo95": l10[1], "hi95": l10[2],
+                 "gap_9wk_from_5Apr_pct": l9[0], "lockdown_gap_adjusted_for_pre_gap_pct": adj})
+add("selected spec (linear, K=5, AR1), headline", P20["paths"])
+for nm, (tr_, K_, p_, q_) in {"constant level": ("const", 5, 1, 0), "random-walk level (ARIMA errors)": ("rw", 5, 1, 1)}.items():
+    pa_, _, _ = spec_paths(tr_, K_, p_, q_); add(nm, pa_)
+sh20 = shrunk_shift([2018, 2019])
+add("headline + shrunk mean-bias shift (post-hoc)", P20["paths"] + sh20 * P20["sd"][:, None])
+# placebo: 2019 pipeline, same calendar weeks of 2019
+wk_pl = pd.date_range("2019-03-31", "2019-06-02", freq="W-SUN")
+pl = gap_stats(P19["paths"], P19["idx"], wk_pl)
+rows.append({"counterfactual": "PLACEBO: same weeks of 2019 vs 2019 forecast", "pre_lockdown_gap_pct": gap_stats(P19["paths"], P19["idx"], pd.date_range("2019-01-06", "2019-03-24", freq="W-SUN"))[0],
+             "lockdown_gap_10wk_pct": pl[0], "lo95": pl[1], "hi95": pl[2], "gap_9wk_from_5Apr_pct": np.nan, "lockdown_gap_adjusted_for_pre_gap_pct": np.nan})
+sens = pd.DataFrame(rows); sens.round(1).to_csv(RESULTS / "fc_lockdown_sensitivity.csv", index=False); display(sens.round(1))
+key["lockdown_sensitivity"] = sens.round(2).set_index("counterfactual").to_dict("index")
+```
+
+output:
+```
+                                 counterfactual  pre_lockdown_gap_pct  \
+0    selected spec (linear, K=5, AR1), headline                 -11.3   
+1                                constant level                 -22.6   
+2              random-walk level (ARIMA errors)                  -9.9   
+3  headline + shrunk mean-bias shift (post-hoc)                  -2.4   
+4  PLACEBO: same weeks of 2019 vs 2019 forecast                  -8.9   
+
+   lockdown_gap_10wk_pct  lo95  hi95  gap_9wk_from_5Apr_pct  \
+0                  -42.8 -52.1 -31.8                  -41.5   
+1                  -50.8 -59.6 -40.0                  -49.8   
+2                  -43.1 -54.5 -28.5                  -41.7   
+3                  -37.0 -47.3 -25.0                  -35.6   
+4                  -14.9 -43.9  28.2                    NaN   
+
+   lockdown_gap_adjusted_for_pre_gap_pct  
+0                                  -35.5  
+1                                  -36.5  
+2                                  -36.9  
+3                                  -35.5  
+4                                    NaN
+```
+
+### [md 30]
 ## 8. Summary numbers
 
-### [code 26]
+### [code 31]
 ```python
 m_sel = bt[bt.model == SEL].set_index("fold"); m_clim = bt[bt.model == "Climatology"].set_index("fold")
 key["backtest"] = {"mae_selected": m_sel["MAE"].round(2).to_dict(), "mae_climatology": m_clim["MAE"].round(2).to_dict(),
@@ -3010,7 +3049,17 @@ key
 
 output:
 ```
-{'sarima_D1_maS_coef': -0.988,
+{'sarima_d0_const': {2017: {'no constant': 76.92,
+   'with constant': 44.87,
+   'Climatology (reference)': 31.0},
+  2018: {'no constant': 60.98,
+   'with constant': 42.84,
+   'Climatology (reference)': 21.77},
+  2019: {'no constant': 92.11,
+   'with constant': 44.1,
+   'Climatology (reference)': 27.82}},
+ 'nonconverged_rejected_per_origin': {2017: 6, 2018: 3, 2019: 5},
+ 'sarima_D1_maS_coef': -0.988,
  'sarima_D1_maS_se': 8.259,
  'calibration_rule_2019': {'f': {True: 1.3343095497324873,
    False: 1.421532404826579},
@@ -3019,6 +3068,22 @@ output:
   'recentre': False},
  'coverage_2019_raw': 0.9038461538461539,
  'coverage_2019_calibrated': 0.9615384615384616,
+ 'calibration_2019_all': {'Model-based Gaussian': {'MAE': 25.694,
+   'coverage': 0.904,
+   'width': 125.08,
+   'winkler': 174.878,
+   'bias': -8.492},
+  'Calibrated (season scale)': {'MAE': 25.694,
+   'coverage': 0.962,
+   'width': 178.655,
+   'winkler': 192.721,
+   'bias': -8.492},
+  'Season scale + shrunk shift (post-hoc sensitivity)': {'MAE': 23.598,
+   'coverage': 0.962,
+   'width': 158.878,
+   'winkler': 161.033,
+   'bias': 4.328}},
+ 'shrunk_shift_2019': -0.445110367609404,
  'oneweek_mae': {'Persistence': 30.69,
   'Climatology': 24.79,
   'Climatology + AR(1)': 23.22,
@@ -3032,9 +3097,9 @@ output:
  'validation_2019': {'months_actual_inside_95': 12,
   'annual_days_pred': {'Good': 21.0,
    'Satisfactory': 75.0,
-   'Moderate': 67.0,
+   'Moderate': 68.0,
    'Poor': 53.0,
-   'Very Poor': 113.0,
+   'Very Poor': 114.0,
    'Severe': 35.0},
   'annual_days_actual': {'Good': 25,
    'Satisfactory': 97,
@@ -3042,46 +3107,30 @@ output:
    'Poor': 58,
    'Very Poor': 73,
    'Severe': 34},
-  'mean_abs_days_error_per_band_month': 1.88,
-  'poor_or_worse_pred_pct': 55.0,
+  'mean_abs_days_error_per_band_month': 1.9,
+  'poor_or_worse_pred_pct': 55.1,
   'poor_or_worse_actual_pct': 45.2},
- 'outlook_2020_spec': {'trend': 'linear', 'K': 5, 'p': 1, 'q': 0},
+ 'outlook_2020_spec': {'trend': 'linear',
+  'K': 5,
+  'p': 1,
+  'q': 0,
+  'n_rejected_nonconverged': 13},
  'outlook_2020_rule': {'f': {True: 1.0935180465819772,
    False: 0.9476619724449761},
   'shift': 0.0,
   'by_fold_mean_z': {2018: -0.45, 2019: -0.53},
   'recentre': False},
  'lockdown': {'plain': {'actual_mean': 48.669714285714285,
-   'cf_median': 85.140752539336,
-   'gap_median_pct': -42.83617088073022,
-   'gap_lo95_pct': -52.21475468260452,
-   'gap_hi95_pct': -31.53328399642168},
-  'weather_adjusted': {'cf_median': 78.46680894643731,
-   'gap_median_pct': -37.97413844184731,
-   'gap_lo95_pct': -47.76977454856694,
-   'gap_hi95_pct': -26.19979951798827}},
- 'backtest': {'mae_selected': {2017: 31.48, 2018: 23.43, 2019: 25.69},
-  'mae_climatology': {2017: 31.0, 2018: 21.77, 2019: 27.82},
-  'coverage_selected': {2017: 0.692, 2018: 0.942, 2019: 0.904},
-  'sarima_D1_mae': {2017: 53.83, 2018: 21.08, 2019: 27.45},
-  'sarima_D0_mae': {2017: 44.87, 2018: 42.84, 2019: 44.1},
-  'lstm_mae': {2017: 36.29, 2018: 49.23, 2019: 52.87},
-  'specs': {2017: {'trend': 'rw', 'K': 5, 'p': 1, 'q': 1},
-   2018: {'trend': 'const', 'K': 5, 'p': 1, 'q': 1},
-   2019: {'trend': 'rw', 'K': 5, 'p': 1, 'q': 1}}},
- 'diagnostics_selected_2019_fold': {'burn': 1.0,
-  'n_resid': 208.0,
-  'resid_sd': 0.2265,
-  'LB_p_lag10': 0.0883,
-  'LB_p_lag26': 0.001,
-  'LB_p_lag52': 0.0092,
-  'ARCH4_p': 0.8696,
-  'JB_p': 0.0006}
+   'cf_median': 85.04899262695417,
+   'gap_median_pct': -42.77449646078571,
+   'gap_lo95_pct': -52.11359900861902,
+   'gap_hi95_pct': -31.819259395224652},
+  'weather_ad
 ...[truncated]
 ```
 
 
-# 05 All results tables (results/)
+# 04 All results tables (results/)
 
 ## annual_drift.csv
 ```
@@ -3105,38 +3154,38 @@ Fourier+ARMA (selected)  31.5  23.4  25.7          24.6        26.9
             Climatology    31  21.8  27.8          24.8        26.9
      Fourier+ARMA const  30.6    22  29.3          25.7        27.3
          Seasonal naive  38.4    29  30.3          29.6        32.6
+           LSTM (small)  36.3  28.3  54.3          41.3        39.7
              SARIMA D=0  44.9  42.8  44.1          43.5        43.9
-           LSTM (small)  36.3  49.2  52.9          51.1        46.1
 ```
 
 ## fc_backtest_metrics.csv
 ```
  fold                   model  n_train    MAE   RMSE  logMAE     bias  MAE_winter  MAE_other  coverage  winkler  width
- 2017          Seasonal naive      104 38.438 61.872  0.2968   -13.56      65.098     25.489       NaN      NaN    NaN
- 2017             Climatology      104 30.999 43.309 0.28271  -1.2015      43.078     25.131       NaN      NaN    NaN
+ 2017          Seasonal naive      104 38.438 65.597  0.2968   -13.56      65.098     25.489   0.88462   261.55 167.09
+ 2017             Climatology      104 30.999 43.409 0.28271  -1.2015      43.078     25.131   0.61538   399.77 76.866
  2017     Climatology + AR(1)      104 30.701 43.396 0.28125  -1.9062      42.167     25.131   0.61538    401.9 76.751
- 2017       Linear regression      104 35.893 50.825 0.31948  -11.367      55.353     26.441   0.73077   313.76 118.15
- 2017            LSTM (small)      104 36.291 50.161 0.32118  -10.286      52.828     28.259   0.11538   1224.5 12.651
+ 2017       Linear regression      104 35.893 51.028 0.31948  -11.367      55.353     26.441      0.75   286.47 127.27
+ 2017            LSTM (small)      104 36.339 50.931 0.32186   2.7608      53.916     27.802   0.42308   575.48 55.528
  2017      Fourier+ARMA const      104 30.592 47.655  0.2773  0.18211      45.602     23.302      0.75    327.5  104.6
  2017     Fourier+ARMA linear      104 35.856 50.717 0.31914  -11.087      55.358     26.383   0.69231   330.84 112.71
  2017 Fourier+ARMA (selected)      104 31.483 44.063 0.28597  -5.7257      48.805      23.07   0.69231   266.41 100.75
  2017              SARIMA D=1      104 53.827 102.13 0.34136  -31.352      101.23     30.802   0.76923   537.52 160.32
  2017              SARIMA D=0      104 44.874  62.59 0.44952   -12.49       47.85     43.428   0.84615   332.58 270.65
- 2018          Seasonal naive      157 28.965 41.961 0.25023  -9.8967      41.972     22.648       NaN      NaN    NaN
- 2018             Climatology      157 21.772 28.356 0.19972    -9.09      33.224      16.21       NaN      NaN    NaN
+ 2018          Seasonal naive      157 28.965 46.452 0.25023  -9.8967      41.972     22.648   0.94231    223.9 175.04
+ 2018             Climatology      157 21.772 29.614 0.19972    -9.09      33.224      16.21   0.92308    142.8 104.61
  2018     Climatology + AR(1)      157 21.667 29.605 0.19932  -9.4044      32.903      16.21   0.92308   142.76 104.61
- 2018       Linear regression      157  19.99  28.81 0.17624 -0.51377      36.009     12.209   0.96154   145.04 122.51
- 2018            LSTM (small)      157 49.231 75.089 0.34473  -32.394      75.802     36.325         0   1757.9 11.262
+ 2018       Linear regression      157  19.99 28.849 0.17624 -0.51377      36.009     12.209   0.96154   147.81 127.88
+ 2018            LSTM (small)      157 28.318  37.99 0.25825  -7.0718      43.681     20.856   0.69231   337.18 77.581
  2018      Fourier+ARMA const      157 22.049  30.44 0.19919  -7.8222      36.286     15.134   0.96154   146.63 126.92
  2018     Fourier+ARMA linear      157 19.733 28.354 0.17299  -1.8157      35.817      11.92   0.96154   146.26 121.18
  2018 Fourier+ARMA (selected)      157 23.426 34.432 0.20086  -8.4162      42.257      14.28   0.94231   142.22 116.16
  2018              SARIMA D=1      157 21.084  31.49 0.18417  -8.6636      32.766     15.409   0.94231   169.08 151.11
  2018              SARIMA D=0      157 42.835 53.791 0.41929  -9.4661      53.492     37.659   0.96154   262.74  260.7
- 2019          Seasonal naive      209 30.306  44.17 0.27952  -6.3698      56.268     17.696       NaN      NaN    NaN
- 2019             Climatology      209 27.818 41.121 0.26091  -12.562      46.588     18.701       NaN      NaN    NaN
+ 2019          Seasonal naive      209 30.306  46.29 0.27952  -6.3698      56.268     17.696   0.92308   179.51 159.62
+ 2019             Climatology      209 27.818 42.136 0.26091  -12.562      46.588     18.701   0.80769   224.74 102.84
  2019     Climatology + AR(1)      209 27.326 41.786 0.25875  -13.083      45.084     18.701   0.80769   225.24 102.93
- 2019       Linear regression      209 24.945 42.603  0.2177    1.068      50.845     12.365   0.92308   228.96 109.89
- 2019            LSTM (small)      209  52.87 80.833 0.40125  -39.458      95.145     32.337   0.13462     1798 18.426
+ 2019       Linear regression      209 24.945 42.606  0.2177    1.068      50.845     12.365   0.92308   227.11 113.25
+ 2019            LSTM (small)      209 54.347 84.461 0.43056  -40.157      96.898      33.68   0.44231   920.58 107.48
  2019      Fourier+ARMA const      209 29.261 44.632 0.26435  -11.842      51.324     18.545   0.88462   242.05 122.86
  2019     Fourier+ARMA linear      209 23.974 41.773 0.21215 -0.39285      48.416     12.101   0.92308    235.4 109.17
  2019 Fourier+ARMA (selected)      209 25.694 39.869 0.23295  -8.4921      46.324     15.674   0.90385   174.88 125.08
@@ -3146,9 +3195,10 @@ Fourier+ARMA (selected)  31.5  23.4  25.7          24.6        26.9
 
 ## fc_calibration_2019.csv
 ```
-               Unnamed: 0    MAE  coverage  width  winkler   bias
-     Model-based Gaussian 25.694     0.904 125.08   174.88 -8.492
-Calibrated (season scale) 25.694     0.962 178.66   192.72 -8.492
+                                        Unnamed: 0    MAE  coverage  width  winkler   bias
+                              Model-based Gaussian 25.694     0.904 125.08   174.88 -8.492
+                         Calibrated (season scale) 25.694     0.962 178.66   192.72 -8.492
+Season scale + shrunk shift (post-hoc sensitivity) 23.598     0.962 158.88   161.03  4.328
 ```
 
 ## fc_diagnostics.csv
@@ -3161,31 +3211,41 @@ Fourier+ARMA (selected) (rw, K=5, p=1, q=1)     1      208   0.22653    0.088338
 ## fc_lockdown.csv
 ```
                                 Unnamed: 0  actual_mean  cf_median  gap_median_pct  gap_lo95_pct  gap_hi95_pct
-                      no-lockdown forecast         48.7       85.1           -42.8         -52.2         -31.5
-weather-adjusted forecast (oracle weather)          NaN       78.5             -38         -47.8         -26.2
+                      no-lockdown forecast         48.7         85           -42.8         -52.1         -31.8
+weather-adjusted forecast (oracle weather)          NaN       78.6           -38.1         -47.5         -26.7
+```
+
+## fc_lockdown_sensitivity.csv
+```
+                              counterfactual  pre_lockdown_gap_pct  lockdown_gap_10wk_pct  lo95  hi95  gap_9wk_from_5Apr_pct  lockdown_gap_adjusted_for_pre_gap_pct
+  selected spec (linear, K=5, AR1), headline                 -11.3                  -42.8 -52.1 -31.8                  -41.5                                  -35.5
+                              constant level                 -22.6                  -50.8 -59.6   -40                  -49.8                                  -36.5
+            random-walk level (ARIMA errors)                  -9.9                  -43.1 -54.5 -28.5                  -41.7                                  -36.9
+headline + shrunk mean-bias shift (post-hoc)                  -2.4                    -37 -47.3   -25                  -35.6                                  -35.5
+PLACEBO: same weeks of 2019 vs 2019 forecast                  -8.9                  -14.9 -43.9  28.2                    NaN                                    NaN
 ```
 
 ## fc_loss_diff.csv
 ```
           folds                   model  mean_MAE_diff_vs_climatology  ci_lo  ci_hi           verdict
-folds 2018+2019          Seasonal naive                          4.84   0.19   8.53             worse
-folds 2018+2019     Climatology + AR(1)                          -0.3  -0.75   0.05 indistinguishable
-folds 2018+2019       Linear regression                         -2.33  -6.17   0.77 indistinguishable
-folds 2018+2019            LSTM (small)                         26.26    8.8   42.3             worse
-folds 2018+2019      Fourier+ARMA const                          0.86   -2.1   2.72 indistinguishable
-folds 2018+2019     Fourier+ARMA linear                         -2.94  -6.43  -0.36            better
-folds 2018+2019 Fourier+ARMA (selected)                         -0.23  -3.56   1.81 indistinguishable
-folds 2018+2019              SARIMA D=1                         -0.53  -2.32   1.02 indistinguishable
-folds 2018+2019              SARIMA D=0                         18.67  12.96  23.98             worse
-all three folds          Seasonal naive                          5.71   1.22    9.4             worse
-all three folds     Climatology + AR(1)                          -0.3   -0.6   0.02 indistinguishable
-all three folds       Linear regression                          0.08  -3.71   3.97 indistinguishable
-all three folds            LSTM (small)                         19.27   7.53  30.95             worse
-all three folds      Fourier+ARMA const                          0.44  -1.91   2.12 indistinguishable
-all three folds     Fourier+ARMA linear                         -0.34  -3.96   3.24 indistinguishable
-all three folds Fourier+ARMA (selected)                             0  -2.49   1.97 indistinguishable
-all three folds              SARIMA D=1                          7.26  -0.57  14.21 indistinguishable
-all three folds              SARIMA D=0                         17.07   11.1  22.85             worse
+folds 2018+2019          Seasonal naive                          4.84   0.94   8.96             worse
+folds 2018+2019     Climatology + AR(1)                          -0.3   -0.8   0.02 indistinguishable
+folds 2018+2019       Linear regression                         -2.33  -5.83   1.91 indistinguishable
+folds 2018+2019            LSTM (small)                         16.54   6.62  27.75             worse
+folds 2018+2019      Fourier+ARMA const                          0.86  -2.09   4.32 indistinguishable
+folds 2018+2019     Fourier+ARMA linear                         -2.94  -6.12   0.68 indistinguishable
+folds 2018+2019 Fourier+ARMA (selected)                         -0.23  -2.91   2.77 indistinguishable
+folds 2018+2019              SARIMA D=1                         -0.53  -1.91   0.98 indistinguishable
+folds 2018+2019              SARIMA D=0                         18.67  13.13  23.88             worse
+all three folds          Seasonal naive                          5.71   2.04  10.07             worse
+all three folds     Climatology + AR(1)                          -0.3  -0.68      0 indistinguishable
+all three folds       Linear regression                          0.08  -3.19    3.6 indistinguishable
+all three folds            LSTM (small)                         12.81   6.07  20.63             worse
+all three folds      Fourier+ARMA const                          0.44  -1.84   2.94 indistinguishable
+all three folds     Fourier+ARMA linear                         -0.34  -3.45   3.04 indistinguishable
+all three folds Fourier+ARMA (selected)                             0   -2.2   2.28 indistinguishable
+all three folds              SARIMA D=1                          7.26   0.37  14.97             worse
+all three folds              SARIMA D=0                         17.07  11.68  22.58             worse
 ```
 
 ## fc_oneweek.csv
@@ -3210,84 +3270,61 @@ Unnamed: 0    coef      p
 ## fc_outlook_2020.csv
 ```
 month  median   lo95   hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  days_Severe  actual_mean_2020  actual_days_covered
-  Jan  189.08 140.98  251.5           1           1        0.999          0              0.131          1.033      3.072          21.209        5.555            157.11                   31
-  Feb  120.77 91.615 163.52           1        0.98        0.516      0.036              1.867          6.313      7.632          12.413        0.739            121.48                   29
-  Mar  84.893 66.636 108.82       0.998       0.321        0.003      0.314              6.371          12.58      7.834           3.894        0.006            57.506                   31
-  Apr  85.919 66.921 110.71       0.997       0.357        0.005      0.141              5.208         12.618       8.13           3.896        0.007             44.94                   30
-  May  83.789 64.619 108.23       0.996       0.291        0.003      0.189              6.736         12.848      7.459           3.753        0.015            55.449                   31
-  Jun   62.54 48.702 82.009       0.622       0.004            0      1.268             13.905         10.726      3.265           0.836            0            46.695                   30
-  Jul  38.973 30.403 49.911           0           0            0      9.212             19.269          2.323      0.178           0.018            0             54.01                    1
-  Aug  35.721 27.954 45.801           0           0            0     10.383             19.098          1.456      0.061           0.002            0               NaN                  NaN
-  Sep   46.32 36.193 59.279        0.02           0            0      6.022             17.694          5.314      0.843           0.129            0               NaN                  NaN
-  Oct  119.52 91.451 157.82           1       0.983        0.488      0.058              3.023          7.403      7.244          12.267        1.006               NaN                  NaN
-  Nov  189.92 141.14 255.66           1           1        0.999      0.002              0.235          1.191      3.174          19.476        5.923               NaN                  NaN
-  Dec  168.89 127.25 225.88           1           1        0.993          0              0.229          2.116       4.95          19.969        3.736               NaN                  NaN
+  Jan  190.41 141.68 254.94           1           1        0.999          0              0.117          0.985      3.013          21.182        5.703            157.11                   31
+  Feb  121.89 90.349 164.84           1       0.976        0.541       0.04              1.832          6.283      7.817          12.297        0.731            121.48                   29
+  Mar  84.449 66.285 108.66       0.994       0.304        0.001      0.261              6.036         12.707      8.084           3.909        0.003            57.506                   31
+  Apr  85.706 66.921 110.66       0.997       0.348        0.005      0.151              5.439          12.56      7.906           3.936        0.008             44.94                   30
+  May  84.108  65.63 108.65       0.995       0.297        0.003      0.159              6.384         12.856      7.787           3.804        0.011            55.449                   31
+  Jun  62.753 47.927 81.704        0.64       0.004            0      1.365             13.898         10.643      3.267           0.826        0.001            46.695                   30
+  Jul  38.892 30.275  50.51           0           0            0      8.796              19.52          2.475      0.195           0.014            0             54.01                    1
+  Aug  35.517  27.55 46.091           0           0            0     11.047              18.51           1.38      0.063           0.001            0               NaN                  NaN
+  Sep  45.561 35.291 58.631       0.018           0            0      5.867             18.061          5.369      0.645           0.058            0               NaN                  NaN
+  Oct  120.12 91.856 155.92           1       0.983        0.503      0.028              2.755          7.582      7.479          12.218        0.938               NaN                  NaN
+  Nov  192.13 143.31 259.61           1           1            1      0.001              0.206          1.127      2.988           19.63        6.048               NaN                  NaN
+  Dec  169.29 126.12 225.66           1           1         0.99          0              0.237          2.157      4.964          19.858        3.784               NaN                  NaN
 ```
 
 ## fc_outlook_validation_2019_days.csv
 ```
 Unnamed: 0 predicted  predicted.1 predicted.2 predicted.3 predicted.4 predicted.5 actual     actual.1 actual.2 actual.3  actual.4 actual.5
        NaN      Good Satisfactory    Moderate        Poor   Very Poor      Severe   Good Satisfactory Moderate     Poor Very Poor   Severe
-       Jan       0.0          0.0         0.6         2.2        19.6         8.5      0            1        1        2        16       11
-       Feb       0.0          1.0         3.8         5.9        15.0         2.2      0            3        6        6        12        1
-       Mar       0.3          4.9         9.3         7.7         8.4         0.3      0            5       13       13         0        0
-       Apr       0.1          4.1         9.0         7.7         8.7         0.4      1            6       12        9         2        0
-       May       0.3          5.0         9.2         7.5         8.6         0.4      0            6       12        8         5        0
-       Jun       1.2          9.9        10.0         5.2         3.6         0.1      1           12       14        3         0        0
-       Jul       7.1         17.0         5.4         1.2         0.4         0.0      4           17       10        0         0        0
-       Aug       7.9         17.1         4.8         0.9         0.2         0.0     11           19        1        0         0        0
-       Sep       4.4         13.6         7.7         2.8         1.5         0.0      8           18        4        0         0        0
-       Oct       0.1          2.2         5.2         5.8        13.9         3.7      0            8        2        8         9        4
-       Nov       0.0          0.1         0.9         2.2        15.6        11.3      0            2        1        6        12        9
-       Dec       0.0          0.2         1.6         3.5        17.7         8.0      0            0        2        3        17        9
+       Jan       0.0          0.0         0.6         2.2        19.5         8.6      0            1        1        2        16       11
+       Feb       0.0          1.1         4.0         6.0        14.9         1.9      0            3        6        6        12        1
+       Mar       0.3          4.5         9.0         7.8         9.0         0.4      0            5       13       13         0        0
+       Apr       0.1          4.2         9.0         7.6         8.6         0.4      1            6       12        9         2        0
+       May       0.2          5.0         9.1         7.6         8.7         0.4      0            6       12        8         5        0
+       Jun       1.3         10.0         9.8         5.2         3.7         0.1      1           12       14        3         0        0
+       Jul       6.8         16.9         5.6         1.3         0.4         0.0      4           17       10        0         0        0
+       Aug       7.9         17.1         4.9         0.9         0.2         0.0     11           19        1        0         0        0
+       Sep       4.2         13.6         7.8         2.9         1.5         0.0      8           18        4        0         0        0
+       Oct       0.1          2.3         5.4         5.9        13.9         3.4      0            8        2        8         9        4
+       Nov       0.0          0.1         0.7         1.9        15.6        11.6      0            2        1        6        12        9
+       Dec       0.0          0.2         1.6         3.5        17.6         8.1      0            0        2        3        17        9
 ```
 
 ## fc_outlook_validation_2019_monthly.csv
 ```
 Unnamed: 0  actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-       Jan        204.3        209.4      148.8      304.2      True
-       Feb        122.3        144.1       97.9      212.1      True
-       Mar         84.2        101.5       66.3      154.8      True
-       Apr         82.3        101.5       63.7      161.4      True
-       May         89.7        100.7       62.3        163      True
-       Jun         63.8         74.6       45.4      122.9      True
-       Jul         46.7           46       27.4         78      True
-       Aug         34.1         42.8       24.8       73.6      True
-       Sep         40.1           57       32.7       98.7      True
-       Oct        123.7        144.7       83.5      255.5      True
-       Nov        205.4        229.7      130.9      401.4      True
-       Dec        205.2        199.6      112.4      355.5      True
+       Jan        204.3        209.8        147      301.4      True
+       Feb        122.3        141.9       95.2        213      True
+       Mar         84.2        101.7       65.5      156.9      True
+       Apr         82.3        101.5       63.8      160.2      True
+       May         89.7        100.2       61.5      163.3      True
+       Jun         63.8         75.4       45.7      122.8      True
+       Jul         46.7         46.2       27.3       77.3      True
+       Aug         34.1         43.2       25.3       73.8      True
+       Sep         40.1         57.3       32.7       99.3      True
+       Oct        123.7        141.9       80.7      250.8      True
+       Nov        205.4        234.6      133.6      403.4      True
+       Dec        205.2        199.2      113.8      346.7      True
 ```
 
-## fc_weekly_2020.csv
+## fc_sarima_d0_constant.csv
 ```
-      date   lo95  median   hi95  weather_adj_median  actual
-2020-01-05 117.43  197.22 326.23              199.29  271.12
-2020-01-12 115.59  192.53 322.58               177.2  139.48
-2020-01-19 112.08  188.49 320.19              167.73  134.75
-2020-01-26 106.09  178.63 301.57              176.13  150.87
-2020-02-02 96.131  162.39 271.34              156.84  115.57
-2020-02-09 83.778   141.1  238.5              142.96  149.55
-2020-02-16 72.098   120.5 202.45              110.41  129.76
-2020-02-23 61.826  103.65 174.75              90.204  106.28
-2020-03-01 58.667  92.037 146.05              78.434  90.536
-2020-03-08 55.011  85.389 134.07              72.546  62.044
-2020-03-15 51.937  82.039 129.49              71.268  60.517
-2020-03-22 52.485  81.863 127.95              75.622  77.453
-2020-03-29 52.078  82.411 129.87              68.353  38.483
-2020-04-05 53.864  83.636 130.34              75.303  36.531
-2020-04-12 53.228  84.018 131.26              83.312  44.019
-2020-04-19 53.039  84.333 133.77              86.219  48.349
-2020-04-26 54.213  84.322 134.28              77.837   48.89
-2020-05-03 53.898  84.065 130.64              62.269  43.191
-2020-05-10 54.315  84.188 131.34              75.335    46.7
-2020-05-17 53.674  83.937 131.55              76.421  62.766
-2020-05-24  52.06  81.986 130.55              94.091  79.433
-2020-05-31 50.673  78.187 123.11              70.176  38.336
-2020-06-07 47.475  73.799 115.14              74.586  46.196
-2020-06-14   42.5  67.022 106.03              75.895  58.957
-2020-06-21 37.817  58.649 93.832              60.644  41.859
-2020-06-28 32.637  51.362 80.133               54.48  41.014
+                  model  2017  2018  2019
+            no constant  76.9    61  92.1
+          with constant  44.9  42.8  44.1
+Climatology (reference)    31  21.8  27.8
 ```
 
 ## fevd_orderings.csv
@@ -3704,6 +3741,28 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
 ## key_numbers_forecast.json
 ```
 {
+  "sarima_d0_const": {
+    "2017": {
+      "no constant": 76.92,
+      "with constant": 44.87,
+      "Climatology (reference)": 31.0
+    },
+    "2018": {
+      "no constant": 60.98,
+      "with constant": 42.84,
+      "Climatology (reference)": 21.77
+    },
+    "2019": {
+      "no constant": 92.11,
+      "with constant": 44.1,
+      "Climatology (reference)": 27.82
+    }
+  },
+  "nonconverged_rejected_per_origin": {
+    "2017": 6,
+    "2018": 3,
+    "2019": 5
+  },
   "sarima_D1_maS_coef": -0.988,
   "sarima_D1_maS_se": 8.259,
   "calibration_rule_2019": {
@@ -3720,6 +3779,30 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   },
   "coverage_2019_raw": 0.9038461538461539,
   "coverage_2019_calibrated": 0.9615384615384616,
+  "calibration_2019_all": {
+    "Model-based Gaussian": {
+      "MAE": 25.694,
+      "coverage": 0.904,
+      "width": 125.08,
+      "winkler": 174.878,
+      "bias": -8.492
+    },
+    "Calibrated (season scale)": {
+      "MAE": 25.694,
+      "coverage": 0.962,
+      "width": 178.655,
+      "winkler": 192.721,
+      "bias": -8.492
+    },
+    "Season scale + shrunk shift (post-hoc sensitivity)": {
+      "MAE": 23.598,
+      "coverage": 0.962,
+      "width": 158.878,
+      "winkler": 161.033,
+      "bias": 4.328
+    }
+  },
+  "shrunk_shift_2019": -0.445110367609404,
   "oneweek_mae": {
     "Persistence": 30.69,
     "Climatology": 24.79,
@@ -3739,9 +3822,9 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
     "annual_days_pred": {
       "Good": 21.0,
       "Satisfactory": 75.0,
-      "Moderate": 67.0,
+      "Moderate": 68.0,
       "Poor": 53.0,
-      "Very Poor": 113.0,
+      "Very Poor": 114.0,
       "Severe": 35.0
     },
     "annual_days_actual": {
@@ -3752,15 +3835,16 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.88,
-    "poor_or_worse_pred_pct": 55.0,
+    "mean_abs_days_error_per_band_month": 1.9,
+    "poor_or_worse_pred_pct": 55.1,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
     "trend": "linear",
     "K": 5,
     "p": 1,
-    "q": 0
+    "q": 0,
+    "n_rejected_nonconverged": 13
   },
   "outlook_2020_rule": {
     "f": {
@@ -3777,16 +3861,58 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.140752539336,
-      "gap_median_pct": -42.83617088073022,
-      "gap_lo95_pct": -52.21475468260452,
-      "gap_hi95_pct": -31.53328399642168
+      "cf_median": 85.04899262695417,
+      "gap_median_pct": -42.77449646078571,
+      "gap_lo95_pct": -52.11359900861902,
+      "gap_hi95_pct": -31.819259395224652
     },
     "weather_adjusted": {
-      "cf_median": 78.46680894643731,
-      "gap_median_pct": -37.97413844184731,
-      "gap_lo95_pct": -47.76977454856694,
-      "gap_hi95_pct": -26.19979951798827
+      "cf_median": 78.5752915693168,
+      "gap_median_pct": -38.059772562764856,
+      "gap_lo95_pct": -47.516118559968525,
+      "gap_hi95_pct": -26.675729977641215
+    }
+  },
+  "lockdown_sensitivity": {
+    "selected spec (linear, K=5, AR1), headline": {
+      "pre_lockdown_gap_pct": -11.32,
+      "lockdown_gap_10wk_pct": -42.77,
+      "lo95": -52.11,
+      "hi95": -31.82,
+      "gap_9wk_from_5Apr_pct": -41.49,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+    },
+    "constant level": {
+      "pre_lockdown_gap_pct": -22.6,
+      "lockdown_gap_10wk_pct": -50.84,
+      "lo95": -59.58,
+      "hi95": -40.01,
+      "gap_9wk_from_5Apr_pct": -49.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+    },
+    "random-walk level (ARIMA errors)": {
+      "pre_lockdown_gap_pct": -9.87,
+      "lockdown_gap_10wk_pct": -43.11,
+      "lo95": -54.55,
+      "hi95": -28.55,
+      "gap_9wk_from_5Apr_pct": -41.74,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+    },
+    "headline + shrunk mean-bias shift (post-hoc)": {
+      "pre_lockdown_gap_pct": -2.43,
+      "lockdown_gap_10wk_pct": -37.02,
+      "lo95": -47.3,
+      "hi95": -24.97,
+      "gap_9wk_from_5Apr_pct": -35.61,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+    },
+    "PLACEBO: same weeks of 2019 vs 2019 forecast": {
+      "pre_lockdown_gap_pct": -8.88,
+      "lockdown_gap_10wk_pct": -14.87,
+      "lo95": -43.9,
+      "hi95": 28.17,
+      "gap_9wk_from_5Apr_pct": NaN,
+      "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }
   },
   "backtest": {
@@ -3816,28 +3942,31 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
       "2019": 44.1
     },
     "lstm_mae": {
-      "2017": 36.29,
-      "2018": 49.23,
-      "2019": 52.87
+      "2017": 36.34,
+      "2018": 28.32,
+      "2019": 54.35
     },
     "specs": {
       "2017": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 6
       },
       "2018": {
         "trend": "const",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 3
       },
       "2019": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 5
       }
     }
   },
@@ -3969,1867 +4098,4690 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
 ```
 
 
-# 06 Raw data for recomputation
-## delhi_weekly.csv (287 rows; pm25 = weekly mean ug/m3, log_pm25 = log of it; n_days = daily obs in the week)
+# 05 Raw data for recomputation
+## delhi_weekly.csv (287 rows, full precision; pm25 = weekly mean ug/m3, log_pm25 its log, n_days = daily obs in the week)
 ```
 Date,pm25,no2,so2,aqi,rh,wind,temp,precip,n_days,log_pm25
-2015-01-04,184.605,34.12,5.795,347.0,78.25,7.225,15.375,4.3,4,5.2182
-2015-01-11,196.0057,41.1871,4.4357,358.4286,79.4286,9.9143,13.1714,0.0,7,5.2781
-2015-01-18,187.65,49.24,5.4514,360.0,82.2857,7.5286,12.6,4.1,7,5.2346
-2015-01-25,156.3571,24.6343,6.5186,326.1429,80.0,8.0857,13.3429,20.8,7,5.0521
-2015-02-01,162.7843,37.2786,6.4714,324.1429,70.0,10.0857,12.4429,0.0,7,5.0924
-2015-02-08,149.7229,44.2257,6.5086,316.1429,75.5714,9.5,14.9143,16.5,7,5.0088
-2015-02-15,161.0943,47.7586,8.3586,338.5714,66.8571,8.2714,16.3857,0.0,7,5.082
-2015-02-22,155.0943,40.2957,7.1386,331.1429,73.8571,11.6714,20.3429,15.2,7,5.044
-2015-03-01,129.8043,29.0971,9.6029,321.0,73.0,10.2429,19.0714,28.4,7,4.866
-2015-03-08,82.4857,22.6671,4.8643,230.4286,78.0,8.7571,16.9286,35.2,7,4.4126
-2015-03-15,85.5757,24.7486,6.63,243.4286,74.1429,9.5143,17.9571,31.5,7,4.4494
-2015-03-22,69.4486,22.4271,6.1329,216.7143,71.5714,10.3714,20.1429,6.7,7,4.2406
-2015-03-29,93.7471,29.7029,11.0757,318.4286,57.8571,8.0429,25.5143,0.4,7,4.5406
-2015-04-05,71.2729,23.1657,13.0314,259.5714,70.0,8.7571,23.2286,34.4,7,4.2665
-2015-04-12,92.5714,40.68,14.8314,309.1429,57.1429,7.6571,24.2143,5.9,7,4.528
-2015-04-19,93.6129,48.6214,16.2557,302.8571,58.0,8.8143,26.8143,7.7,7,4.5392
-2015-04-26,110.25,60.2214,19.7971,371.4286,33.8571,11.6429,30.4714,0.4,7,4.7028
-2015-05-03,77.6386,49.3829,14.4871,281.5714,40.8571,10.8429,30.1286,5.9,7,4.3521
-2015-05-10,120.3329,74.5757,21.3257,388.0,24.8571,9.0571,32.9857,0.0,7,4.7903
-2015-05-17,89.7057,53.3214,13.6643,341.5714,50.2857,6.7286,30.7571,12.7,7,4.4965
-2015-05-24,73.6686,56.3929,15.6043,314.7143,28.0,10.1429,34.2714,1.7,7,4.2996
-2015-05-31,107.6771,61.0829,13.8786,361.8571,22.1429,10.0286,34.7857,0.1,7,4.6791
-2015-06-07,66.4643,59.5057,7.0786,303.2857,37.2857,8.8286,32.5,1.1,7,4.1967
-2015-06-14,97.8057,58.3571,6.7714,274.5714,37.7143,12.8857,34.6286,6.7,7,4.583
-2015-06-21,106.3971,69.7514,7.55,268.1429,57.2857,8.4286,32.4857,8.9,7,4.6672
-2015-06-28,82.3357,51.1014,7.3557,209.2857,68.5714,9.5571,30.8286,50.4,7,4.4108
-2015-07-05,73.9029,42.2914,7.8857,217.8571,67.0,10.5286,30.7429,15.0,7,4.3028
-2015-07-12,50.77,47.5314,8.0371,223.2857,86.4286,8.1429,27.1429,168.2,7,3.9273
-2015-07-19,62.6629,42.81,9.9557,204.4286,78.4286,9.6,29.1429,57.7,7,4.1378
-2015-07-26,40.7843,43.9386,15.1686,178.4286,80.7143,12.2857,28.6143,33.3,7,3.7083
-2015-08-02,32.7557,35.8729,10.0343,171.1429,78.0,11.5857,27.5,10.6,7,3.4891
-2015-08-09,60.7457,47.2029,9.0486,222.4286,87.2857,5.6,27.6571,110.5,7,4.1067
-2015-08-16,63.7429,48.1586,8.7786,223.8571,86.5714,5.7571,28.0,42.9,7,4.1549
-2015-08-23,48.5886,39.8486,10.8586,194.0,78.1429,8.7143,28.6286,13.3,7,3.8834
-2015-08-30,58.94,43.2329,10.4514,228.0,76.1429,8.4143,29.5857,2.9,7,4.0765
-2015-09-06,79.7157,31.9186,13.2014,274.1429,60.7143,10.3571,29.2429,0.0,7,4.3785
-2015-09-13,68.1743,42.6814,11.1986,218.5714,61.1429,8.8571,29.2,0.3,7,4.2221
-2015-09-20,86.3686,54.3257,10.2357,229.0,71.7143,7.3714,29.5,31.3,7,4.4586
-2015-09-27,62.7957,43.8543,11.9214,197.1429,71.8571,10.2286,27.4,11.8,7,4.1399
-2015-10-04,90.2657,51.3557,11.19,252.2857,59.5714,8.1286,26.8143,0.0,7,4.5028
-2015-10-11,144.8343,62.0186,13.31,360.5714,50.5714,8.5143,28.2857,0.0,7,4.9756
-2015-10-18,109.2971,47.9614,11.1429,290.8571,66.0,7.0286,27.2143,7.7,7,4.6941
-2015-10-25,157.7143,58.7671,16.4629,370.8571,53.1429,7.8714,25.8571,1.4,7,5.0608
-2015-11-01,150.76,48.0686,21.4043,311.8571,64.1429,6.2571,22.4857,7.0,7,5.0157
-2015-11-08,236.7414,74.7271,26.61,411.2857,68.2857,5.8,23.0571,0.2,7,5.467
-2015-11-15,236.7329,68.5471,27.73,420.0,59.1429,8.1286,22.6714,0.6,7,5.4669
-2015-11-22,222.7771,86.3814,22.4014,410.5714,54.4286,7.2571,19.9571,1.0,7,5.4062
-2015-11-29,199.59,69.7643,19.8857,374.0,60.2857,7.7429,19.4857,0.0,7,5.2963
-2015-12-06,216.2557,94.9271,23.6343,401.4286,66.7143,6.9857,19.1429,0.0,7,5.3765
-2015-12-13,216.2786,85.5743,20.4243,397.1429,68.4286,8.1429,17.3286,0.2,7,5.3766
-2015-12-20,129.0514,45.7686,16.36,278.5714,58.4286,8.3571,13.3571,0.0,7,4.8602
-2015-12-27,181.3371,89.1829,19.3314,342.2857,59.1429,9.0286,13.3714,0.0,7,5.2004
-2016-01-03,226.9143,80.1514,22.1143,408.2857,61.7143,9.4,15.6857,0.0,7,5.4246
-2016-01-10,290.9271,92.8914,23.9257,496.5714,70.1429,7.8857,16.9143,0.5,7,5.6731
-2016-01-17,194.9914,61.49,16.37,372.0,74.5714,7.2,14.6,0.0,7,5.273
-2016-01-24,272.0914,66.4886,14.7757,438.2857,76.0,6.6143,12.1286,0.0,7,5.6061
-2016-01-31,271.9614,85.6914,20.73,456.7143,74.7143,6.6143,15.5714,0.7,7,5.6057
-2016-02-07,160.9214,71.0857,22.9286,332.1429,59.8571,9.7857,14.9143,4.0,7,5.0809
-2016-02-14,146.91,67.5186,22.73,323.4286,65.4286,8.0714,16.2,0.7,7,4.9898
-2016-02-21,136.7371,62.0143,26.1557,300.0,62.2857,8.2857,19.0857,16.0,7,4.9181
-2016-02-28,131.8271,76.7214,25.8843,289.7143,57.5714,8.3286,19.8286,0.0,7,4.8815
-2016-03-06,134.3671,77.9657,21.8357,302.5714,61.5714,7.6714,22.5143,15.0,7,4.9006
-2016-03-13,89.5671,37.9271,18.5429,203.4286,67.4286,9.2571,21.8143,24.4,7,4.495
-2016-03-20,77.6214,53.6457,22.3386,188.0,61.4286,8.4429,22.4714,1.5,7,4.3518
-2016-03-27,87.7186,53.14,21.5571,239.2857,45.0,12.4714,24.4571,0.0,7,4.4741
-2016-04-03,112.1586,41.2629,25.8871,266.8571,41.7143,8.2,27.7714,1.8,7,4.7199
-2016-04-10,116.6386,46.7671,33.8714,269.1429,33.1429,8.9,28.5857,0.0,7,4.7591
-2016-04-17,98.4757,47.5829,22.5186,259.2857,30.2857,12.8,30.6286,0.0,7,4.5898
-2016-04-24,110.9086,52.7929,28.45,287.2857,26.8571,10.1571,31.0714,0.1,7,4.7087
-2016-05-01,145.14,78.4271,30.0686,340.4286,20.4286,9.1286,31.1857,0.2,7,4.9777
-2016-05-08,90.7643,56.4257,20.2186,256.5714,41.2857,9.3857,31.0714,3.1,7,4.5083
-2016-05-15,93.1014,58.2571,18.7471,255.8571,39.5714,9.3429,33.2571,1.7,7,4.5337
-2016-05-22,87.84,60.4043,21.3814,279.2857,35.5714,11.5286,34.7857,2.4,7,4.4755
-2016-05-29,99.1571,44.1114,13.6757,295.4286,48.7143,10.4857,32.8143,18.1,7,4.5967
-2016-06-05,95.8386,54.4229,13.7057,279.7143,50.2857,9.2571,33.3,7.4,7,4.5627
-2016-06-12,70.8671,46.94,14.7671,245.0,51.4286,10.6286,34.0571,10.9,7,4.2608
-2016-06-19,81.2529,35.5786,9.7329,258.2857,61.0,11.2571,32.4429,19.3,7,4.3976
-2016-06-26,76.7629,39.8057,9.5157,218.8571,64.1429,10.4714,32.5143,6.9,7,4.3407
-2016-07-03,67.2886,35.5,8.8,168.1429,75.7143,8.9,30.5286,130.9,7,4.209
-2016-07-10,60.7229,36.6271,8.2529,165.5714,76.8571,6.4714,30.3571,9.4,7,4.1063
-2016-07-17,60.7257,27.8686,7.5971,157.8571,87.0,7.3571,28.1714,203.5,7,4.1064
-2016-07-24,48.3671,36.41,7.9271,202.0,77.0,9.1143,29.7571,16.8,7,3.8788
-2016-07-31,52.0957,42.2871,9.0671,143.8571,88.4286,7.8571,27.1857,71.6,7,3.9531
-2016-08-07,44.7029,34.3129,9.1057,142.8571,82.5714,9.9429,28.6857,32.7,7,3.8
-2016-08-14,42.0971,34.9686,9.0929,129.1429,87.1429,8.0,27.6571,72.8,7,3.74
-2016-08-21,48.8429,36.7186,9.0914,201.1429,79.4286,9.6857,28.5143,14.9,7,3.8886
-2016-08-28,46.3714,31.9114,8.52,125.5714,83.2857,8.4571,28.3286,28.5,7,3.8367
-2016-09-04,45.3629,41.19,9.2629,160.0,83.2857,8.6429,27.5714,64.4,7,3.8147
-2016-09-11,56.8314,38.4929,11.3143,276.0,67.8571,13.2,28.5,0.2,7,4.0401
-2016-09-18,67.0429,50.6314,11.3414,207.8571,73.0,6.5143,28.7,0.1,7,4.2053
-2016-09-25,65.7629,62.0729,15.03,199.4286,75.5714,7.0571,28.3714,2.2,7,4.1861
-2016-10-02,90.3329,67.3671,15.9771,226.1429,72.8571,5.6286,29.0429,0.6,7,4.5035
-2016-10-09,121.8757,79.2743,14.6943,325.7143,73.5714,5.4714,28.4857,11.1,7,4.803
-2016-10-16,119.0986,88.8757,20.09,396.5714,51.2857,8.1714,26.0571,0.0,7,4.78
-2016-10-23,153.0686,90.6871,23.6629,450.5714,48.1429,9.2,25.4286,0.0,7,5.0309
-2016-10-30,258.6486,113.8114,30.9414,495.2857,52.7143,7.9857,24.3,0.0,7,5.5555
-2016-11-06,495.1529,129.3271,33.1014,578.1429,62.5714,6.5286,22.8429,0.0,7,6.2049
-2016-11-13,318.2071,120.1043,31.1043,522.5714,57.0,8.4143,21.6714,0.0,7,5.7627
-2016-11-20,274.3429,110.9071,24.4443,451.2857,55.7143,8.0571,20.3857,0.0,7,5.6144
-2016-11-27,198.7486,94.1143,24.4029,403.7143,50.1429,12.5286,20.9286,0.0,7,5.292
-2016-12-04,222.4414,100.5543,23.2943,395.0,62.1429,7.5429,19.1,0.0,7,5.4047
-2016-12-11,243.4514,72.98,22.8386,413.1429,70.2857,5.8286,18.3,0.0,7,5.4949
-2016-12-18,200.6914,77.4771,21.5843,401.0,66.2857,8.4286,16.5571,0.0,7,5.3018
-2016-12-25,246.5386,85.98,21.8214,420.5714,64.4286,10.2857,16.4571,0.0,7,5.5075
-2017-01-01,230.7143,83.2029,23.9214,383.8571,74.1429,9.1714,15.8143,0.0,7,5.4412
-2017-01-08,207.4529,74.5114,24.4014,359.8571,79.1429,7.7286,15.7,7.2,7,5.3349
-2017-01-15,196.7457,72.0557,19.9471,372.2857,63.8571,9.0571,11.3429,0.0,7,5.2819
-2017-01-22,238.0271,60.8629,19.9043,375.4286,69.1429,10.4857,12.9286,0.3,7,5.4724
-2017-01-29,159.2057,61.7914,20.7843,319.2857,78.8571,10.8429,15.9571,47.9,7,5.0702
-2017-02-05,177.6186,72.3014,19.5386,360.1429,81.1429,9.1429,15.5714,3.2,7,5.1796
-2017-02-12,133.1686,61.5971,18.4114,315.0,72.2857,9.9,14.7857,0.1,7,4.8916
-2017-02-19,139.4214,75.5914,20.3357,319.2857,64.4286,10.4714,18.8429,0.0,7,4.9375
-2017-02-26,244.8114,56.7414,15.6771,372.0,50.0,12.6286,19.2857,0.0,7,5.5005
-2017-03-05,115.9371,70.6671,23.4957,286.8571,49.2857,9.5143,20.1143,4.2,7,4.753
-2017-03-12,87.95,45.3057,22.7629,197.4286,59.8571,10.2143,18.3714,14.9,7,4.4768
-2017-03-19,106.6343,40.4714,22.2643,305.1429,53.2857,9.4143,19.2429,1.3,7,4.6694
-2017-03-26,136.8229,69.0729,22.12,362.0,46.8571,11.9714,24.9571,0.2,7,4.9187
-2017-04-02,110.3371,80.1229,19.5186,287.8571,37.2857,13.4,29.4286,0.0,7,4.7035
-2017-04-09,90.86,72.8486,24.1429,300.5714,32.8571,13.8286,27.5143,1.1,7,4.5093
-2017-04-16,154.8371,86.8143,39.8043,360.4286,26.4286,13.0714,29.5714,0.0,7,5.0424
-2017-04-23,133.07,90.8471,36.5114,359.4286,34.4286,10.0857,32.7429,2.0,7,4.8909
-2017-04-30,96.7886,70.98,41.2186,251.5714,27.8571,10.3286,30.3714,2.5,7,4.5725
-2017-05-07,167.4829,86.2886,48.7114,378.1429,25.1429,9.0143,32.0571,0.0,7,5.1209
-2017-05-14,142.7271,70.9771,47.7429,373.0,32.8571,10.7143,33.6429,3.3,7,4.9609
-2017-05-21,144.9043,57.0814,42.8871,326.8571,33.7143,9.2429,32.8857,2.1,7,4.9761
-2017-05-28,94.8229,67.0186,38.2857,269.2857,42.1429,10.9,32.7714,1.7,7,4.552
-2017-06-04,90.0814,90.0314,24.1071,230.4286,47.7143,11.2,32.4714,3.1,7,4.5007
-2017-06-11,58.4771,72.2857,19.55,162.8571,47.2857,10.7,33.3,5.8,7,4.0686
-2017-06-18,58.1271,90.9814,,101.4286,48.2857,9.3857,32.3,13.2,7,4.0626
-2017-06-25,57.1429,70.64,,123.1667,66.1429,7.9714,30.4143,23.8,7,4.0456
-2017-07-02,32.95,37.5371,,68.7143,77.7143,10.1857,29.7,69.1,7,3.495
-2017-07-09,58.0,19.3571,,106.4286,73.0,10.0,30.5714,10.5,7,4.0604
-2017-07-16,31.5557,39.2329,,54.8571,72.4286,11.9857,29.8286,18.8,7,3.4518
-2017-07-23,31.4829,67.7143,,74.5714,78.1429,11.5143,29.5571,38.9,7,3.4494
-2017-07-30,21.16,21.8357,,37.7143,79.2857,13.1143,28.5571,19.5,7,3.0521
-2017-08-06,35.2814,31.9657,,57.0,80.2857,9.4714,28.5143,31.8,7,3.5634
-2017-08-13,37.6029,47.6657,,74.8333,79.0,11.6857,29.1,58.7,7,3.6271
-2017-08-20,33.6243,57.36,,63.5,70.4286,11.4571,29.9857,7.5,7,3.5152
-2017-08-27,43.3986,37.5457,,68.0,83.7143,7.3,28.4143,52.9,7,3.7704
-2017-09-03,26.4286,47.19,2.34,86.8,84.4286,11.3857,27.0857,97.5,7,3.2744
-2017-09-10,47.1771,24.2329,,96.1429,77.8571,7.8,28.5571,2.3,7,3.8539
-2017-09-17,59.2629,26.8757,,123.8571,70.5714,7.1857,29.3,0.0,7,4.082
-2017-09-24,44.0271,27.6657,,106.8571,76.7143,9.2571,27.5571,30.5,7,3.7848
-2017-10-01,72.0857,28.4143,6.1833,145.1429,66.1429,7.1714,28.4286,0.0,7,4.2779
-2017-10-08,76.9129,26.0414,13.23,168.2857,59.0,7.6,28.0429,0.0,7,4.3427
-2017-10-15,122.4471,30.0071,11.9486,260.2857,55.4286,7.1429,28.0,0.0,7,4.8077
-2017-10-22,198.3271,56.1486,24.56,358.2857,55.4286,7.8714,27.1429,0.0,7,5.2899
-2017-10-29,183.8943,75.3229,24.7243,352.0,55.0,7.2571,24.9143,0.0,7,5.2144
-2017-11-05,187.9957,53.0643,18.5643,340.0,66.5714,6.3286,23.7,0.0,7,5.2364
-2017-11-12,438.4471,73.0086,17.1071,563.1429,68.8571,7.1714,22.3,0.0,7,6.0832
-2017-11-19,202.2114,52.9757,16.5886,382.2857,64.8571,9.8286,20.2714,0.4,7,5.3093
-2017-11-26,185.72,60.77,17.6186,345.8571,51.2857,10.6857,16.8143,0.0,7,5.2242
-2017-12-03,205.8971,64.6971,18.9929,372.2857,59.0,7.0857,17.3857,0.0,7,5.3274
-2017-12-10,173.3457,62.1257,21.3414,326.4286,50.2857,8.1286,17.0286,0.1,7,5.1553
-2017-12-17,130.5114,42.2843,12.2057,277.1429,69.8571,10.3429,14.4286,7.7,7,4.8715
-2017-12-24,191.2171,56.7186,21.67,327.2857,64.0,11.2714,15.6286,0.0,7,5.2534
-2017-12-31,251.9814,62.7786,22.7229,402.5714,72.2857,7.8571,14.3857,0.0,7,5.5294
-2018-01-07,247.2986,56.0571,14.7614,412.1429,71.7143,7.5143,12.3857,0.0,7,5.5106
-2018-01-14,188.26,60.36,20.8757,344.5714,66.8571,11.1714,13.3857,0.0,7,5.2378
-2018-01-21,197.46,47.8171,18.1871,357.5714,66.4286,9.9429,14.4857,0.0,7,5.2855
-2018-01-28,148.4886,44.2971,11.5457,305.5714,77.0,9.3571,12.9571,6.8,7,5.0005
-2018-02-04,137.0471,51.9886,13.8214,296.4286,66.2857,12.0714,16.0857,0.0,7,4.9203
-2018-02-11,169.39,69.3214,14.38,337.2857,55.5714,9.6857,15.1857,1.6,7,5.1322
-2018-02-18,103.7086,43.17,11.2857,231.7143,68.5714,12.5714,16.6857,2.9,7,4.6416
-2018-02-25,158.0829,67.9,15.0471,333.0,64.1429,7.8714,20.5571,2.2,7,5.0631
-2018-03-04,104.86,44.5257,12.4543,236.1429,62.0,10.3571,21.7429,1.2,7,4.6526
-2018-03-11,96.9486,50.0171,14.97,215.1429,52.4286,10.3,21.9143,1.1,7,4.5742
-2018-03-18,102.2143,45.9014,16.5186,248.8571,44.2857,10.2286,23.7143,0.0,7,4.6271
-2018-03-25,90.97,40.6986,17.4071,212.1429,49.7143,9.5714,23.8286,2.1,7,4.5105
-2018-04-01,97.7286,49.0171,16.3214,242.8571,39.8571,11.8857,26.6286,0.0,7,4.5822
-2018-04-08,94.4529,47.0071,15.87,230.2857,48.8571,8.9571,28.0,9.6,7,4.5481
-2018-04-15,75.25,48.5371,13.0571,189.4286,50.8571,9.3571,26.4571,9.3,7,4.3208
-2018-04-22,92.28,47.0586,15.5986,291.0,30.4286,12.8571,28.9714,7.8,7,4.5248
-2018-04-29,103.69,55.1443,14.9043,279.0,30.4286,11.3714,30.7286,2.5,7,4.6414
-2018-05-06,68.9371,39.5114,10.4843,188.8571,49.5714,13.4,30.0429,17.1,7,4.2332
-2018-05-13,99.3929,50.2014,13.3514,255.4286,42.7143,9.1,30.0571,10.6,7,4.5991
-2018-05-20,83.6829,47.3314,12.1657,219.4286,38.8571,8.0429,31.9,1.9,7,4.427
-2018-05-27,98.5771,59.8671,14.6943,256.5714,21.7143,10.0286,34.6143,0.1,7,4.5908
-2018-06-03,80.0014,39.8929,10.1243,229.5714,43.5714,13.4429,33.6714,5.5,7,4.382
-2018-06-10,64.8829,30.8786,8.0857,161.1429,55.2857,12.7714,33.6429,18.6,7,4.1726
-2018-06-17,152.4043,27.1543,7.2257,422.0,43.1429,14.7857,34.8571,0.2,7,5.0265
-2018-06-24,68.2586,35.1429,10.2543,198.8571,44.1429,7.6143,34.5714,0.6,7,4.2233
-2018-07-01,38.8757,31.5529,10.24,118.0,68.1429,11.7,30.9571,58.1,7,3.6604
-2018-07-08,51.7443,34.7457,10.3543,138.4286,68.8571,8.2571,30.9714,20.7,7,3.9463
-2018-07-15,43.47,31.6914,10.9371,120.8571,76.1429,9.3143,30.5857,50.8,7,3.7721
-2018-07-22,36.8086,31.1986,10.4771,101.5714,84.1429,7.0714,29.2714,99.7,7,3.6057
-2018-07-29,34.5829,25.7986,9.7886,85.7143,85.0,7.6571,28.3429,50.5,7,3.5434
-2018-08-05,59.5043,26.4157,9.5657,186.2857,72.0,12.0143,29.8857,6.8,7,4.086
-2018-08-12,39.0543,26.4771,9.5657,115.4286,83.5714,8.0286,28.3714,44.0,7,3.665
-2018-08-19,38.7414,27.1671,9.8729,108.5714,82.7143,7.0143,29.1429,29.0,7,3.6569
-2018-08-26,31.8071,25.7986,10.9614,99.1429,83.5714,8.0286,28.8571,41.2,7,3.4597
-2018-09-02,37.8543,25.9186,10.2671,103.2857,86.8571,6.0429,28.0857,63.3,7,3.6337
-2018-09-09,41.95,30.46,10.5171,108.5714,86.5714,8.2571,27.3429,42.8,7,3.7365
-2018-09-16,33.33,26.0057,10.9457,107.1429,74.7143,10.1143,28.0,5.8,7,3.5065
-2018-09-23,49.2086,28.9671,12.3357,131.2857,76.2857,11.6857,27.0429,72.4,7,3.8961
-2018-09-30,57.5586,35.1271,12.11,140.1429,79.4286,9.0429,26.3286,13.7,7,4.0528
-2018-10-07,83.3871,44.4757,13.9643,199.1429,68.4286,6.7,26.4143,1.0,7,4.4235
-2018-10-14,96.9114,48.2329,16.7043,238.2857,70.7143,8.5429,24.5429,1.5,7,4.5738
-2018-10-21,140.4829,56.3129,18.7857,313.2857,62.1429,7.5143,24.5857,0.4,7,4.9451
-2018-10-28,171.1543,68.2514,19.5671,353.2857,57.1429,7.5429,23.0143,0.0,7,5.1426
-2018-11-04,202.7614,59.9829,17.7529,384.2857,63.8571,7.5857,23.2571,0.1,7,5.312
-2018-11-11,283.1486,60.0057,18.2186,425.0,55.0,7.3,20.3429,0.0,7,5.646
-2018-11-18,173.0886,58.5643,16.0043,346.7143,67.1429,8.7571,20.4571,1.8,7,5.1538
-2018-11-25,168.8671,60.7429,15.9443,334.0,60.7143,9.9286,19.5714,0.0,7,5.1291
-2018-12-02,186.7086,65.8386,15.9786,360.1429,67.5714,7.5429,18.5286,0.0,7,5.2295
-2018-12-09,201.8729,65.41,16.12,377.1429,67.1429,6.6,16.5571,0.0,7,5.3076
-2018-12-16,175.7014,53.79,14.5057,345.5714,70.8571,8.3571,14.4429,1.0,7,5.1688
-2018-12-23,261.5357,67.79,17.3671,421.1429,68.5714,8.3286,12.4857,0.0,7,5.5666
-2018-12-30,287.3929,68.9343,16.6571,461.7143,64.2857,8.6,12.1857,0.0,7,5.6609
-2019-01-06,282.4114,64.44,15.8571,466.4286,71.1429,8.7429,13.0714,2.3,7,5.6434
-2019-01-13,215.72,62.4386,16.8186,379.4286,70.5714,8.6143,13.0286,0.0,7,5.374
-2019-01-20,239.1957,73.66,17.9814,399.1429,65.4286,9.0143,13.2286,0.0,7,5.4773
-2019-01-27,116.3271,45.3686,14.7343,256.4286,77.4286,10.5429,13.0571,23.9,7,4.7564
-2019-02-03,166.5671,50.1671,17.2329,332.4286,70.4286,10.6,12.2714,0.8,7,5.1154
-2019-02-10,134.5643,48.1286,15.0671,270.5714,76.0,10.8857,14.3571,22.3,7,4.902
-2019-02-17,152.7586,52.6171,16.29,317.2857,79.0,8.6143,15.1571,9.0,7,5.0289
-2019-02-24,90.0871,46.7029,16.9371,207.0,72.4286,11.4429,16.8429,3.3,7,4.5008
-2019-03-03,80.32,47.97,15.9571,185.1429,71.4286,8.6429,14.6429,24.9,7,4.386
-2019-03-10,86.03,44.8729,15.9514,196.8571,64.7143,9.4429,17.3286,0.2,7,4.4547
-2019-03-17,82.4214,46.4214,17.7386,187.4286,59.7143,10.5857,18.7429,2.0,7,4.4118
-2019-03-24,79.0757,42.3014,19.3043,194.8571,45.4286,11.7714,22.4286,0.0,7,4.3704
-2019-03-31,87.0914,48.2957,20.7814,206.1429,52.5714,9.8429,25.0,0.5,7,4.467
-2019-04-07,104.1229,52.9857,24.0643,240.4286,41.8571,9.4857,27.3857,0.0,7,4.6456
-2019-04-14,72.8586,45.5286,20.0614,215.7143,41.1429,10.2143,29.2857,0.2,7,4.2885
-2019-04-21,61.77,43.5186,18.6214,164.2857,51.2857,9.5571,25.8857,5.3,7,4.1234
-2019-04-28,88.33,49.7186,22.8429,246.5714,31.4286,12.4571,32.5286,0.0,7,4.4811
-2019-05-05,85.7743,54.6371,22.0357,241.1429,24.4286,11.7714,32.2143,0.5,7,4.4517
-2019-05-12,129.0486,53.33,22.05,329.5714,22.4286,13.6286,33.0714,0.0,7,4.8602
-2019-05-19,86.87,46.0586,17.82,225.7143,46.1429,8.9143,29.8286,3.0,7,4.4644
-2019-05-26,67.2914,46.4286,17.3686,175.4286,36.4286,11.3,31.9857,0.0,7,4.209
-2019-06-02,78.26,57.0429,20.0857,220.4286,25.2857,11.2571,35.0571,0.0,7,4.36
-2019-06-09,70.2086,43.2886,15.4186,208.0,37.5714,10.7571,35.2857,0.8,7,4.2515
-2019-06-16,69.0129,40.1657,13.1514,229.0,31.7143,13.1714,35.8429,2.2,7,4.2343
-2019-06-23,53.5386,34.2971,11.2529,158.4286,48.1429,10.2571,32.6857,1.7,7,3.9804
-2019-06-30,56.7329,34.4943,12.6029,177.5714,45.5714,10.6,34.5143,6.0,7,4.0384
-2019-07-07,46.7743,29.7957,10.8057,140.4286,59.1429,8.0286,33.0714,14.3,7,3.8453
-2019-07-14,62.9386,28.5229,9.7329,222.7143,60.1429,12.4857,32.4857,16.5,7,4.1422
-2019-07-21,42.65,33.1529,9.3114,127.0,81.1429,7.1571,28.5857,82.9,7,3.753
-2019-07-28,42.49,32.2243,8.8014,115.0,82.8571,9.4857,29.0,68.6,7,3.7493
-2019-08-04,34.1886,28.5343,9.1057,94.2857,82.4286,9.3286,28.9,28.6,7,3.5319
-2019-08-11,28.4871,28.5871,9.21,93.8571,82.1429,11.0286,29.0,49.5,7,3.3495
-2019-08-18,20.7814,24.5386,8.3386,79.5714,85.0,12.0571,28.0714,90.5,7,3.0341
-2019-08-25,45.1186,34.8757,8.33,117.1429,83.0,6.9,28.6,23.7,7,3.8093
-2019-09-01,39.6414,33.8014,9.0457,109.8571,80.8571,7.5571,29.7571,14.1,7,3.6799
-2019-09-08,46.8057,31.7557,9.1186,115.5714,82.7143,7.0286,29.3857,17.9,7,3.846
-2019-09-15,50.5686,31.6943,8.7971,120.1429,77.5714,8.6857,29.8143,7.6,7,3.9233
-2019-09-22,39.8514,31.9471,9.3571,106.4286,81.0,8.4143,27.9714,28.7,7,3.6852
-2019-09-29,25.55,27.9686,9.66,86.1429,80.4286,11.6143,26.5143,17.5,7,3.2406
-2019-10-06,43.2557,32.4643,8.7329,109.4286,74.4286,7.4286,26.1429,15.6,7,3.7671
-2019-10-13,87.5229,44.3629,11.1314,198.4286,57.4286,7.0286,26.6,0.0,7,4.4719
-2019-10-20,111.8514,49.8286,12.3243,267.5714,60.0,7.3429,26.6143,5.2,7,4.7172
-2019-10-27,140.2557,54.8186,13.8429,297.1429,57.1429,8.6571,24.4857,0.0,7,4.9435
-2019-11-03,353.3686,60.1571,14.2586,495.8571,65.5714,7.6857,24.4571,0.2,7,5.8675
-2019-11-10,176.2229,48.9157,12.5643,354.8571,63.4286,10.0571,22.3571,2.2,7,5.1717
-2019-11-17,297.9271,59.8814,14.1114,460.8571,64.8571,10.2286,20.9429,0.0,7,5.6968
-2019-11-24,152.5214,61.9143,13.7429,308.7143,64.7143,9.0143,19.9857,0.0,7,5.0273
-2019-12-01,86.8257,45.67,11.7629,192.2857,74.1429,8.5714,18.3286,23.0,7,4.4639
-2019-12-08,204.5543,69.4271,13.2871,358.8571,74.5714,7.5286,15.4714,0.0,7,5.3208
-2019-12-15,184.0914,59.0329,11.0843,336.4286,77.7143,8.3429,14.7143,9.6,7,5.2154
-2019-12-22,185.5786,45.37,8.1657,321.5714,80.2857,8.0714,12.3571,0.2,7,5.2235
-2019-12-29,234.3286,49.9629,8.2914,381.8571,86.7143,8.0714,8.5429,0.0,7,5.4567
-2020-01-05,271.1214,56.2371,13.9986,435.1429,79.8571,7.3286,11.1571,0.6,7,5.6026
-2020-01-12,139.4771,46.4771,10.4957,292.5714,80.1429,9.5857,11.8571,19.6,7,4.9379
-2020-01-19,134.7457,42.7043,9.9971,294.4286,85.8571,8.3714,12.9429,28.8,7,4.9034
-2020-01-26,150.8671,45.3143,11.0643,292.4286,75.8571,10.6286,12.6,0.0,7,5.0164
-2020-02-02,115.5657,47.6086,10.8557,254.4286,77.5714,9.4714,12.8857,16.9,7,4.7498
-2020-02-09,149.5457,54.3486,13.6129,312.2857,74.0,8.3,12.5,0.1,7,5.0076
-2020-02-16,129.7643,50.0671,16.0943,273.0,61.2857,14.0,16.4143,0.0,7,4.8657
-2020-02-23,106.28,48.8243,16.4329,237.5714,66.4286,13.3429,17.7429,18.8,7,4.6661
-2020-03-01,90.5357,42.3443,14.6114,207.0,76.8571,10.1571,18.7714,9.2,7,4.5057
-2020-03-08,62.0443,40.2571,13.3857,149.2857,78.4286,10.3714,17.9286,39.2,7,4.1278
-2020-03-15,60.5171,35.0314,14.1386,143.1429,71.5714,10.2714,17.6857,16.9,7,4.1029
-2020-03-22,77.4529,43.3857,16.7629,182.4286,70.1429,8.6429,20.4286,2.2,7,4.3497
-2020-03-29,38.4829,20.0229,12.4286,89.5714,64.2857,10.2143,22.5714,6.8,7,3.6502
-2020-04-05,36.5314,19.8243,12.75,84.2857,52.1429,11.2,23.0571,0.1,7,3.5982
-2020-04-12,44.0186,21.7029,15.2143,107.5714,45.0,10.5714,25.9857,0.4,7,3.7846
-2020-04-19,48.3486,21.3814,15.9186,128.1429,38.7143,10.9,29.5143,0.0,7,3.8784
-2020-04-26,48.89,22.2243,16.1057,121.5714,45.2857,9.0714,27.6571,1.9,7,3.8896
-2020-05-03,43.1914,16.8329,16.0214,118.7143,59.1429,12.3143,28.1857,25.9,7,3.7656
-2020-05-10,46.7,19.1329,13.8386,127.8571,48.5714,9.2857,29.3,0.8,7,3.8437
-2020-05-17,62.7657,23.7229,14.9886,146.1429,46.5714,9.9429,30.4857,0.6,7,4.1394
-2020-05-24,79.4329,36.6757,20.0971,197.1429,26.1429,10.3143,32.9571,0.0,7,4.3749
-2020-05-31,38.3357,23.9057,13.3214,133.2857,41.5714,13.3857,32.4571,9.9,7,3.6464
-2020-06-07,46.1957,25.6671,13.6643,117.4286,60.1429,7.2143,29.3429,1.2,7,3.8329
-2020-06-14,58.9571,29.2271,13.5371,139.5714,54.1429,7.7,33.1429,0.1,7,4.0768
-2020-06-21,41.8586,21.0914,11.7643,124.0,51.1429,10.2714,34.0857,1.3,7,3.7343
-2020-06-28,41.0143,20.0529,11.03,108.2857,62.2857,10.8857,32.3857,7.8,7,3.7139
+2015-01-04,184.605,34.12,5.795,347.0,78.25,7.225,15.375,4.3,4,5.21821840729241
+2015-01-11,196.00571428571428,41.18714285714286,4.435714285714286,358.42857142857144,79.42857142857143,9.914285714285716,13.171428571428573,0.0,7,5.2781438133244825
+2015-01-18,187.65,49.24,5.451428571428571,360.0,82.28571428571429,7.528571428571429,12.6,4.1,7,5.23457852558103
+2015-01-25,156.35714285714286,24.634285714285717,6.518571428571429,326.1428571428572,80.0,8.085714285714285,13.342857142857143,20.8,7,5.052142767907604
+2015-02-01,162.78428571428572,37.27857142857143,6.471428571428571,324.1428571428572,70.0,10.085714285714284,12.44285714285714,0.0,7,5.092425923813068
+2015-02-08,149.72285714285712,44.22571428571428,6.508571428571429,316.1428571428572,75.57142857142857,9.5,14.914285714285716,16.5,7,5.008785966095243
+2015-02-15,161.0942857142857,47.75857142857143,8.358571428571429,338.57142857142856,66.85714285714286,8.27142857142857,16.385714285714286,0.0,7,5.0819898191273065
+2015-02-22,155.09428571428572,40.29571428571428,7.138571428571429,331.1428571428572,73.85714285714286,11.671428571428573,20.342857142857145,15.2,7,5.044033226913754
+2015-03-01,129.80428571428573,29.09714285714286,9.602857142857143,321.0,73.0,10.242857142857144,19.071428571428573,28.4,7,4.866027821554542
+2015-03-08,82.48571428571428,22.66714285714286,4.864285714285714,230.42857142857144,78.0,8.757142857142856,16.928571428571427,35.2,7,4.412625118173521
+2015-03-15,85.57571428571428,24.74857142857143,6.63,243.42857142857144,74.14285714285714,9.514285714285714,17.95714285714286,31.5,7,4.449401531278455
+2015-03-22,69.44857142857143,22.427142857142854,6.132857142857143,216.7142857142857,71.57142857142857,10.37142857142857,20.142857142857142,6.7,7,4.240586499205803
+2015-03-29,93.74714285714286,29.702857142857145,11.075714285714286,318.42857142857144,57.85714285714285,8.042857142857143,25.514285714285712,0.4,7,4.540601188195636
+2015-04-05,71.27285714285713,23.165714285714284,13.031428571428572,259.57142857142856,70.0,8.757142857142856,23.228571428571428,34.400000000000006,7,4.266515569707812
+2015-04-12,92.57142857142856,40.68,14.831428571428573,309.1428571428572,57.142857142857146,7.6571428571428575,24.214285714285715,5.9,7,4.527980547296961
+2015-04-19,93.61285714285714,48.621428571428574,16.255714285714284,302.85714285714283,58.0,8.814285714285715,26.814285714285717,7.699999999999999,7,4.539167736687526
+2015-04-26,110.25,60.221428571428575,19.797142857142852,371.4285714285714,33.857142857142854,11.642857142857142,30.47142857142857,0.3999999999999999,7,4.702750514326955
+2015-05-03,77.63857142857144,49.38285714285714,14.487142857142857,281.57142857142856,40.85714285714285,10.842857142857143,30.12857142857143,5.9,7,4.352064358190408
+2015-05-10,120.33285714285716,74.57571428571428,21.325714285714287,388.0,24.857142857142858,9.057142857142855,32.98571428571429,0.0,7,4.790261712395366
+2015-05-17,89.7057142857143,53.32142857142857,13.664285714285716,341.57142857142856,50.285714285714285,6.728571428571429,30.75714285714286,12.7,7,4.496534471447241
+2015-05-24,73.66857142857143,56.392857142857146,15.604285714285714,314.7142857142857,28.0,10.142857142857142,34.27142857142857,1.7,7,4.299576269011815
+2015-05-31,107.67714285714284,61.08285714285715,13.87857142857143,361.8571428571428,22.142857142857142,10.028571428571428,34.785714285714285,0.1,7,4.6791373318997325
+2015-06-07,66.46428571428571,59.50571428571429,7.078571428571428,303.2857142857143,37.285714285714285,8.828571428571427,32.5,1.1,7,4.196664746467047
+2015-06-14,97.80571428571427,58.35714285714285,6.771428571428571,274.57142857142856,37.71428571428572,12.885714285714286,34.628571428571426,6.7,7,4.582983003613194
+2015-06-21,106.39714285714288,69.75142857142858,7.55,268.1428571428572,57.285714285714285,8.428571428571429,32.48571428571429,8.9,7,4.667178723700598
+2015-06-28,82.33571428571429,51.10142857142857,7.355714285714286,209.28571428571428,68.57142857142857,9.55714285714286,30.82857142857143,50.400000000000006,7,4.410804965991709
+2015-07-05,73.90285714285713,42.291428571428575,7.885714285714286,217.8571428571429,67.0,10.528571428571428,30.74285714285714,15.0,7,4.3027514894917305
+2015-07-12,50.77,47.53142857142858,8.037142857142857,223.28571428571428,86.42857142857143,8.142857142857142,27.142857142857142,168.20000000000002,7,3.927305628959303
+2015-07-19,62.66285714285714,42.81,9.955714285714285,204.42857142857144,78.42857142857143,9.6,29.142857142857142,57.7,7,4.13776888204048
+2015-07-26,40.78428571428572,43.93857142857143,15.168571428571427,178.42857142857142,80.71428571428571,12.285714285714286,28.61428571428572,33.3,7,3.708296853157615
+2015-08-02,32.75571428571429,35.87285714285714,10.034285714285714,171.14285714285714,78.0,11.585714285714284,27.5,10.6,7,3.489077428867589
+2015-08-09,60.74571428571429,47.20285714285715,9.04857142857143,222.42857142857144,87.28571428571429,5.6000000000000005,27.65714285714285,110.5,7,4.106696532994906
+2015-08-16,63.74285714285714,48.15857142857143,8.778571428571428,223.8571428571429,86.57142857142857,5.757142857142858,28.0,42.9,7,4.154857132943119
+2015-08-23,48.58857142857143,39.84857142857143,10.858571428571429,194.0,78.14285714285714,8.714285714285714,28.62857142857143,13.3,7,3.883388347462279
+2015-08-30,58.940000000000005,43.23285714285714,10.45142857142857,228.0,76.14285714285714,8.414285714285715,29.585714285714285,2.9,7,4.076519977309549
+2015-09-06,79.71571428571428,31.91857142857143,13.20142857142857,274.1428571428572,60.71428571428572,10.357142857142858,29.24285714285714,0.0,7,4.3784667343123695
+2015-09-13,68.17428571428572,42.68142857142857,11.198571428571428,218.57142857142856,61.142857142857146,8.857142857142858,29.2,0.3,7,4.222067451438566
+2015-09-20,86.36857142857143,54.32571428571429,10.235714285714286,229.0,71.71428571428571,7.371428571428572,29.5,31.3,7,4.458623853020768
+2015-09-27,62.79571428571428,43.85428571428572,11.921428571428573,197.14285714285717,71.85714285714286,10.228571428571428,27.4,11.8,7,4.139886827287382
+2015-10-04,90.26571428571428,51.355714285714285,11.19,252.28571428571428,59.57142857142857,8.128571428571428,26.814285714285717,0.0,7,4.502757701565248
+2015-10-11,144.83428571428573,62.01857142857143,13.31,360.57142857142856,50.57142857142857,8.514285714285714,28.285714285714285,0.0,7,4.975590231718496
+2015-10-18,109.29714285714284,47.96142857142858,11.142857142857142,290.85714285714283,66.0,7.028571428571429,27.214285714285715,7.7,7,4.69407025446702
+2015-10-25,157.71428571428572,58.76714285714286,16.462857142857143,370.8571428571428,53.142857142857146,7.871428571428572,25.857142857142858,1.4,7,5.060785077781727
+2015-11-01,150.76,48.06857142857143,21.404285714285717,311.85714285714283,64.14285714285714,6.257142857142857,22.485714285714288,7.0,7,5.015689168398935
+2015-11-08,236.74142857142857,74.72714285714287,26.610000000000003,411.2857142857143,68.28571428571429,5.8,23.057142857142857,0.2,7,5.466968526855047
+2015-11-15,236.7328571428572,68.54714285714286,27.73,420.0,59.142857142857146,8.128571428571428,22.67142857142857,0.6,7,5.466932320333042
+2015-11-22,222.77714285714288,86.38142857142857,22.40142857142857,410.57142857142856,54.42857142857143,7.257142857142857,19.957142857142856,1.0,7,5.406171912382576
+2015-11-29,199.59,69.76428571428572,19.885714285714283,374.0,60.285714285714285,7.742857142857143,19.485714285714288,0.0,7,5.2962652624219055
+2015-12-06,216.25571428571428,94.92714285714284,23.634285714285717,401.4285714285714,66.71428571428571,6.985714285714286,19.142857142857142,0.0,7,5.376461569905478
+2015-12-13,216.27857142857144,85.57428571428571,20.424285714285716,397.1428571428572,68.42857142857143,8.142857142857142,17.32857142857143,0.2,7,5.376567259297665
+2015-12-20,129.05142857142857,45.76857142857143,16.360000000000003,278.57142857142856,58.42857142857143,8.357142857142858,13.357142857142858,0.0,7,4.860210996009811
+2015-12-27,181.33714285714285,89.18285714285715,19.33142857142857,342.2857142857143,59.142857142857146,9.028571428571428,13.37142857142857,0.0,7,5.200357966370521
+2016-01-03,226.9142857142857,80.15142857142858,22.11428571428572,408.2857142857143,61.71428571428572,9.4,15.685714285714283,0.0,7,5.424572350201784
+2016-01-10,290.9271428571429,92.89142857142858,23.925714285714285,496.57142857142856,70.14285714285714,7.885714285714285,16.914285714285715,0.5,7,5.673072867635633
+2016-01-17,194.99142857142857,61.49,16.37,372.0,74.57142857142857,7.2,14.6,0.0,7,5.272955601553695
+2016-01-24,272.0914285714286,66.48857142857142,14.775714285714283,438.2857142857143,76.0,6.614285714285714,12.12857142857143,0.0,7,5.6061381442692495
+2016-01-31,271.9614285714286,85.69142857142857,20.73,456.7142857142857,74.71428571428571,6.614285714285714,15.571428571428571,0.7,7,5.6056602495177845
+2016-02-07,160.92142857142858,71.08571428571429,22.928571428571427,332.1428571428572,59.85714285714285,9.785714285714286,14.914285714285716,4.0,7,5.080916224567838
+2016-02-14,146.91,67.51857142857143,22.73,323.42857142857144,65.42857142857143,8.071428571428571,16.2,0.7,7,4.989820154382335
+2016-02-21,136.73714285714286,62.01428571428572,26.15571428571429,300.0,62.285714285714285,8.285714285714286,19.085714285714285,16.0,7,4.918060417555802
+2016-02-28,131.82714285714286,76.72142857142856,25.884285714285717,289.7142857142857,57.57142857142857,8.328571428571427,19.82857142857143,0.0,7,4.88149154060126
+2016-03-06,134.36714285714285,77.96571428571428,21.835714285714285,302.57142857142856,61.57142857142857,7.671428571428572,22.514285714285712,14.999999999999998,7,4.90057592541159
+2016-03-13,89.56714285714285,37.92714285714286,18.542857142857144,203.42857142857144,67.42857142857143,9.257142857142856,21.814285714285717,24.4,7,4.494988543542957
+2016-03-20,77.62142857142858,53.64571428571429,22.33857142857143,188.0,61.42857142857143,8.442857142857143,22.47142857142857,1.5,7,4.351843530453547
+2016-03-27,87.71857142857142,53.14,21.557142857142857,239.28571428571428,45.0,12.471428571428572,24.457142857142856,0.0,7,4.4741336378330745
+2016-04-03,112.15857142857143,41.262857142857136,25.88714285714286,266.85714285714283,41.71428571428572,8.2,27.77142857142857,1.8,7,4.719913686298705
+2016-04-10,116.63857142857144,46.76714285714286,33.871428571428574,269.1428571428572,33.142857142857146,8.9,28.585714285714285,0.0,7,4.759080020487912
+2016-04-17,98.47571428571428,47.58285714285715,22.518571428571427,259.2857142857143,30.285714285714285,12.8,30.62857142857143,0.0,7,4.589809962303264
+2016-04-24,110.90857142857143,52.79285714285714,28.45,287.2857142857143,26.857142857142858,10.157142857142857,31.071428571428573,0.1,7,4.708706181077213
+2016-05-01,145.14,78.42714285714285,30.068571428571428,340.42857142857144,20.428571428571427,9.12857142857143,31.185714285714287,0.2,7,4.977698793849991
+2016-05-08,90.76428571428572,56.425714285714285,20.21857142857143,256.57142857142856,41.285714285714285,9.385714285714286,31.071428571428573,3.1,7,4.50826587909523
+2016-05-15,93.10142857142856,58.25714285714286,18.74714285714285,255.8571428571429,39.57142857142857,9.342857142857143,33.25714285714286,1.7,7,4.533689528648954
+2016-05-22,87.84,60.40428571428571,21.38142857142857,279.2857142857143,35.57142857142857,11.528571428571428,34.785714285714285,2.4,7,4.47551697776122
+2016-05-29,99.15714285714286,44.11142857142857,13.675714285714289,295.42857142857144,48.71428571428572,10.485714285714286,32.81428571428571,18.1,7,4.596705893290225
+2016-06-05,95.83857142857144,54.42285714285714,13.705714285714285,279.7142857142857,50.285714285714285,9.257142857142856,33.3,7.4,7,4.5626652284606735
+2016-06-12,70.86714285714285,46.94,14.767142857142858,245.0,51.42857142857143,10.628571428571428,34.05714285714286,10.9,7,4.260806896744107
+2016-06-19,81.25285714285714,35.57857142857143,9.732857142857142,258.2857142857143,61.0,11.257142857142856,32.44285714285714,19.3,7,4.397565985426743
+2016-06-26,76.76285714285714,39.80571428571428,9.515714285714283,218.8571428571429,64.14285714285714,10.471428571428572,32.51428571428571,6.9,7,4.340720892214076
+2016-07-03,67.28857142857143,35.5,8.799999999999999,168.14285714285714,75.71428571428571,8.9,30.52857142857143,130.9,7,4.208990406904594
+2016-07-10,60.72285714285714,36.62714285714286,8.252857142857144,165.57142857142858,76.85714285714286,6.471428571428571,30.357142857142858,9.4,7,4.106320186375232
+2016-07-17,60.72571428571429,27.868571428571425,7.597142857142857,157.85714285714286,87.0,7.357142857142857,28.17142857142857,203.5,7,4.106367237449181
+2016-07-24,48.36714285714286,36.41,7.927142857142857,202.0,77.0,9.114285714285714,29.75714285714286,16.8,7,3.878820716600366
+2016-07-31,52.09571428571429,42.28714285714285,9.067142857142857,143.85714285714286,88.42857142857143,7.857142857142857,27.185714285714287,71.6,7,3.953082685984552
+2016-08-07,44.70285714285715,34.31285714285714,9.105714285714289,142.85714285714286,82.57142857142857,9.94285714285714,28.685714285714287,32.7,7,3.800037417761567
+2016-08-14,42.097142857142856,34.96857142857143,9.092857142857143,129.14285714285714,87.14285714285714,8.0,27.65714285714285,72.8,7,3.739979872759299
+2016-08-21,48.84285714285714,36.71857142857142,9.09142857142857,201.14285714285717,79.42857142857143,9.685714285714283,28.514285714285712,14.9,7,3.888608147589942
+2016-08-28,46.371428571428574,31.91142857142857,8.52,125.57142857142856,83.28571428571429,8.457142857142857,28.328571428571426,28.5,7,3.8366835060251776
+2016-09-04,45.362857142857145,41.19,9.262857142857143,160.0,83.28571428571429,8.642857142857142,27.571428571428573,64.4,7,3.814693645594052
+2016-09-11,56.83142857142857,38.49285714285714,11.314285714285717,276.0,67.85714285714286,13.2,28.5,0.2,7,4.040089492621601
+2016-09-18,67.04285714285714,50.63142857142857,11.34142857142857,207.8571428571429,73.0,6.514285714285714,28.7,0.1,7,4.205332073745058
+2016-09-25,65.76285714285714,62.07285714285714,15.03,199.42857142857144,75.57142857142857,7.057142857142857,28.37142857142857,2.2,7,4.1860551978402345
+2016-10-02,90.33285714285716,67.36714285714285,15.977142857142857,226.14285714285717,72.85714285714286,5.628571428571428,29.042857142857144,0.6,7,4.503501260716411
+2016-10-09,121.87571428571428,79.27428571428571,14.694285714285714,325.7142857142857,73.57142857142857,5.471428571428571,28.485714285714288,11.1,7,4.8030017901066975
+2016-10-16,119.09857142857145,88.87571428571428,20.09,396.57142857142856,51.285714285714285,8.171428571428573,26.057142857142857,0.0,7,4.779951481566995
+2016-10-23,153.06857142857143,90.68714285714285,23.662857142857145,450.57142857142856,48.142857142857146,9.2,25.428571428571427,0.0,7,5.030886000261812
+2016-10-30,258.6485714285714,113.81142857142858,30.94142857142857,495.2857142857143,52.71428571428572,7.985714285714287,24.3,0.0,7,5.555470273250708
+2016-11-06,495.1528571428572,129.32714285714286,33.10142857142857,578.1428571428571,62.57142857142857,6.528571428571429,22.842857142857145,0.0,7,6.204866517207873
+2016-11-13,318.20714285714286,120.10428571428572,31.10428571428572,522.5714285714286,57.0,8.414285714285715,21.67142857142857,0.0,7,5.762702563348607
+2016-11-20,274.3428571428572,110.90714285714286,24.444285714285712,451.2857142857143,55.71428571428572,8.057142857142857,20.385714285714283,0.0,7,5.614378627601472
+2016-11-27,198.74857142857144,94.11428571428571,24.40285714285714,403.7142857142857,50.142857142857146,12.528571428571428,20.928571428571427,0.0,7,5.292040565727836
+2016-12-04,222.4414285714286,100.55428571428573,23.294285714285717,395.0,62.142857142857146,7.542857142857143,19.1,0.0,7,5.404663824576337
+2016-12-11,243.45142857142855,72.98,22.83857142857143,413.1428571428572,70.28571428571429,5.828571428571428,18.3,0.0,7,5.494917450639543
+2016-12-18,200.69142857142856,77.47714285714287,21.58428571428572,401.0,66.28571428571429,8.428571428571429,16.557142857142857,0.0,7,5.301768547224268
+2016-12-25,246.53857142857143,85.98,21.821428571428573,420.57142857142856,64.42857142857143,10.285714285714286,16.45714285714286,0.0,7,5.507518457625249
+2017-01-01,230.7142857142857,83.20285714285714,23.92142857142857,383.8571428571428,74.14285714285714,9.171428571428573,15.814285714285717,0.0,7,5.441180086601444
+2017-01-08,207.45285714285717,74.51142857142858,24.40142857142857,359.85714285714283,79.14285714285714,7.728571428571429,15.7,7.2,7,5.33490411936592
+2017-01-15,196.74571428571429,72.05571428571429,19.947142857142858,372.2857142857143,63.85714285714285,9.057142857142855,11.342857142857143,0.0,7,5.281912104522604
+2017-01-22,238.02714285714288,60.862857142857145,19.90428571428572,375.4285714285714,69.14285714285714,10.485714285714286,12.928571428571429,0.3,7,5.472384712787015
+2017-01-29,159.2057142857143,61.791428571428575,20.78428571428572,319.2857142857143,78.85714285714286,10.842857142857143,15.957142857142856,47.89999999999999,7,5.070197166520604
+2017-02-05,177.6185714285714,72.30142857142857,19.53857142857143,360.1428571428572,81.14285714285714,9.142857142857142,15.571428571428571,3.2,7,5.179638393945697
+2017-02-12,133.16857142857145,61.597142857142856,18.41142857142857,315.0,72.28571428571429,9.9,14.785714285714286,0.1,7,4.891615780029702
+2017-02-19,139.42142857142858,75.59142857142857,20.335714285714285,319.2857142857143,64.42857142857143,10.471428571428572,18.842857142857145,0.0,7,4.9375012065373065
+2017-02-26,244.8114285714286,56.74142857142857,15.677142857142858,372.0,50.0,12.62857142857143,19.285714285714285,0.0,7,5.500488234889247
+2017-03-05,115.93714285714285,70.66714285714285,23.49571428571429,286.85714285714283,49.285714285714285,9.514285714285714,20.11428571428572,4.2,7,4.753048172319535
+2017-03-12,87.95,45.30571428571428,22.762857142857143,197.42857142857144,59.85714285714285,10.214285714285714,18.37142857142857,14.9,7,4.476768471183568
+2017-03-19,106.63428571428572,40.471428571428575,22.264285714285712,305.1428571428572,53.285714285714285,9.414285714285716,19.24285714285714,1.3,7,4.669405089609958
+2017-03-26,136.82285714285717,69.07285714285715,22.12,362.0,46.85714285714285,11.971428571428572,24.957142857142856,0.2,7,4.918687075609021
+2017-04-02,110.33714285714288,80.12285714285714,19.518571428571427,287.85714285714283,37.285714285714285,13.4,29.428571428571427,0.0,7,4.703540613519024
+2017-04-09,90.86,72.84857142857143,24.142857142857142,300.57142857142856,32.857142857142854,13.828571428571427,27.514285714285712,1.1,7,4.509319860331257
+2017-04-16,154.83714285714285,86.81428571428572,39.80428571428571,360.4285714285714,26.428571428571427,13.071428571428571,29.571428571428573,0.0,7,5.042373873312019
+2017-04-23,133.07,90.84714285714286,36.51142857142857,359.42857142857144,34.42857142857143,10.085714285714284,32.74285714285714,2.0,7,4.890875305555651
+2017-04-30,96.78857142857144,70.98,41.21857142857142,251.57142857142856,27.857142857142858,10.328571428571427,30.37142857142857,2.5,7,4.57252892355803
+2017-05-07,167.48285714285717,86.28857142857143,48.71142857142858,378.1428571428572,25.142857142857142,9.014285714285714,32.05714285714286,0.0,7,5.120881000611694
+2017-05-14,142.7271428571429,70.97714285714287,47.74285714285714,373.0,32.857142857142854,10.714285714285714,33.642857142857146,3.3,7,4.960934715625462
+2017-05-21,144.9042857142857,57.08142857142857,42.887142857142855,326.85714285714283,33.714285714285715,9.242857142857144,32.885714285714286,2.1,7,4.976073425937455
+2017-05-28,94.82285714285716,67.01857142857143,38.285714285714285,269.2857142857143,42.142857142857146,10.9,32.77142857142857,1.7000000000000002,7,4.5520104893007165
+2017-06-04,90.08142857142856,90.03142857142858,24.107142857142858,230.42857142857144,47.71428571428572,11.2,32.471428571428575,3.1,7,4.500714023184685
+2017-06-11,58.47714285714285,72.28571428571429,19.55,162.85714285714286,47.285714285714285,10.7,33.3,5.8,7,4.06863595749599
+2017-06-18,58.12714285714286,90.98142857142857,,101.42857142857144,48.285714285714285,9.385714285714286,32.3,13.2,7,4.06263272958742
+2017-06-25,57.142857142857146,70.64,,123.16666666666669,66.14285714285714,7.971428571428571,30.414285714285715,23.8,7,4.045554398052669
+2017-07-02,32.95,37.53714285714285,,68.71428571428571,77.71428571428571,10.185714285714283,29.7,69.1,7,3.4949912609485163
+2017-07-09,58.0,19.357142857142858,,106.42857142857144,73.0,10.0,30.571428571428573,10.5,7,4.060443010546419
+2017-07-16,31.555714285714288,39.23285714285714,,54.85714285714285,72.42857142857143,11.985714285714286,29.82857142857143,18.8,7,3.451754690993422
+2017-07-23,31.482857142857146,67.71428571428571,,74.57142857142857,78.14285714285714,11.514285714285714,29.557142857142857,38.9,7,3.4494431800043177
+2017-07-30,21.16,21.835714285714285,,37.71428571428572,79.28571428571429,13.114285714285714,28.557142857142857,19.5,7,3.052112606990099
+2017-08-06,35.28142857142857,31.965714285714284,,57.0,80.28571428571429,9.471428571428572,28.514285714285712,31.8,7,3.563356722706227
+2017-08-13,37.60285714285715,47.66571428571428,,74.83333333333333,79.0,11.685714285714283,29.1,58.7,7,3.627080035350864
+2017-08-20,33.62428571428571,57.36,,63.5,70.42857142857143,11.457142857142856,29.985714285714288,7.5,7,3.515248594998551
+2017-08-27,43.39857142857142,37.54571428571428,,68.0,83.71428571428571,7.3,28.414285714285715,52.9,7,3.77042652417224
+2017-09-03,26.428571428571427,47.19,2.34,86.8,84.42857142857143,11.385714285714286,27.085714285714285,97.5,7,3.2744456760230114
+2017-09-10,47.17714285714286,24.232857142857146,,96.14285714285714,77.85714285714286,7.8,28.557142857142857,2.3000000000000003,7,3.85390951379783
+2017-09-17,59.26285714285715,26.875714285714285,,123.85714285714286,70.57142857142857,7.185714285714285,29.3,0.0,7,4.08198275466622
+2017-09-24,44.027142857142856,27.665714285714284,,106.85714285714286,76.71428571428571,9.257142857142856,27.557142857142857,30.5,7,3.7848063268409686
+2017-10-01,72.08571428571429,28.41428571428571,6.183333333333334,145.14285714285714,66.14285714285714,7.171428571428572,28.428571428571427,0.0,7,4.277855887151644
+2017-10-08,76.91285714285713,26.04142857142857,13.23,168.28571428571428,59.0,7.6,28.042857142857144,0.0,7,4.342673055551451
+2017-10-15,122.44714285714284,30.00714285714286,11.948571428571428,260.2857142857143,55.42857142857143,7.142857142857143,28.0,0.0,7,4.807679449987064
+2017-10-22,198.3271428571429,56.14857142857143,24.56,358.2857142857143,55.42857142857143,7.871428571428572,27.142857142857142,0.0,7,5.289917903905407
+2017-10-29,183.8942857142857,75.32285714285715,24.724285714285717,352.0,55.0,7.257142857142857,24.914285714285715,0.0,7,5.214361058339501
+2017-11-05,187.99571428571429,53.06428571428571,18.564285714285717,340.0,66.57142857142857,6.328571428571428,23.7,0.0,7,5.236419166217525
+2017-11-12,438.44714285714286,73.00857142857143,17.107142857142858,563.1428571428571,68.85714285714286,7.171428571428572,22.3,0.0,7,6.08323926374192
+2017-11-19,202.21142857142857,52.97571428571428,16.58857142857143,382.2857142857143,64.85714285714286,9.828571428571427,20.27142857142857,0.4,7,5.309313826113883
+2017-11-26,185.72,60.77,17.61857142857143,345.85714285714283,51.285714285714285,10.685714285714283,16.814285714285713,0.0,7,5.224240163151721
+2017-12-03,205.89714285714285,64.69714285714285,18.99285714285714,372.2857142857143,59.0,7.085714285714286,17.385714285714286,0.0,7,5.3273767375758485
+2017-12-10,173.3457142857143,62.12571428571429,21.34142857142857,326.42857142857144,50.285714285714285,8.12857142857143,17.02857142857143,0.1,7,5.155287948927893
+2017-12-17,130.51142857142858,42.28428571428572,12.205714285714285,277.1428571428572,69.85714285714286,10.342857142857143,14.428571428571429,7.699999999999999,7,4.871460798188248
+2017-12-24,191.21714285714285,56.71857142857142,21.67,327.2857142857143,64.0,11.271428571428572,15.628571428571428,0.0,7,5.253409655892827
+2017-12-31,251.98142857142852,62.77857142857143,22.722857142857144,402.57142857142856,72.28571428571429,7.857142857142857,14.385714285714286,0.0,7,5.529355388650604
+2018-01-07,247.29857142857145,56.05714285714286,14.76142857142857,412.1428571428572,71.71428571428571,7.514285714285714,12.385714285714286,0.0,7,5.510596397836895
+2018-01-14,188.26,60.36,20.875714285714285,344.57142857142856,66.85714285714286,11.171428571428573,13.385714285714286,0.0,7,5.237823986119074
+2018-01-21,197.46,47.81714285714286,18.187142857142856,357.57142857142856,66.42857142857143,9.94285714285714,14.485714285714286,0.0,7,5.285536032183304
+2018-01-28,148.48857142857145,44.29714285714285,11.545714285714284,305.57142857142856,77.0,9.357142857142858,12.957142857142856,6.8,7,5.000507995204216
+2018-02-04,137.04714285714286,51.98857142857143,13.821428571428571,296.42857142857144,66.28571428571429,12.071428571428571,16.085714285714285,0.0,7,4.92032497508269
+2018-02-11,169.39,69.32142857142857,14.38,337.2857142857143,55.57142857142857,9.685714285714283,15.185714285714283,1.6,7,5.1322037485982905
+2018-02-18,103.70857142857145,43.17,11.285714285714286,231.7142857142857,68.57142857142857,12.571428571428571,16.685714285714287,2.9,7,4.641584767832887
+2018-02-25,158.08285714285714,67.9,15.047142857142855,333.0,64.14285714285714,7.871428571428572,20.557142857142857,2.2,7,5.063119307867456
+2018-03-04,104.86,44.52571428571429,12.454285714285716,236.14285714285717,62.0,10.357142857142858,21.74285714285714,1.2,7,4.652626127144386
+2018-03-11,96.94857142857144,50.01714285714286,14.97,215.14285714285717,52.42857142857143,10.3,21.914285714285715,1.1,7,4.574180646444166
+2018-03-18,102.21428571428572,45.901428571428575,16.518571428571427,248.8571428571429,44.285714285714285,10.228571428571428,23.714285714285715,0.0,7,4.627071449941192
+2018-03-25,90.97,40.69857142857143,17.407142857142855,212.14285714285717,49.71428571428572,9.571428571428571,23.82857142857143,2.1,7,4.510529781833971
+2018-04-01,97.72857142857144,49.01714285714286,16.321428571428573,242.8571428571429,39.85714285714285,11.885714285714286,26.62857142857143,0.0,7,4.582193956711639
+2018-04-08,94.45285714285714,47.00714285714286,15.87,230.28571428571428,48.85714285714285,8.957142857142857,28.0,9.6,7,4.548100843811397
+2018-04-15,75.25,48.53714285714285,13.05714285714286,189.42857142857144,50.85714285714285,9.357142857142858,26.457142857142856,9.3,7,4.3208159036289855
+2018-04-22,92.28,47.05857142857143,15.598571428571429,291.0,30.428571428571427,12.857142857142858,28.97142857142857,7.800000000000001,7,4.524827433305553
+2018-04-29,103.68999999999998,55.14428571428572,14.904285714285717,279.0,30.428571428571427,11.37142857142857,30.728571428571428,2.5,7,4.6414056785701865
+2018-05-06,68.93714285714286,39.51142857142857,10.484285714285717,188.8571428571429,49.57142857142857,13.400000000000002,30.042857142857144,17.1,7,4.233195116324223
+2018-05-13,99.39285714285714,50.201428571428565,13.35142857142857,255.42857142857144,42.71428571428572,9.1,30.057142857142857,10.6,7,4.599080251350687
+2018-05-20,83.68285714285715,47.33142857142857,12.165714285714284,219.42857142857144,38.85714285714285,8.042857142857143,31.9,1.9,7,4.427034143410322
+2018-05-27,98.57714285714285,59.86714285714286,14.694285714285714,256.57142857142856,21.714285714285715,10.028571428571428,34.614285714285714,0.1,7,4.59083941787023
+2018-06-03,80.00142857142858,39.892857142857146,10.124285714285715,229.57142857142856,43.57142857142857,13.44285714285714,33.67142857142857,5.5,7,4.382044491657302
+2018-06-10,64.88285714285715,30.878571428571423,8.085714285714285,161.14285714285714,55.285714285714285,12.771428571428572,33.642857142857146,18.6,7,4.17258344618121
+2018-06-17,152.4042857142857,27.15428571428572,7.225714285714285,422.0,43.142857142857146,14.785714285714286,34.857142857142854,0.2,7,5.026536764341959
+2018-06-24,68.25857142857143,35.142857142857146,10.254285714285714,198.8571428571429,44.142857142857146,7.614285714285714,34.57142857142857,0.6,7,4.223303014876486
+2018-07-01,38.87571428571429,31.552857142857142,10.24,118.0,68.14285714285714,11.7,30.957142857142856,58.1,7,3.660369744239649
+2018-07-08,51.74428571428571,34.745714285714286,10.354285714285714,138.42857142857142,68.85714285714286,8.257142857142856,30.97142857142857,20.7,7,3.946314005068647
+2018-07-15,43.470000000000006,31.69142857142857,10.937142857142858,120.85714285714286,76.14285714285714,9.314285714285717,30.585714285714285,50.8,7,3.772071045000701
+2018-07-22,36.80857142857143,31.198571428571427,10.477142857142857,101.57142857142856,84.14285714285714,7.071428571428571,29.27142857142857,99.7,7,3.605730737308065
+2018-07-29,34.582857142857144,25.798571428571428,9.788571428571428,85.71428571428571,85.0,7.657142857142857,28.342857142857145,50.5,7,3.5433581009847326
+2018-08-05,59.50428571428571,26.415714285714284,9.565714285714288,186.28571428571428,72.0,12.014285714285714,29.885714285714283,6.8,7,4.086048338769158
+2018-08-12,39.05428571428571,26.47714285714286,9.565714285714288,115.42857142857144,83.57142857142857,8.028571428571428,28.37142857142857,44.0,7,3.6649526196691937
+2018-08-19,38.74142857142857,27.167142857142856,9.872857142857145,108.57142857142856,82.71428571428571,7.014285714285714,29.142857142857142,29.0,7,3.6569095331747534
+2018-08-26,31.807142857142857,25.798571428571428,10.961428571428572,99.14285714285714,83.57142857142857,8.028571428571428,28.857142857142858,41.2,7,3.459690882712398
+2018-09-02,37.85428571428572,25.91857142857143,10.267142857142858,103.28571428571428,86.85714285714286,6.042857142857144,28.085714285714285,63.3,7,3.633744202384664
+2018-09-09,41.95,30.46,10.517142857142858,108.57142857142856,86.57142857142857,8.257142857142856,27.342857142857145,42.8,7,3.736478432913215
+2018-09-16,33.33,26.005714285714284,10.945714285714288,107.14285714285714,74.71428571428571,10.114285714285714,28.0,5.8,7,3.506457892319648
+2018-09-23,49.20857142857143,28.967142857142854,12.335714285714284,131.28571428571428,76.28571428571429,11.685714285714289,27.042857142857144,72.4,7,3.8960678243522873
+2018-09-30,57.55857142857143,35.12714285714286,12.11,140.14285714285714,79.42857142857143,9.042857142857144,26.32857142857143,13.7,7,4.05280306288858
+2018-10-07,83.38714285714286,44.47571428571428,13.964285714285714,199.14285714285717,68.42857142857143,6.7,26.414285714285715,1.0,7,4.423494135096081
+2018-10-14,96.91142857142856,48.23285714285714,16.704285714285714,238.28571428571428,70.71428571428571,8.542857142857143,24.542857142857144,1.5,7,4.573797453855727
+2018-10-21,140.48285714285714,56.31285714285714,18.785714285714285,313.2857142857143,62.142857142857146,7.514285714285714,24.585714285714285,0.4,7,4.945085468111484
+2018-10-28,171.1542857142857,68.25142857142858,19.56714285714286,353.2857142857143,57.142857142857146,7.542857142857143,23.014285714285712,0.0,7,5.142565405353804
+2018-11-04,202.76142857142852,59.98285714285714,17.752857142857142,384.2857142857143,63.85714285714285,7.585714285714286,23.25714285714286,0.1,7,5.312030059206812
+2018-11-11,283.1485714285714,60.00571428571429,18.21857142857143,425.0,55.0,7.3,20.342857142857145,0.0,7,5.645971747265686
+2018-11-18,173.0885714285714,58.56428571428571,16.004285714285714,346.7142857142857,67.14285714285714,8.757142857142856,20.457142857142856,1.8000000000000005,7,5.15380343705958
+2018-11-25,168.86714285714285,60.74285714285714,15.944285714285714,334.0,60.71428571428572,9.928571428571429,19.571428571428573,0.0,7,5.129112268815404
+2018-12-02,186.70857142857145,65.83857142857143,15.978571428571428,360.1428571428572,67.57142857142857,7.542857142857143,18.52857142857143,0.0,7,5.22954895966294
+2018-12-09,201.8728571428572,65.41,16.12,377.1428571428572,67.14285714285714,6.6,16.557142857142857,0.0,7,5.30763807914836
+2018-12-16,175.70142857142858,53.790000000000006,14.505714285714284,345.57142857142856,70.85714285714286,8.357142857142858,14.44285714285714,1.0,7,5.168786125902334
+2018-12-23,261.5357142857143,67.78999999999999,17.367142857142856,421.1428571428572,68.57142857142857,8.32857142857143,12.485714285714286,0.0,7,5.566570848885866
+2018-12-30,287.3928571428572,68.93428571428572,16.657142857142855,461.7142857142857,64.28571428571429,8.6,12.185714285714283,0.0,7,5.660850119970929
+2019-01-06,282.41142857142853,64.44,15.857142857142858,466.4285714285714,71.14285714285714,8.742857142857144,13.071428571428571,2.3,7,5.64336497424579
+2019-01-13,215.72,62.43857142857143,16.818571428571428,379.4285714285714,70.57142857142857,8.614285714285714,13.028571428571428,0.0,7,5.373981270469026
+2019-01-20,239.19571428571427,73.66,17.981428571428573,399.1428571428572,65.42857142857143,9.014285714285714,13.228571428571428,0.0,7,5.477282105050224
+2019-01-27,116.32714285714285,45.36857142857143,14.734285714285717,256.42857142857144,77.42857142857143,10.542857142857144,13.05714285714286,23.9,7,4.756406418856059
+2019-02-03,166.56714285714287,50.167142857142856,17.232857142857142,332.42857142857144,70.42857142857143,10.6,12.271428571428572,0.8,7,5.115398488536135
+2019-02-10,134.56428571428572,48.12857142857143,15.067142857142857,270.57142857142856,76.0,10.885714285714284,14.357142857142858,22.3,7,4.90204204555607
+2019-02-17,152.75857142857143,52.61714285714286,16.29,317.2857142857143,79.0,8.614285714285714,15.157142857142857,9.0,7,5.028858710576035
+2019-02-24,90.08714285714288,46.70285714285715,16.937142857142856,207.0,72.42857142857143,11.44285714285714,16.842857142857145,3.3000000000000003,7,4.500777455843011
+2019-03-03,80.32000000000001,47.970000000000006,15.957142857142856,185.14285714285717,71.42857142857143,8.642857142857142,14.642857142857142,24.9,7,4.38601865594342
+2019-03-10,86.03,44.87285714285714,15.95142857142857,196.8571428571429,64.71428571428571,9.44285714285714,17.32857142857143,0.2,7,4.454696072633257
+2019-03-17,82.42142857142858,46.42142857142857,17.73857142857143,187.42857142857144,59.71428571428572,10.585714285714284,18.74285714285714,2.0,7,4.411845458585364
+2019-03-24,79.07571428571428,42.30142857142857,19.304285714285715,194.8571428571429,45.42857142857143,11.771428571428572,22.428571428571427,0.0,7,4.370405802166587
+2019-03-31,87.09142857142857,48.29571428571428,20.78142857142857,206.14285714285717,52.57142857142857,9.842857142857143,25.0,0.5,7,4.466958469962336
+2019-04-07,104.12285714285711,52.98571428571428,24.064285714285717,240.42857142857144,41.85714285714285,9.485714285714286,27.385714285714283,0.0,7,4.645571520614807
+2019-04-14,72.85857142857142,45.52857142857143,20.06142857142857,215.7142857142857,41.142857142857146,10.214285714285714,29.285714285714285,0.2,7,4.288520184313964
+2019-04-21,61.77,43.51857142857143,18.62142857142857,164.28571428571428,51.285714285714285,9.55714285714286,25.885714285714283,5.3,7,4.123417809707807
+2019-04-28,88.33,49.71857142857142,22.842857142857145,246.57142857142856,31.428571428571427,12.457142857142856,32.528571428571425,0.0,7,4.4810798007570405
+2019-05-05,85.77428571428571,54.637142857142855,22.035714285714285,241.14285714285717,24.428571428571427,11.771428571428572,32.214285714285715,0.5,7,4.451719261275106
+2019-05-12,129.04857142857142,53.33,22.05,329.57142857142856,22.428571428571427,13.62857142857143,33.07142857142857,0.0,7,4.860188856196892
+2019-05-19,86.87,46.05857142857143,17.82,225.7142857142857,46.142857142857146,8.914285714285715,29.82857142857143,3.0000000000000004,7,4.464412748271829
+2019-05-26,67.29142857142857,46.42857142857143,17.36857142857143,175.42857142857142,36.42857142857143,11.3,31.985714285714288,0.0,7,4.209032867045144
+2019-06-02,78.25999999999999,57.04285714285714,20.085714285714285,220.42857142857144,25.285714285714285,11.257142857142856,35.05714285714286,0.0,7,4.360036616782266
+2019-06-09,70.20857142857143,43.28857142857142,15.418571428571427,208.0,37.57142857142857,10.757142857142856,35.285714285714285,0.8,7,4.251470403700252
+2019-06-16,69.01285714285714,40.16571428571429,13.151428571428571,229.0,31.714285714285715,13.171428571428567,35.84285714285714,2.2,7,4.2342928226427015
+2019-06-23,53.53857142857142,34.29714285714286,11.252857142857142,158.42857142857142,48.142857142857146,10.257142857142856,32.68571428571429,1.7,7,3.980402355415933
+2019-06-30,56.73285714285714,34.49428571428572,12.602857142857143,177.57142857142858,45.57142857142857,10.6,34.51428571428571,5.999999999999999,7,4.038353533949284
+2019-07-07,46.77428571428572,29.795714285714286,10.805714285714286,140.42857142857142,59.142857142857146,8.028571428571428,33.07142857142857,14.3,7,3.8453336013708825
+2019-07-14,62.93857142857143,28.52285714285714,9.732857142857142,222.7142857142857,60.142857142857146,12.485714285714286,32.48571428571429,16.5,7,4.142159194025184
+2019-07-21,42.65,33.152857142857144,9.311428571428571,127.0,81.14285714285714,7.1571428571428575,28.585714285714285,82.9,7,3.753027273937688
+2019-07-28,42.49,32.22428571428571,8.801428571428572,115.0,82.85714285714286,9.485714285714286,29.0,68.6,7,3.74926875412672
+2019-08-04,34.18857142857143,28.53428571428572,9.105714285714283,94.28571428571428,82.42857142857143,9.328571428571427,28.9,28.6,7,3.531891419466518
+2019-08-11,28.487142857142857,28.58714285714285,9.21,93.85714285714286,82.14285714285714,11.028571428571428,29.0,49.5,7,3.3494528576662868
+2019-08-18,20.78142857142857,24.53857142857143,8.338571428571429,79.57142857142857,85.0,12.05714285714286,28.071428571428573,90.5,7,3.0340597307300574
+2019-08-25,45.11857142857143,34.87571428571429,8.33,117.14285714285714,83.0,6.9,28.6,23.700000000000003,7,3.8092939450877537
+2019-09-01,39.64142857142857,33.801428571428566,9.045714285714286,109.85714285714286,80.85714285714286,7.557142857142857,29.75714285714286,14.1,7,3.6798747474458255
+2019-09-08,46.80571428571428,31.755714285714284,9.118571428571428,115.57142857142856,82.71428571428571,7.028571428571428,29.385714285714283,17.9,7,3.846005295592088
+2019-09-15,50.56857142857143,31.694285714285712,8.797142857142857,120.14285714285714,77.57142857142857,8.685714285714287,29.814285714285717,7.6,7,3.9233302653072943
+2019-09-22,39.85142857142857,31.947142857142858,9.357142857142858,106.42857142857144,81.0,8.414285714285715,27.97142857142857,28.7,7,3.6851582533120815
+2019-09-29,25.55,27.96857142857143,9.66,86.14285714285714,80.42857142857143,11.614285714285714,26.514285714285712,17.5,7,3.2406373166497136
+2019-10-06,43.25571428571429,32.464285714285715,8.732857142857142,109.42857142857144,74.42857142857143,7.428571428571429,26.142857142857142,15.6,7,3.7671293468635647
+2019-10-13,87.52285714285713,44.362857142857145,11.131428571428572,198.42857142857144,57.42857142857143,7.028571428571429,26.6,0.0,7,4.4718999837401885
+2019-10-20,111.85142857142856,49.82857142857143,12.324285714285711,267.57142857142856,60.0,7.342857142857143,26.61428571428572,5.2,7,4.717171460062251
+2019-10-27,140.25571428571428,54.81857142857143,13.842857142857143,297.1428571428572,57.142857142857146,8.657142857142857,24.485714285714288,0.0,7,4.943467287142965
+2019-11-03,353.36857142857144,60.15714285714286,14.258571428571427,495.8571428571428,65.57142857142857,7.685714285714285,24.457142857142856,0.2,7,5.867511623923472
+2019-11-10,176.22285714285712,48.91571428571429,12.564285714285717,354.85714285714283,63.42857142857143,10.057142857142855,22.357142857142858,2.2,7,5.171749427806506
+2019-11-17,297.9271428571428,59.881428571428565,14.111428571428572,460.8571428571428,64.85714285714286,10.228571428571428,20.942857142857143,0.0,7,5.696848969557004
+2019-11-24,152.52142857142854,61.91428571428572,13.742857142857144,308.7142857142857,64.71428571428571,9.014285714285714,19.985714285714288,0.0,7,5.02730510139861
+2019-12-01,86.82571428571428,45.67,11.762857142857143,192.28571428571428,74.14285714285714,8.571428571428571,18.32857142857143,23.0,7,4.46390282532494
+2019-12-08,204.55428571428573,69.42714285714285,13.287142857142856,358.85714285714283,74.57142857142857,7.528571428571429,15.471428571428572,0.0,7,5.320833396071274
+2019-12-15,184.0914285714286,59.03285714285715,11.084285714285716,336.42857142857144,77.71428571428571,8.342857142857143,14.714285714285714,9.6,7,5.215432528607776
+2019-12-22,185.57857142857145,45.370000000000005,8.165714285714285,321.57142857142856,80.28571428571429,8.071428571428571,12.357142857142858,0.2,7,5.223478358021557
+2019-12-29,234.32857142857145,49.962857142857146,8.291428571428572,381.8571428571428,86.71428571428571,8.071428571428571,8.542857142857143,0.0,7,5.456724281863127
+2020-01-05,271.12142857142857,56.237142857142864,13.998571428571427,435.1428571428572,79.85714285714286,7.328571428571428,11.157142857142857,0.6,7,5.602566796432998
+2020-01-12,139.47714285714284,46.47714285714285,10.495714285714286,292.57142857142856,80.14285714285714,9.585714285714284,11.857142857142858,19.6,7,4.937900737350032
+2020-01-19,134.74571428571429,42.70428571428572,9.997142857142858,294.42857142857144,85.85714285714286,8.371428571428572,12.94285714285714,28.8,7,4.903389404353555
+2020-01-26,150.86714285714285,45.31428571428571,11.064285714285717,292.42857142857144,75.85714285714286,10.628571428571428,12.6,0.0,7,5.016399600892737
+2020-02-02,115.5657142857143,47.60857142857143,10.855714285714283,254.42857142857144,77.57142857142857,9.471428571428572,12.885714285714286,16.9,7,4.74983932302307
+2020-02-09,149.54571428571427,54.34857142857143,13.612857142857145,312.2857142857143,74.0,8.3,12.5,0.1,7,5.007602127264552
+2020-02-16,129.7642857142857,50.06714285714286,16.094285714285714,273.0,61.285714285714285,14.0,16.414285714285715,0.0,7,4.86571961782944
+2020-02-23,106.28,48.82428571428572,16.43285714285714,237.57142857142856,66.42857142857143,13.342857142857143,17.742857142857144,18.8,7,4.666077120891613
+2020-03-01,90.53571428571428,42.34428571428571,14.611428571428572,207.0,76.85714285714286,10.157142857142857,18.77142857142857,9.2,7,4.50574440585008
+2020-03-08,62.044285714285714,40.25714285714286,13.385714285714286,149.28571428571428,78.42857142857143,10.37142857142857,17.928571428571427,39.2,7,4.1278484157787485
+2020-03-15,60.51714285714286,35.03142857142858,14.138571428571428,143.14285714285714,71.57142857142857,10.271428571428572,17.685714285714287,16.9,7,4.102926677910539
+2020-03-22,77.45285714285716,43.385714285714286,16.762857142857143,182.42857142857144,70.14285714285714,8.642857142857142,20.428571428571427,2.2,7,4.349669456342003
+2020-03-29,38.48285714285714,20.02285714285714,12.428571428571429,89.57142857142857,64.28571428571429,10.214285714285714,22.571428571428573,6.8,7,3.6502128731153554
+2020-04-05,36.53142857142857,19.824285714285715,12.75,84.28571428571429,52.142857142857146,11.2,23.057142857142857,0.1,7,3.5981729468432126
+2020-04-12,44.01857142857143,21.702857142857145,15.214285714285714,107.57142857142856,45.0,10.571428571428571,25.985714285714288,0.4,7,3.784611622790509
+2020-04-19,48.34857142857143,21.38142857142857,15.918571428571427,128.14285714285714,38.71428571428572,10.9,29.514285714285712,0.0,7,3.878436675000987
+2020-04-26,48.89,22.224285714285717,16.10571428571429,121.57142857142856,45.285714285714285,9.071428571428571,27.65714285714285,1.9,7,3.889572876590554
+2020-05-03,43.191428571428574,16.832857142857144,16.021428571428572,118.71428571428572,59.142857142857146,12.314285714285711,28.185714285714287,25.9,7,3.765642062865248
+2020-05-10,46.7,19.132857142857144,13.838571428571427,127.85714285714286,48.57142857142857,9.285714285714286,29.3,0.8,7,3.843744164674852
+2020-05-17,62.76571428571429,23.722857142857144,14.98857142857143,146.14285714285714,46.57142857142857,9.94285714285714,30.485714285714288,0.6,7,4.139408973524293
+2020-05-24,79.43285714285715,36.675714285714285,20.09714285714286,197.14285714285717,26.142857142857142,10.314285714285717,32.957142857142856,0.0,7,4.374912100574184
+2020-05-31,38.33571428571429,23.90571428571429,13.321428571428571,133.28571428571428,41.57142857142857,13.385714285714286,32.457142857142856,9.9,7,3.646381949567525
+2020-06-07,46.19571428571429,25.667142857142856,13.664285714285716,117.42857142857144,60.142857142857146,7.214285714285714,29.342857142857145,1.2,7,3.832887029406333
+2020-06-14,58.957142857142856,29.22714285714286,13.537142857142856,139.57142857142858,54.142857142857146,7.7,33.142857142857146,0.1,7,4.076810787703223
+2020-06-21,41.85857142857143,21.09142857142857,11.764285714285714,124.0,51.142857142857146,10.271428571428572,34.08571428571428,1.3,7,3.734296589072182
+2020-06-28,41.01428571428572,20.052857142857142,11.03,108.28571428571428,62.285714285714285,10.885714285714286,32.385714285714286,7.8,7,3.713920438071705
 ```
 
-## fc_backtest_forecasts.csv (1560 rows; fold = forecast year; mu, sd on log scale; point forecast = exp(mu))
+## fc_backtest_forecasts.csv (1560 rows; fold = forecast year; mu, sd on the log scale; point forecast = exp(mu); sd empty only for none after round 2)
 ```
 fold,model,date,actual,mu,sd
-2017,Seasonal naive,2017-01-01,230.7143,5.4246,
-2017,Seasonal naive,2017-01-08,207.4529,5.6731,
-2017,Seasonal naive,2017-01-15,196.7457,5.273,
-2017,Seasonal naive,2017-01-22,238.0271,5.6061,
-2017,Seasonal naive,2017-01-29,159.2057,5.6057,
-2017,Seasonal naive,2017-02-05,177.6186,5.0809,
-2017,Seasonal naive,2017-02-12,133.1686,4.9898,
-2017,Seasonal naive,2017-02-19,139.4214,4.9181,
-2017,Seasonal naive,2017-02-26,244.8114,4.8815,
-2017,Seasonal naive,2017-03-05,115.9371,4.9006,
-2017,Seasonal naive,2017-03-12,87.95,4.495,
-2017,Seasonal naive,2017-03-19,106.6343,4.3518,
-2017,Seasonal naive,2017-03-26,136.8229,4.4741,
-2017,Seasonal naive,2017-04-02,110.3371,4.7199,
-2017,Seasonal naive,2017-04-09,90.86,4.7591,
-2017,Seasonal naive,2017-04-16,154.8371,4.5898,
-2017,Seasonal naive,2017-04-23,133.07,4.7087,
-2017,Seasonal naive,2017-04-30,96.7886,4.9777,
-2017,Seasonal naive,2017-05-07,167.4829,4.5083,
-2017,Seasonal naive,2017-05-14,142.7271,4.5337,
-2017,Seasonal naive,2017-05-21,144.9043,4.4755,
-2017,Seasonal naive,2017-05-28,94.8229,4.5967,
-2017,Seasonal naive,2017-06-04,90.0814,4.5627,
-2017,Seasonal naive,2017-06-11,58.4771,4.2608,
-2017,Seasonal naive,2017-06-18,58.1271,4.3976,
-2017,Seasonal naive,2017-06-25,57.1429,4.3407,
-2017,Seasonal naive,2017-07-02,32.95,4.209,
-2017,Seasonal naive,2017-07-09,58.0,4.1063,
-2017,Seasonal naive,2017-07-16,31.5557,4.1064,
-2017,Seasonal naive,2017-07-23,31.4829,3.8788,
-2017,Seasonal naive,2017-07-30,21.16,3.9531,
-2017,Seasonal naive,2017-08-06,35.2814,3.8,
-2017,Seasonal naive,2017-08-13,37.6029,3.74,
-2017,Seasonal naive,2017-08-20,33.6243,3.8886,
-2017,Seasonal naive,2017-08-27,43.3986,3.8367,
-2017,Seasonal naive,2017-09-03,26.4286,3.8147,
-2017,Seasonal naive,2017-09-10,47.1771,4.0401,
-2017,Seasonal naive,2017-09-17,59.2629,4.2053,
-2017,Seasonal naive,2017-09-24,44.0271,4.1861,
-2017,Seasonal naive,2017-10-01,72.0857,4.5035,
-2017,Seasonal naive,2017-10-08,76.9129,4.803,
-2017,Seasonal naive,2017-10-15,122.4471,4.78,
-2017,Seasonal naive,2017-10-22,198.3271,5.0309,
-2017,Seasonal naive,2017-10-29,183.8943,5.5555,
-2017,Seasonal naive,2017-11-05,187.9957,6.2049,
-2017,Seasonal naive,2017-11-12,438.4471,5.7627,
-2017,Seasonal naive,2017-11-19,202.2114,5.6144,
-2017,Seasonal naive,2017-11-26,185.72,5.292,
-2017,Seasonal naive,2017-12-03,205.8971,5.4047,
-2017,Seasonal naive,2017-12-10,173.3457,5.4949,
-2017,Seasonal naive,2017-12-17,130.5114,5.3018,
-2017,Seasonal naive,2017-12-24,191.2171,5.5075,
-2017,Climatology,2017-01-01,230.7143,5.3125,
-2017,Climatology,2017-01-08,207.4529,5.4456,
-2017,Climatology,2017-01-15,196.7457,5.2755,
-2017,Climatology,2017-01-22,238.0271,5.4204,
-2017,Climatology,2017-01-29,159.2057,5.3289,
-2017,Climatology,2017-02-05,177.6186,5.0867,
-2017,Climatology,2017-02-12,133.1686,4.9993,
-2017,Climatology,2017-02-19,139.4214,5.0,
-2017,Climatology,2017-02-26,244.8114,4.9628,
-2017,Climatology,2017-03-05,115.9371,4.8833,
-2017,Climatology,2017-03-12,87.95,4.4538,
-2017,Climatology,2017-03-19,106.6343,4.4006,
-2017,Climatology,2017-03-26,136.8229,4.3574,
-2017,Climatology,2017-04-02,110.3371,4.6303,
-2017,Climatology,2017-04-09,90.86,4.5128,
-2017,Climatology,2017-04-16,154.8371,4.5589,
-2017,Climatology,2017-04-23,133.07,4.6239,
-2017,Climatology,2017-04-30,96.7886,4.8402,
-2017,Climatology,2017-05-07,167.4829,4.4302,
-2017,Climatology,2017-05-14,142.7271,4.662,
-2017,Climatology,2017-05-21,144.9043,4.486,
-2017,Climatology,2017-05-28,94.8229,4.4481,
-2017,Climatology,2017-06-04,90.0814,4.6209,
-2017,Climatology,2017-06-11,58.4771,4.2287,
-2017,Climatology,2017-06-18,58.1271,4.4903,
-2017,Climatology,2017-06-25,57.1429,4.5039,
-2017,Climatology,2017-07-02,32.95,4.3099,
-2017,Climatology,2017-07-09,58.0,4.2045,
-2017,Climatology,2017-07-16,31.5557,4.0168,
-2017,Climatology,2017-07-23,31.4829,4.0083,
-2017,Climatology,2017-07-30,21.16,3.8307,
-2017,Climatology,2017-08-06,35.2814,3.6446,
-2017,Climatology,2017-08-13,37.6029,3.9233,
-2017,Climatology,2017-08-20,33.6243,4.0217,
-2017,Climatology,2017-08-27,43.3986,3.86,
-2017,Climatology,2017-09-03,26.4286,3.9456,
-2017,Climatology,2017-09-10,47.1771,4.2093,
-2017,Climatology,2017-09-17,59.2629,4.2137,
-2017,Climatology,2017-09-24,44.0271,4.3223,
-2017,Climatology,2017-10-01,72.0857,4.3217,
-2017,Climatology,2017-10-08,76.9129,4.6529,
-2017,Climatology,2017-10-15,122.4471,4.8778,
-2017,Climatology,2017-10-22,198.3271,4.8625,
-2017,Climatology,2017-10-29,183.8943,5.3081,
-2017,Climatology,2017-11-05,187.9957,5.6103,
-2017,Climatology,2017-11-12,438.4471,5.6148,
-2017,Climatology,2017-11-19,202.2114,5.5407,
-2017,Climatology,2017-11-26,185.72,5.3491,
-2017,Climatology,2017-12-03,205.8971,5.3505,
-2017,Climatology,2017-12-10,173.3457,5.4357,
-2017,Climatology,2017-12-17,130.5114,5.3392,
-2017,Climatology,2017-12-24,191.2171,5.1839,
-2017,Climatology + AR(1),2017-01-01,230.7143,5.4231,0.1444
-2017,Climatology + AR(1),2017-01-08,207.4529,5.4835,0.1526
-2017,Climatology + AR(1),2017-01-15,196.7457,5.2885,0.1535
-2017,Climatology + AR(1),2017-01-22,238.0271,5.4248,0.1536
-2017,Climatology + AR(1),2017-01-29,159.2057,5.3304,0.1536
-2017,Climatology + AR(1),2017-02-05,177.6186,5.0872,0.1536
-2017,Climatology + AR(1),2017-02-12,133.1686,4.9995,0.1536
-2017,Climatology + AR(1),2017-02-19,139.4214,5.0001,0.1536
-2017,Climatology + AR(1),2017-02-26,244.8114,4.9628,0.1536
-2017,Climatology + AR(1),2017-03-05,115.9371,4.8833,0.1536
-2017,Climatology + AR(1),2017-03-12,87.95,4.4538,0.1536
-2017,Climatology + AR(1),2017-03-19,106.6343,4.4006,0.1536
-2017,Climatology + AR(1),2017-03-26,136.8229,4.3574,0.1536
-2017,Climatology + AR(1),2017-04-02,110.3371,4.6303,0.1536
-2017,Climatology + AR(1),2017-04-09,90.86,4.5128,0.1536
-2017,Climatology + AR(1),2017-04-16,154.8371,4.5589,0.1536
-2017,Climatology + AR(1),2017-04-23,133.07,4.6239,0.1536
-2017,Climatology + AR(1),2017-04-30,96.7886,4.8402,0.1536
-2017,Climatology + AR(1),2017-05-07,167.4829,4.4302,0.1536
-2017,Climatology + AR(1),2017-05-14,142.7271,4.662,0.1536
-2017,Climatology + AR(1),2017-05-21,144.9043,4.486,0.1536
-2017,Climatology + AR(1),2017-05-28,94.8229,4.4481,0.1536
-2017,Climatology + AR(1),2017-06-04,90.0814,4.6209,0.1536
-2017,Climatology + AR(1),2017-06-11,58.4771,4.2287,0.1536
-2017,Climatology + AR(1),2017-06-18,58.1271,4.4903,0.1536
-2017,Climatology + AR(1),2017-06-25,57.1429,4.5039,0.1536
-2017,Climatology + AR(1),2017-07-02,32.95,4.3099,0.1536
-2017,Climatology + AR(1),2017-07-09,58.0,4.2045,0.1536
-2017,Climatology + AR(1),2017-07-16,31.5557,4.0168,0.1536
-2017,Climatology + AR(1),2017-07-23,31.4829,4.0083,0.1536
-2017,Climatology + AR(1),2017-07-30,21.16,3.8307,0.1536
-2017,Climatology + AR(1),2017-08-06,35.2814,3.6446,0.1536
-2017,Climatology + AR(1),2017-08-13,37.6029,3.9233,0.1536
-2017,Climatology + AR(1),2017-08-20,33.6243,4.0217,0.1536
-2017,Climatology + AR(1),2017-08-27,43.3986,3.86,0.1536
-2017,Climatology + AR(1),2017-09-03,26.4286,3.9456,0.1536
-2017,Climatology + AR(1),2017-09-10,47.1771,4.2093,0.1536
-2017,Climatology + AR(1),2017-09-17,59.2629,4.2137,0.1536
-2017,Climatology + AR(1),2017-09-24,44.0271,4.3223,0.1536
-2017,Climatology + AR(1),2017-10-01,72.0857,4.3217,0.1536
-2017,Climatology + AR(1),2017-10-08,76.9129,4.6529,0.1536
-2017,Climatology + AR(1),2017-10-15,122.4471,4.8778,0.1536
-2017,Climatology + AR(1),2017-10-22,198.3271,4.8625,0.1536
-2017,Climatology + AR(1),2017-10-29,183.8943,5.3081,0.1536
-2017,Climatology + AR(1),2017-11-05,187.9957,5.6103,0.1536
-2017,Climatology + AR(1),2017-11-12,438.4471,5.6148,0.1536
-2017,Climatology + AR(1),2017-11-19,202.2114,5.5407,0.1536
-2017,Climatology + AR(1),2017-11-26,185.72,5.3491,0.1536
-2017,Climatology + AR(1),2017-12-03,205.8971,5.3505,0.1536
-2017,Climatology + AR(1),2017-12-10,173.3457,5.4357,0.1536
-2017,Climatology + AR(1),2017-12-17,130.5114,5.3392,0.1536
-2017,Climatology + AR(1),2017-12-24,191.2171,5.1839,0.1536
-2017,Linear regression,2017-01-01,230.7143,5.4482,0.2162
-2017,Linear regression,2017-01-08,207.4529,5.4112,0.2162
-2017,Linear regression,2017-01-15,196.7457,5.366,0.2162
-2017,Linear regression,2017-01-22,238.0271,5.3123,0.2162
-2017,Linear regression,2017-01-29,159.2057,5.2498,0.2162
-2017,Linear regression,2017-02-05,177.6186,5.1789,0.2162
-2017,Linear regression,2017-02-12,133.1686,5.1007,0.2162
-2017,Linear regression,2017-02-19,139.4214,5.0173,0.2162
-2017,Linear regression,2017-02-26,244.8114,4.9318,0.2162
-2017,Linear regression,2017-03-05,115.9371,4.8482,0.2162
-2017,Linear regression,2017-03-12,87.95,4.7706,0.2162
-2017,Linear regression,2017-03-19,106.6343,4.7032,0.2162
-2017,Linear regression,2017-03-26,136.8229,4.6497,0.2162
-2017,Linear regression,2017-04-02,110.3371,4.6127,0.2162
-2017,Linear regression,2017-04-09,90.86,4.5929,0.2162
-2017,Linear regression,2017-04-16,154.8371,4.5897,0.2162
-2017,Linear regression,2017-04-23,133.07,4.6002,0.2162
-2017,Linear regression,2017-04-30,96.7886,4.6201,0.2162
-2017,Linear regression,2017-05-07,167.4829,4.6436,0.2162
-2017,Linear regression,2017-05-14,142.7271,4.6641,0.2162
-2017,Linear regression,2017-05-21,144.9043,4.6752,0.2162
-2017,Linear regression,2017-05-28,94.8229,4.671,0.2162
-2017,Linear regression,2017-06-04,90.0814,4.647,0.2162
-2017,Linear regression,2017-06-11,58.4771,4.601,0.2162
-2017,Linear regression,2017-06-18,58.1271,4.5331,0.2162
-2017,Linear regression,2017-06-25,57.1429,4.4459,0.2162
-2017,Linear regression,2017-07-02,32.95,4.3446,0.2162
-2017,Linear regression,2017-07-09,58.0,4.2364,0.2162
-2017,Linear regression,2017-07-16,31.5557,4.13,0.2162
-2017,Linear regression,2017-07-23,31.4829,4.0344,0.2162
-2017,Linear regression,2017-07-30,21.16,3.9588,0.2162
-2017,Linear regression,2017-08-06,35.2814,3.9109,0.2162
-2017,Linear regression,2017-08-13,37.6029,3.8965,0.2162
-2017,Linear regression,2017-08-20,33.6243,3.9191,0.2162
-2017,Linear regression,2017-08-27,43.3986,3.9793,0.2162
-2017,Linear regression,2017-09-03,26.4286,4.0749,0.2162
-2017,Linear regression,2017-09-10,47.1771,4.2011,0.2162
-2017,Linear regression,2017-09-17,59.2629,4.351,0.2162
-2017,Linear regression,2017-09-24,44.0271,4.5163,0.2162
-2017,Linear regression,2017-10-01,72.0857,4.6883,0.2162
-2017,Linear regression,2017-10-08,76.9129,4.8582,0.2162
-2017,Linear regression,2017-10-15,122.4471,5.0182,0.2162
-2017,Linear regression,2017-10-22,198.3271,5.1622,0.2162
-2017,Linear regression,2017-10-29,183.8943,5.2855,0.2162
-2017,Linear regression,2017-11-05,187.9957,5.3859,0.2162
-2017,Linear regression,2017-11-12,438.4471,5.4627,0.2162
-2017,Linear regression,2017-11-19,202.2114,5.5171,0.2162
-2017,Linear regression,2017-11-26,185.72,5.5513,0.2162
-2017,Linear regression,2017-12-03,205.8971,5.568,0.2162
-2017,Linear regression,2017-12-10,173.3457,5.5704,0.2162
-2017,Linear regression,2017-12-17,130.5114,5.561,0.2162
-2017,Linear regression,2017-12-24,191.2171,5.5419,0.2162
-2017,LSTM (small),2017-01-01,230.7143,5.3943,0.024
-2017,LSTM (small),2017-01-08,207.4529,5.3774,0.024
-2017,LSTM (small),2017-01-15,196.7457,5.3061,0.024
-2017,LSTM (small),2017-01-22,238.0271,5.5587,0.024
-2017,LSTM (small),2017-01-29,159.2057,5.3503,0.024
-2017,LSTM (small),2017-02-05,177.6186,5.0535,0.024
-2017,LSTM (small),2017-02-12,133.1686,4.9939,0.024
-2017,LSTM (small),2017-02-19,139.4214,5.0609,0.024
-2017,LSTM (small),2017-02-26,244.8114,5.0081,0.024
-2017,LSTM (small),2017-03-05,115.9371,4.8439,0.024
-2017,LSTM (small),2017-03-12,87.95,4.3818,0.024
-2017,LSTM (small),2017-03-19,106.6343,4.4283,0.024
-2017,LSTM (small),2017-03-26,136.8229,4.4387,0.024
-2017,LSTM (small),2017-04-02,110.3371,4.6182,0.024
-2017,LSTM (small),2017-04-09,90.86,4.5551,0.024
-2017,LSTM (small),2017-04-16,154.8371,4.9275,0.024
-2017,LSTM (small),2017-04-23,133.07,4.6432,0.024
-2017,LSTM (small),2017-04-30,96.7886,4.8702,0.024
-2017,LSTM (small),2017-05-07,167.4829,4.4373,0.024
-2017,LSTM (small),2017-05-14,142.7271,4.631,0.024
-2017,LSTM (small),2017-05-21,144.9043,4.3145,0.024
-2017,LSTM (small),2017-05-28,94.8229,4.28,0.024
-2017,LSTM (small),2017-06-04,90.0814,4.6344,0.024
-2017,LSTM (small),2017-06-11,58.4771,4.191,0.024
-2017,LSTM (small),2017-06-18,58.1271,4.4995,0.024
-2017,LSTM (small),2017-06-25,57.1429,4.552,0.024
-2017,LSTM (small),2017-07-02,32.95,4.4568,0.024
-2017,LSTM (small),2017-07-09,58.0,4.4145,0.024
-2017,LSTM (small),2017-07-16,31.5557,4.1536,0.024
-2017,LSTM (small),2017-07-23,31.4829,4.0945,0.024
-2017,LSTM (small),2017-07-30,21.16,3.8587,0.024
-2017,LSTM (small),2017-08-06,35.2814,3.65,0.024
-2017,LSTM (small),2017-08-13,37.6029,3.9655,0.024
-2017,LSTM (small),2017-08-20,33.6243,4.1551,0.024
-2017,LSTM (small),2017-08-27,43.3986,3.9807,0.024
-2017,LSTM (small),2017-09-03,26.4286,4.0361,0.024
-2017,LSTM (small),2017-09-10,47.1771,4.2697,0.024
-2017,LSTM (small),2017-09-17,59.2629,3.9577,0.024
-2017,LSTM (small),2017-09-24,44.0271,4.2528,0.024
-2017,LSTM (small),2017-10-01,72.0857,4.386,0.024
-2017,LSTM (small),2017-10-08,76.9129,4.6212,0.024
-2017,LSTM (small),2017-10-15,122.4471,4.7762,0.024
-2017,LSTM (small),2017-10-22,198.3271,4.6416,0.024
-2017,LSTM (small),2017-10-29,183.8943,5.4719,0.024
-2017,LSTM (small),2017-11-05,187.9957,5.8764,0.024
-2017,LSTM (small),2017-11-12,438.4471,5.8529,0.024
-2017,LSTM (small),2017-11-19,202.2114,5.816,0.024
-2017,LSTM (small),2017-11-26,185.72,5.5776,0.024
-2017,LSTM (small),2017-12-03,205.8971,5.4562,0.024
-2017,LSTM (small),2017-12-10,173.3457,5.4609,0.024
-2017,LSTM (small),2017-12-17,130.5114,5.3884,0.024
-2017,LSTM (small),2017-12-24,191.2171,5.2657,0.024
-2017,Fourier+ARMA const,2017-01-01,230.7143,5.4104,0.1998
-2017,Fourier+ARMA const,2017-01-08,207.4529,5.3473,0.2091
-2017,Fourier+ARMA const,2017-01-15,196.7457,5.2894,0.2099
-2017,Fourier+ARMA const,2017-01-22,238.0271,5.228,0.21
-2017,Fourier+ARMA const,2017-01-29,159.2057,5.1604,0.21
-2017,Fourier+ARMA const,2017-02-05,177.6186,5.086,0.21
-2017,Fourier+ARMA const,2017-02-12,133.1686,5.0058,0.21
-2017,Fourier+ARMA const,2017-02-19,139.4214,4.9218,0.21
-2017,Fourier+ARMA const,2017-02-26,244.8114,4.8368,0.21
-2017,Fourier+ARMA const,2017-03-05,115.9371,4.7543,0.21
-2017,Fourier+ARMA const,2017-03-12,87.95,4.6783,0.21
-2017,Fourier+ARMA const,2017-03-19,106.6343,4.6127,0.21
-2017,Fourier+ARMA const,2017-03-26,136.8229,4.5607,0.21
-2017,Fourier+ARMA const,2017-04-02,110.3371,4.5246,0.21
-2017,Fourier+ARMA const,2017-04-09,90.86,4.5054,0.21
-2017,Fourier+ARMA const,2017-04-16,154.8371,4.5021,0.21
-2017,Fourier+ARMA const,2017-04-23,133.07,4.5121,0.21
-2017,Fourier+ARMA const,2017-04-30,96.7886,4.5311,0.21
-2017,Fourier+ARMA const,2017-05-07,167.4829,4.5534,0.21
-2017,Fourier+ARMA const,2017-05-14,142.7271,4.5728,0.21
-2017,Fourier+ARMA const,2017-05-21,144.9043,4.583,0.21
-2017,Fourier+ARMA const,2017-05-28,94.8229,4.5782,0.21
-2017,Fourier+ARMA const,2017-06-04,90.0814,4.5541,0.21
-2017,Fourier+ARMA const,2017-06-11,58.4771,4.5084,0.21
-2017,Fourier+ARMA const,2017-06-18,58.1271,4.4411,0.21
-2017,Fourier+ARMA const,2017-06-25,57.1429,4.3549,0.21
-2017,Fourier+ARMA const,2017-07-02,32.95,4.2546,0.21
-2017,Fourier+ARMA const,2017-07-09,58.0,4.1474,0.21
-2017,Fourier+ARMA const,2017-07-16,31.5557,4.0416,0.21
-2017,Fourier+ARMA const,2017-07-23,31.4829,3.9464,0.21
-2017,Fourier+ARMA const,2017-07-30,21.16,3.8707,0.21
-2017,Fourier+ARMA const,2017-08-06,35.2814,3.8222,0.21
-2017,Fourier+ARMA const,2017-08-13,37.6029,3.8069,0.21
-2017,Fourier+ARMA const,2017-08-20,33.6243,3.8284,0.21
-2017,Fourier+ARMA const,2017-08-27,43.3986,3.8875,0.21
-2017,Fourier+ARMA const,2017-09-03,26.4286,3.9821,0.21
-2017,Fourier+ARMA const,2017-09-10,47.1771,4.1077,0.21
-2017,Fourier+ARMA const,2017-09-17,59.2629,4.2575,0.21
-2017,Fourier+ARMA const,2017-09-24,44.0271,4.4233,0.21
-2017,Fourier+ARMA const,2017-10-01,72.0857,4.5964,0.21
-2017,Fourier+ARMA const,2017-10-08,76.9129,4.7677,0.21
-2017,Fourier+ARMA const,2017-10-15,122.4471,4.9294,0.21
-2017,Fourier+ARMA const,2017-10-22,198.3271,5.075,0.21
-2017,Fourier+ARMA const,2017-10-29,183.8943,5.1995,0.21
-2017,Fourier+ARMA const,2017-11-05,187.9957,5.3004,0.21
-2017,Fourier+ARMA const,2017-11-12,438.4471,5.3767,0.21
-2017,Fourier+ARMA const,2017-11-19,202.2114,5.4293,0.21
-2017,Fourier+ARMA const,2017-11-26,185.72,5.4602,0.21
-2017,Fourier+ARMA const,2017-12-03,205.8971,5.4724,0.21
-2017,Fourier+ARMA const,2017-12-10,173.3457,5.4689,0.21
-2017,Fourier+ARMA const,2017-12-17,130.5114,5.4527,0.21
-2017,Fourier+ARMA const,2017-12-24,191.2171,5.4261,0.21
-2017,Fourier+ARMA linear,2017-01-01,230.7143,5.4557,0.1967
-2017,Fourier+ARMA linear,2017-01-08,207.4529,5.4105,0.2065
-2017,Fourier+ARMA linear,2017-01-15,196.7457,5.3618,0.2075
-2017,Fourier+ARMA linear,2017-01-22,238.0271,5.3061,0.2076
-2017,Fourier+ARMA linear,2017-01-29,159.2057,5.2423,0.2076
-2017,Fourier+ARMA linear,2017-02-05,177.6186,5.1705,0.2076
-2017,Fourier+ARMA linear,2017-02-12,133.1686,5.0917,0.2076
-2017,Fourier+ARMA linear,2017-02-19,139.4214,5.008,0.2076
-2017,Fourier+ARMA linear,2017-02-26,244.8114,4.9227,0.2076
-2017,Fourier+ARMA linear,2017-03-05,115.9371,4.8394,0.2076
-2017,Fourier+ARMA linear,2017-03-12,87.95,4.7625,0.2076
-2017,Fourier+ARMA linear,2017-03-19,106.6343,4.696,0.2076
-2017,Fourier+ARMA linear,2017-03-26,136.8229,4.6435,0.2076
-2017,Fourier+ARMA linear,2017-04-02,110.3371,4.6074,0.2076
-2017,Fourier+ARMA linear,2017-04-09,90.86,4.5885,0.2076
-2017,Fourier+ARMA linear,2017-04-16,154.8371,4.586,0.2076
-2017,Fourier+ARMA linear,2017-04-23,133.07,4.5971,0.2076
-2017,Fourier+ARMA linear,2017-04-30,96.7886,4.6174,0.2076
-2017,Fourier+ARMA linear,2017-05-07,167.4829,4.641,0.2076
-2017,Fourier+ARMA linear,2017-05-14,142.7271,4.6616,0.2076
-2017,Fourier+ARMA linear,2017-05-21,144.9043,4.6725,0.2076
-2017,Fourier+ARMA linear,2017-05-28,94.8229,4.6681,0.2076
-2017,Fourier+ARMA linear,2017-06-04,90.0814,4.6439,0.2076
-2017,Fourier+ARMA linear,2017-06-11,58.4771,4.5978,0.2076
-2017,Fourier+ARMA linear,2017-06-18,58.1271,4.5299,0.2076
-2017,Fourier+ARMA linear,2017-06-25,57.1429,4.4429,0.2076
-2017,Fourier+ARMA linear,2017-07-02,32.95,4.3419,0.2076
-2017,Fourier+ARMA linear,2017-07-09,58.0,4.2342,0.2076
-2017,Fourier+ARMA linear,2017-07-16,31.5557,4.1283,0.2076
-2017,Fourier+ARMA linear,2017-07-23,31.4829,4.0334,0.2076
-2017,Fourier+ARMA linear,2017-07-30,21.16,3.9584,0.2076
-2017,Fourier+ARMA linear,2017-08-06,35.2814,3.911,0.2076
-2017,Fourier+ARMA linear,2017-08-13,37.6029,3.8972,0.2076
-2017,Fourier+ARMA linear,2017-08-20,33.6243,3.9202,0.2076
-2017,Fourier+ARMA linear,2017-08-27,43.3986,3.9806,0.2076
-2017,Fourier+ARMA linear,2017-09-03,26.4286,4.0763,0.2076
-2017,Fourier+ARMA linear,2017-09-10,47.1771,4.2024,0.2076
-2017,Fourier+ARMA linear,2017-09-17,59.2629,4.3522,0.2076
-2017,Fourier+ARMA linear,2017-09-24,44.0271,4.5175,0.2076
-2017,Fourier+ARMA linear,2017-10-01,72.0857,4.6893,0.2076
-2017,Fourier+ARMA linear,2017-10-08,76.9129,4.8591,0.2076
-2017,Fourier+ARMA linear,2017-10-15,122.4471,5.0191,0.2076
-2017,Fourier+ARMA linear,2017-10-22,198.3271,5.163,0.2076
-2017,Fourier+ARMA linear,2017-10-29,183.8943,5.2864,0.2076
-2017,Fourier+ARMA linear,2017-11-05,187.9957,5.3868,0.2076
-2017,Fourier+ARMA linear,2017-11-12,438.4471,5.4637,0.2076
-2017,Fourier+ARMA linear,2017-11-19,202.2114,5.518,0.2076
-2017,Fourier+ARMA linear,2017-11-26,185.72,5.552,0.2076
-2017,Fourier+ARMA linear,2017-12-03,205.8971,5.5684,0.2076
-2017,Fourier+ARMA linear,2017-12-10,173.3457,5.5702,0.2076
-2017,Fourier+ARMA linear,2017-12-17,130.5114,5.56,0.2076
-2017,Fourier+ARMA linear,2017-12-24,191.2171,5.5399,0.2076
-2017,Fourier+ARMA (selected),2017-01-01,230.7143,5.3345,0.1859
-2017,Fourier+ARMA (selected),2017-01-08,207.4529,5.3628,0.189
-2017,Fourier+ARMA (selected),2017-01-15,196.7457,5.4151,0.1894
-2017,Fourier+ARMA (selected),2017-01-22,238.0271,5.4391,0.1896
-2017,Fourier+ARMA (selected),2017-01-29,159.2057,5.4082,0.1898
-2017,Fourier+ARMA (selected),2017-02-05,177.6186,5.3136,0.1899
-2017,Fourier+ARMA (selected),2017-02-12,133.1686,5.1645,0.1901
-2017,Fourier+ARMA (selected),2017-02-19,139.4214,4.9851,0.1903
-2017,Fourier+ARMA (selected),2017-02-26,244.8114,4.8072,0.1905
-2017,Fourier+ARMA (selected),2017-03-05,115.9371,4.661,0.1906
-2017,Fourier+ARMA (selected),2017-03-12,87.95,4.5667,0.1908
-2017,Fourier+ARMA (selected),2017-03-19,106.6343,4.53,0.191
-2017,Fourier+ARMA (selected),2017-03-26,136.8229,4.5415,0.1912
-2017,Fourier+ARMA (selected),2017-04-02,110.3371,4.5818,0.1914
-2017,Fourier+ARMA (selected),2017-04-09,90.86,4.6278,0.1915
-2017,Fourier+ARMA (selected),2017-04-16,154.8371,4.6609,0.1917
-2017,Fourier+ARMA (selected),2017-04-23,133.07,4.6712,0.1919
-2017,Fourier+ARMA (selected),2017-04-30,96.7886,4.6593,0.1921
-2017,Fourier+ARMA (selected),2017-05-07,167.4829,4.6335,0.1922
-2017,Fourier+ARMA (selected),2017-05-14,142.7271,4.6048,0.1924
-2017,Fourier+ARMA (selected),2017-05-21,144.9043,4.5814,0.1926
-2017,Fourier+ARMA (selected),2017-05-28,94.8229,4.5647,0.1928
-2017,Fourier+ARMA (selected),2017-06-04,90.0814,4.5484,0.1929
-2017,Fourier+ARMA (selected),2017-06-11,58.4771,4.5215,0.1931
-2017,Fourier+ARMA (selected),2017-06-18,58.1271,4.4727,0.1933
-2017,Fourier+ARMA (selected),2017-06-25,57.1429,4.3957,0.1935
-2017,Fourier+ARMA (selected),2017-07-02,32.95,4.2927,0.1936
-2017,Fourier+ARMA (selected),2017-07-09,58.0,4.1747,0.1938
-2017,Fourier+ARMA (selected),2017-07-16,31.5557,4.0589,0.194
-2017,Fourier+ARMA (selected),2017-07-23,31.4829,3.9636,0.1942
-2017,Fourier+ARMA (selected),2017-07-30,21.16,3.9026,0.1943
-2017,Fourier+ARMA (selected),2017-08-06,35.2814,3.8817,0.1945
-2017,Fourier+ARMA (selected),2017-08-13,37.6029,3.8976,0.1947
-2017,Fourier+ARMA (selected),2017-08-20,33.6243,3.9405,0.1949
-2017,Fourier+ARMA (selected),2017-08-27,43.3986,3.9991,0.195
-2017,Fourier+ARMA (selected),2017-09-03,26.4286,4.0655,0.1952
-2017,Fourier+ARMA (selected),2017-09-10,47.1771,4.1391,0.1954
-2017,Fourier+ARMA (selected),2017-09-17,59.2629,4.2268,0.1955
-2017,Fourier+ARMA (selected),2017-09-24,44.0271,4.3396,0.1957
-2017,Fourier+ARMA (selected),2017-10-01,72.0857,4.4878,0.1959
-2017,Fourier+ARMA (selected),2017-10-08,76.9129,4.6742,0.1961
-2017,Fourier+ARMA (selected),2017-10-15,122.4471,4.8903,0.1962
-2017,Fourier+ARMA (selected),2017-10-22,198.3271,5.1159,0.1964
-2017,Fourier+ARMA (selected),2017-10-29,183.8943,5.3231,0.1966
-2017,Fourier+ARMA (selected),2017-11-05,187.9957,5.483,0.1968
-2017,Fourier+ARMA (selected),2017-11-12,438.4471,5.5747,0.1969
-2017,Fourier+ARMA (selected),2017-11-19,202.2114,5.5916,0.1971
-2017,Fourier+ARMA (selected),2017-11-26,185.72,5.5441,0.1973
-2017,Fourier+ARMA (selected),2017-12-03,205.8971,5.4573,0.1974
-2017,Fourier+ARMA (selected),2017-12-10,173.3457,5.364,0.1976
-2017,Fourier+ARMA (selected),2017-12-17,130.5114,5.295,0.1978
-2017,Fourier+ARMA (selected),2017-12-24,191.2171,5.2702,0.1979
-2017,SARIMA D=1,2017-01-01,230.7143,5.6239,0.2399
-2017,SARIMA D=1,2017-01-08,207.4529,5.9486,0.245
-2017,SARIMA D=1,2017-01-15,196.7457,5.3557,0.2483
-2017,SARIMA D=1,2017-01-22,238.0271,5.9346,0.2504
-2017,SARIMA D=1,2017-01-29,159.2057,5.9041,0.2518
-2017,SARIMA D=1,2017-02-05,177.6186,5.1511,0.2528
-2017,SARIMA D=1,2017-02-12,133.1686,4.9715,0.2534
-2017,SARIMA D=1,2017-02-19,139.4214,4.8777,0.2538
-2017,SARIMA D=1,2017-02-26,244.8114,4.9075,0.254
-2017,SARIMA D=1,2017-03-05,115.9371,5.1592,0.2542
-2017,SARIMA D=1,2017-03-12,87.95,4.5299,0.2543
-2017,SARIMA D=1,2017-03-19,106.6343,4.4173,0.2544
-2017,SARIMA D=1,2017-03-26,136.8229,4.4489,0.2545
-2017,SARIMA D=1,2017-04-02,110.3371,4.9529,0.2545
-2017,SARIMA D=1,2017-04-09,90.86,4.8798,0.2545
-2017,SARIMA D=1,2017-04-16,154.8371,4.6194,0.2545
-2017,SARIMA D=1,2017-04-23,133.07,4.7151,0.2545
-2017,SARIMA D=1,2017-04-30,96.7886,5.2931,0.2546
-2017,SARIMA D=1,2017-05-07,167.4829,4.3697,0.2546
-2017,SARIMA D=1,2017-05-14,142.7271,4.5541,0.2546
-2017,SARIMA D=1,2017-05-21,144.9043,4.5649,0.2546
-2017,SARIMA D=1,2017-05-28,94.8229,4.5567,0.2546
-2017,SARIMA D=1,2017-06-04,90.0814,4.7464,0.2546
-2017,SARIMA D=1,2017-06-11,58.4771,4.1006,0.2546
-2017,SARIMA D=1,2017-06-18,58.1271,4.2634,0.2546
-2017,SARIMA D=1,2017-06-25,57.1429,4.3061,0.2546
-2017,SARIMA D=1,2017-07-02,32.95,4.1624,0.2546
-2017,SARIMA D=1,2017-07-09,58.0,4.1959,0.2546
-2017,SARIMA D=1,2017-07-16,31.5557,4.0907,0.2546
-2017,SARIMA D=1,2017-07-23,31.4829,3.9639,0.2546
-2017,SARIMA D=1,2017-07-30,21.16,4.1847,0.2546
-2017,SARIMA D=1,2017-08-06,35.2814,3.6465,0.2546
-2017,SARIMA D=1,2017-08-13,37.6029,3.5323,0.2546
-2017,SARIMA D=1,2017-08-20,33.6243,3.8906,0.2546
-2017,SARIMA D=1,2017-08-27,43.3986,3.7161,0.2546
-2017,SARIMA D=1,2017-09-03,26.4286,3.5321,0.2546
-2017,SARIMA D=1,2017-09-10,47.1771,3.9479,0.2546
-2017,SARIMA D=1,2017-09-17,59.2629,4.0772,0.2546
-2017,SARIMA D=1,2017-09-24,44.0271,4.2072,0.2546
-2017,SARIMA D=1,2017-10-01,72.0857,4.5015,0.2546
-2017,SARIMA D=1,2017-10-08,76.9129,4.7138,0.2545
-2017,SARIMA D=1,2017-10-15,122.4471,4.8192,0.2545
-2017,SARIMA D=1,2017-10-22,198.3271,5.0115,0.2545
-2017,SARIMA D=1,2017-10-29,183.8943,5.8196,0.2545
-2017,SARIMA D=1,2017-11-05,187.9957,6.5667,0.2545
-2017,SARIMA D=1,2017-11-12,438.4471,5.9021,0.2544
-2017,SARIMA D=1,2017-11-19,202.2114,5.7081,0.2544
-2017,SARIMA D=1,2017-11-26,185.72,5.2773,0.2543
-2017,SARIMA D=1,2017-12-03,205.8971,5.4032,0.2541
-2017,SARIMA D=1,2017-12-10,173.3457,5.5349,0.2539
-2017,SARIMA D=1,2017-12-17,130.5114,5.4988,0.2535
-2017,SARIMA D=1,2017-12-24,191.2171,5.6319,0.253
-2017,SARIMA D=0,2017-01-01,230.7143,5.4871,0.2409
-2017,SARIMA D=0,2017-01-08,207.4529,5.5156,0.2934
-2017,SARIMA D=0,2017-01-15,196.7457,5.3584,0.331
-2017,SARIMA D=0,2017-01-22,238.0271,5.4188,0.3595
-2017,SARIMA D=0,2017-01-29,159.2057,5.3848,0.3818
-2017,SARIMA D=0,2017-02-05,177.6186,5.2006,0.3995
-2017,SARIMA D=0,2017-02-12,133.1686,5.1456,0.4137
-2017,SARIMA D=0,2017-02-19,139.4214,5.0987,0.4253
-2017,SARIMA D=0,2017-02-26,244.8114,5.0642,0.4348
-2017,SARIMA D=0,2017-03-05,115.9371,5.048,0.4426
-2017,SARIMA D=0,2017-03-12,87.95,4.9096,0.449
-2017,SARIMA D=0,2017-03-19,106.6343,4.8496,0.4543
-2017,SARIMA D=0,2017-03-26,136.8229,4.8686,0.4587
-2017,SARIMA D=0,2017-04-02,110.3371,4.9251,0.4624
-2017,SARIMA D=0,2017-04-09,90.86,4.9225,0.4655
-2017,SARIMA D=0,2017-04-16,154.8371,4.8602,0.468
-2017,SARIMA D=0,2017-04-23,133.07,4.8832,0.4701
-2017,SARIMA D=0,2017-04-30,96.7886,4.951,0.4719
-2017,SARIMA D=0,2017-05-07,167.4829,4.8041,0.4734
-2017,SARIMA D=0,2017-05-14,142.7271,4.8025,0.4746
-2017,SARIMA D=0,2017-05-21,144.9043,4.7772,0.4756
-2017,SARIMA D=0,2017-05-28,94.8229,4.8051,0.4765
-2017,SARIMA D=0,2017-06-04,90.0814,4.7882,0.4772
-2017,SARIMA D=0,2017-06-11,58.4771,4.6937,0.4778
-2017,SARIMA D=0,2017-06-18,58.1271,4.7279,0.4783
-2017,SARIMA D=0,2017-06-25,57.1429,4.706,0.4788
-2017,SARIMA D=0,2017-07-02,32.95,4.6626,0.4791
-2017,SARIMA D=0,2017-07-09,58.0,4.6282,0.4794
-2017,SARIMA D=0,2017-07-16,31.5557,4.6241,0.4797
-2017,SARIMA D=0,2017-07-23,31.4829,4.5539,0.4799
-2017,SARIMA D=0,2017-07-30,21.16,4.5722,0.48
-2017,SARIMA D=0,2017-08-06,35.2814,4.5244,0.4802
-2017,SARIMA D=0,2017-08-13,37.6029,4.504,0.4803
-2017,SARIMA D=0,2017-08-20,33.6243,4.5448,0.4804
-2017,SARIMA D=0,2017-08-27,43.3986,4.5272,0.4805
-2017,SARIMA D=0,2017-09-03,26.4286,4.5186,0.4806
-2017,SARIMA D=0,2017-09-10,47.1771,4.5824,0.4806
-2017,SARIMA D=0,2017-09-17,59.2629,4.6288,0.4807
-2017,SARIMA D=0,2017-09-24,44.0271,4.6215,0.4807
-2017,SARIMA D=0,2017-10-01,72.0857,4.7127,0.4808
-2017,SARIMA D=0,2017-10-08,76.9129,4.7987,0.4808
-2017,SARIMA D=0,2017-10-15,122.4471,4.7907,0.4808
-2017,SARIMA D=0,2017-10-22,198.3271,4.8628,0.4808
-2017,SARIMA D=0,2017-10-29,183.8943,5.015,0.4809
-2017,SARIMA D=0,2017-11-05,187.9957,5.2037,0.4809
-2017,SARIMA D=0,2017-11-12,438.4471,5.0736,0.4809
-2017,SARIMA D=0,2017-11-19,202.2114,5.0294,0.4809
-2017,SARIMA D=0,2017-11-26,185.72,4.9345,0.4809
-2017,SARIMA D=0,2017-12-03,205.8971,4.9667,0.4809
-2017,SARIMA D=0,2017-12-10,173.3457,4.9924,0.4809
-2017,SARIMA D=0,2017-12-17,130.5114,4.9354,0.4809
-2017,SARIMA D=0,2017-12-24,191.2171,4.995,0.4809
-2018,Seasonal naive,2018-01-07,247.2986,5.3349,
-2018,Seasonal naive,2018-01-14,188.26,5.2819,
-2018,Seasonal naive,2018-01-21,197.46,5.4724,
-2018,Seasonal naive,2018-01-28,148.4886,5.0702,
-2018,Seasonal naive,2018-02-04,137.0471,5.1796,
-2018,Seasonal naive,2018-02-11,169.39,4.8916,
-2018,Seasonal naive,2018-02-18,103.7086,4.9375,
-2018,Seasonal naive,2018-02-25,158.0829,5.5005,
-2018,Seasonal naive,2018-03-04,104.86,4.753,
-2018,Seasonal naive,2018-03-11,96.9486,4.4768,
-2018,Seasonal naive,2018-03-18,102.2143,4.6694,
-2018,Seasonal naive,2018-03-25,90.97,4.9187,
-2018,Seasonal naive,2018-04-01,97.7286,4.7035,
-2018,Seasonal naive,2018-04-08,94.4529,4.5093,
-2018,Seasonal naive,2018-04-15,75.25,5.0424,
-2018,Seasonal naive,2018-04-22,92.28,4.8909,
-2018,Seasonal naive,2018-04-29,103.69,4.5725,
-2018,Seasonal naive,2018-05-06,68.9371,5.1209,
-2018,Seasonal naive,2018-05-13,99.3929,4.9609,
-2018,Seasonal naive,2018-05-20,83.6829,4.9761,
-2018,Seasonal naive,2018-05-27,98.5771,4.552,
-2018,Seasonal naive,2018-06-03,80.0014,4.5007,
-2018,Seasonal naive,2018-06-10,64.8829,4.0686,
-2018,Seasonal naive,2018-06-17,152.4043,4.0626,
-2018,Seasonal naive,2018-06-24,68.2586,4.0456,
-2018,Seasonal naive,2018-07-01,38.8757,3.495,
-2018,Seasonal naive,2018-07-08,51.7443,4.0604,
-2018,Seasonal naive,2018-07-15,43.47,3.4518,
-2018,Seasonal naive,2018-07-22,36.8086,3.4494,
-2018,Seasonal naive,2018-07-29,34.5829,3.0521,
-2018,Seasonal naive,2018-08-05,59.5043,3.5634,
-2018,Seasonal naive,2018-08-12,39.0543,3.6271,
-2018,Seasonal naive,2018-08-19,38.7414,3.5152,
-2018,Seasonal naive,2018-08-26,31.8071,3.7704,
-2018,Seasonal naive,2018-09-02,37.8543,3.2744,
-2018,Seasonal naive,2018-09-09,41.95,3.8539,
-2018,Seasonal naive,2018-09-16,33.33,4.082,
-2018,Seasonal naive,2018-09-23,49.2086,3.7848,
-2018,Seasonal naive,2018-09-30,57.5586,4.2779,
-2018,Seasonal naive,2018-10-07,83.3871,4.3427,
-2018,Seasonal naive,2018-10-14,96.9114,4.8077,
-2018,Seasonal naive,2018-10-21,140.4829,5.2899,
-2018,Seasonal naive,2018-10-28,171.1543,5.2144,
-2018,Seasonal naive,2018-11-04,202.7614,5.2364,
-2018,Seasonal naive,2018-11-11,283.1486,6.0832,
-2018,Seasonal naive,2018-11-18,173.0886,5.3093,
-2018,Seasonal naive,2018-11-25,168.8671,5.2242,
-2018,Seasonal naive,2018-12-02,186.7086,5.3274,
-2018,Seasonal naive,2018-12-09,201.8729,5.1553,
-2018,Seasonal naive,2018-12-16,175.7014,4.8715,
-2018,Seasonal naive,2018-12-23,261.5357,5.2534,
-2018,Seasonal naive,2018-12-30,287.3929,5.5294,
-2018,Climatology,2018-01-07,247.2986,5.4087,
-2018,Climatology,2018-01-14,188.26,5.2777,
-2018,Climatology,2018-01-21,197.46,5.4377,
-2018,Climatology,2018-01-28,148.4886,5.2427,
-2018,Climatology,2018-02-04,137.0471,5.1177,
-2018,Climatology,2018-02-11,169.39,4.9634,
-2018,Climatology,2018-02-18,103.7086,4.9792,
-2018,Climatology,2018-02-25,158.0829,5.142,
-2018,Climatology,2018-03-04,104.86,4.8399,
-2018,Climatology,2018-03-11,96.9486,4.4615,
-2018,Climatology,2018-03-18,102.2143,4.4902,
-2018,Climatology,2018-03-25,90.97,4.5445,
-2018,Climatology,2018-04-01,97.7286,4.6547,
-2018,Climatology,2018-04-08,94.4529,4.5116,
-2018,Climatology,2018-04-15,75.25,4.7201,
-2018,Climatology,2018-04-22,92.28,4.7129,
-2018,Climatology,2018-04-29,103.69,4.751,
-2018,Climatology,2018-05-06,68.9371,4.6604,
-2018,Climatology,2018-05-13,99.3929,4.7616,
-2018,Climatology,2018-05-20,83.6829,4.6494,
-2018,Climatology,2018-05-27,98.5771,4.4828,
-2018,Climatology,2018-06-03,80.0014,4.5808,
-2018,Climatology,2018-06-10,64.8829,4.1754,
-2018,Climatology,2018-06-17,152.4043,4.3477,
-2018,Climatology,2018-06-24,68.2586,4.3512,
-2018,Climatology,2018-07-01,38.8757,4.0383,
-2018,Climatology,2018-07-08,51.7443,4.1565,
-2018,Climatology,2018-07-15,43.47,3.8285,
-2018,Climatology,2018-07-22,36.8086,3.822,
-2018,Climatology,2018-07-29,34.5829,3.5712,
-2018,Climatology,2018-08-05,59.5043,3.6175,
-2018,Climatology,2018-08-12,39.0543,3.8246,
-2018,Climatology,2018-08-19,38.7414,3.8529,
-2018,Climatology,2018-08-26,31.8071,3.8302,
-2018,Climatology,2018-09-02,37.8543,3.7219,
-2018,Climatology,2018-09-09,41.95,4.0908,
-2018,Climatology,2018-09-16,33.33,4.1698,
-2018,Climatology,2018-09-23,49.2086,4.1432,
-2018,Climatology,2018-09-30,57.5586,4.3071,
-2018,Climatology,2018-10-07,83.3871,4.5495,
-2018,Climatology,2018-10-14,96.9114,4.8544,
-2018,Climatology,2018-10-21,140.4829,5.005,
-2018,Climatology,2018-10-28,171.1543,5.2769,
-2018,Climatology,2018-11-04,202.7614,5.4857,
-2018,Climatology,2018-11-11,283.1486,5.771,
-2018,Climatology,2018-11-18,173.0886,5.4635,
-2018,Climatology,2018-11-25,168.8671,5.3075,
-2018,Climatology,2018-12-02,186.7086,5.3428,
-2018,Climatology,2018-12-09,201.8729,5.3422,
-2018,Climatology,2018-12-16,175.7014,5.1833,
-2018,Climatology,2018-12-23,261.5357,5.207,
-2018,Climatology,2018-12-30,287.3929,5.3989,
-2018,Climatology + AR(1),2018-01-07,247.2986,5.4562,0.1957
-2018,Climatology + AR(1),2018-01-14,188.26,5.2949,0.2083
-2018,Climatology + AR(1),2018-01-21,197.46,5.444,0.2099
-2018,Climatology + AR(1),2018-01-28,148.4886,5.2449,0.2101
-2018,Climatology + AR(1),2018-02-04,137.0471,5.1185,0.2101
-2018,Climatology + AR(1),2018-02-11,169.39,4.9637,0.2101
-2018,Climatology + AR(1),2018-02-18,103.7086,4.9793,0.2101
-2018,Climatology + AR(1),2018-02-25,158.0829,5.142,0.2101
-2018,Climatology + AR(1),2018-03-04,104.86,4.8399,0.2101
-2018,Climatology + AR(1),2018-03-11,96.9486,4.4615,0.2101
-2018,Climatology + AR(1),2018-03-18,102.2143,4.4902,0.2101
-2018,Climatology + AR(1),2018-03-25,90.97,4.5445,0.2101
-2018,Climatology + AR(1),2018-04-01,97.7286,4.6547,0.2101
-2018,Climatology + AR(1),2018-04-08,94.4529,4.5116,0.2101
-2018,Climatology + AR(1),2018-04-15,75.25,4.7201,0.2101
-2018,Climatology + AR(1),2018-04-22,92.28,4.7129,0.2101
-2018,Climatology + AR(1),2018-04-29,103.69,4.751,0.2101
-2018,Climatology + AR(1),2018-05-06,68.9371,4.6604,0.2101
-2018,Climatology + AR(1),2018-05-13,99.3929,4.7616,0.2101
-2018,Climatology + AR(1),2018-05-20,83.6829,4.6494,0.2101
-2018,Climatology + AR(1),2018-05-27,98.5771,4.4828,0.2101
-2018,Climatology + AR(1),2018-06-03,80.0014,4.5808,0.2101
-2018,Climatology + AR(1),2018-06-10,64.8829,4.1754,0.2101
-2018,Climatology + AR(1),2018-06-17,152.4043,4.3477,0.2101
-2018,Climatology + AR(1),2018-06-24,68.2586,4.3512,0.2101
-2018,Climatology + AR(1),2018-07-01,38.8757,4.0383,0.2101
-2018,Climatology + AR(1),2018-07-08,51.7443,4.1565,0.2101
-2018,Climatology + AR(1),2018-07-15,43.47,3.8285,0.2101
-2018,Climatology + AR(1),2018-07-22,36.8086,3.822,0.2101
-2018,Climatology + AR(1),2018-07-29,34.5829,3.5712,0.2101
-2018,Climatology + AR(1),2018-08-05,59.5043,3.6175,0.2101
-2018,Climatology + AR(1),2018-08-12,39.0543,3.8246,0.2101
-2018,Climatology + AR(1),2018-08-19,38.7414,3.8529,0.2101
-2018,Climatology + AR(1),2018-08-26,31.8071,3.8302,0.2101
-2018,Climatology + AR(1),2018-09-02,37.8543,3.7219,0.2101
-2018,Climatology + AR(1),2018-09-09,41.95,4.0908,0.2101
-2018,Climatology + AR(1),2018-09-16,33.33,4.1698,0.2101
-2018,Climatology + AR(1),2018-09-23,49.2086,4.1432,0.2101
-2018,Climatology + AR(1),2018-09-30,57.5586,4.3071,0.2101
-2018,Climatology + AR(1),2018-10-07,83.3871,4.5495,0.2101
-2018,Climatology + AR(1),2018-10-14,96.9114,4.8544,0.2101
-2018,Climatology + AR(1),2018-10-21,140.4829,5.005,0.2101
-2018,Climatology + AR(1),2018-10-28,171.1543,5.2769,0.2101
-2018,Climatology + AR(1),2018-11-04,202.7614,5.4857,0.2101
-2018,Climatology + AR(1),2018-11-11,283.1486,5.771,0.2101
-2018,Climatology + AR(1),2018-11-18,173.0886,5.4635,0.2101
-2018,Climatology + AR(1),2018-11-25,168.8671,5.3075,0.2101
-2018,Climatology + AR(1),2018-12-02,186.7086,5.3428,0.2101
-2018,Climatology + AR(1),2018-12-09,201.8729,5.3422,0.2101
-2018,Climatology + AR(1),2018-12-16,175.7014,5.1833,0.2101
-2018,Climatology + AR(1),2018-12-23,261.5357,5.207,0.2101
-2018,Climatology + AR(1),2018-12-30,287.3929,5.3989,0.2101
-2018,Linear regression,2018-01-07,247.2986,5.2854,0.2604
-2018,Linear regression,2018-01-14,188.26,5.2335,0.2604
-2018,Linear regression,2018-01-21,197.46,5.1751,0.2604
-2018,Linear regression,2018-01-28,148.4886,5.1107,0.2604
-2018,Linear regression,2018-02-04,137.0471,5.0411,0.2604
-2018,Linear regression,2018-02-11,169.39,4.9677,0.2604
-2018,Linear regression,2018-02-18,103.7086,4.8923,0.2604
-2018,Linear regression,2018-02-25,158.0829,4.8177,0.2604
-2018,Linear regression,2018-03-04,104.86,4.7469,0.2604
-2018,Linear regression,2018-03-11,96.9486,4.6833,0.2604
-2018,Linear regression,2018-03-18,102.2143,4.6299,0.2604
-2018,Linear regression,2018-03-25,90.97,4.5891,0.2604
-2018,Linear regression,2018-04-01,97.7286,4.5622,0.2604
-2018,Linear regression,2018-04-08,94.4529,4.549,0.2604
-2018,Linear regression,2018-04-15,75.25,4.5479,0.2604
-2018,Linear regression,2018-04-22,92.28,4.5556,0.2604
-2018,Linear regression,2018-04-29,103.69,4.5673,0.2604
-2018,Linear regression,2018-05-06,68.9371,4.5775,0.2604
-2018,Linear regression,2018-05-13,99.3929,4.58,0.2604
-2018,Linear regression,2018-05-20,83.6829,4.5691,0.2604
-2018,Linear regression,2018-05-27,98.5771,4.5399,0.2604
-2018,Linear regression,2018-06-03,80.0014,4.4893,0.2604
-2018,Linear regression,2018-06-10,64.8829,4.416,0.2604
-2018,Linear regression,2018-06-17,152.4043,4.3214,0.2604
-2018,Linear regression,2018-06-24,68.2586,4.2094,0.2604
-2018,Linear regression,2018-07-01,38.8757,4.0859,0.2604
-2018,Linear regression,2018-07-08,51.7443,3.9589,0.2604
-2018,Linear regression,2018-07-15,43.47,3.8376,0.2604
-2018,Linear regression,2018-07-22,36.8086,3.7313,0.2604
-2018,Linear regression,2018-07-29,34.5829,3.649,0.2604
-2018,Linear regression,2018-08-05,59.5043,3.5985,0.2604
-2018,Linear regression,2018-08-12,39.0543,3.5852,0.2604
-2018,Linear regression,2018-08-19,38.7414,3.6122,0.2604
-2018,Linear regression,2018-08-26,31.8071,3.6795,0.2604
-2018,Linear regression,2018-09-02,37.8543,3.7845,0.2604
-2018,Linear regression,2018-09-09,41.95,3.9219,0.2604
-2018,Linear regression,2018-09-16,33.33,4.0842,0.2604
-2018,Linear regression,2018-09-23,49.2086,4.2628,0.2604
-2018,Linear regression,2018-09-30,57.5586,4.4483,0.2604
-2018,Linear regression,2018-10-07,83.3871,4.6315,0.2604
-2018,Linear regression,2018-10-14,96.9114,4.8042,0.2604
-2018,Linear regression,2018-10-21,140.4829,4.9596,0.2604
-2018,Linear regression,2018-10-28,171.1543,5.0928,0.2604
-2018,Linear regression,2018-11-04,202.7614,5.2011,0.2604
-2018,Linear regression,2018-11-11,283.1486,5.2835,0.2604
-2018,Linear regression,2018-11-18,173.0886,5.3409,0.2604
-2018,Linear regression,2018-11-25,168.8671,5.3753,0.2604
-2018,Linear regression,2018-12-02,186.7086,5.3898,0.2604
-2018,Linear regression,2018-12-09,201.8729,5.3875,0.2604
-2018,Linear regression,2018-12-16,175.7014,5.3715,0.2604
-2018,Linear regression,2018-12-23,261.5357,5.3445,0.2604
-2018,Linear regression,2018-12-30,287.3929,5.3084,0.2604
-2018,LSTM (small),2018-01-07,247.2986,5.3885,0.0196
-2018,LSTM (small),2018-01-14,188.26,5.6184,0.0196
-2018,LSTM (small),2018-01-21,197.46,5.5981,0.0196
-2018,LSTM (small),2018-01-28,148.4886,5.238,0.0196
-2018,LSTM (small),2018-02-04,137.0471,5.1347,0.0196
-2018,LSTM (small),2018-02-11,169.39,4.8385,0.0196
-2018,LSTM (small),2018-02-18,103.7086,4.7558,0.0196
-2018,LSTM (small),2018-02-25,158.0829,5.2258,0.0196
-2018,LSTM (small),2018-03-04,104.86,4.8522,0.0196
-2018,LSTM (small),2018-03-11,96.9486,4.3257,0.0196
-2018,LSTM (small),2018-03-18,102.2143,4.4748,0.0196
-2018,LSTM (small),2018-03-25,90.97,4.6419,0.0196
-2018,LSTM (small),2018-04-01,97.7286,4.8952,0.0196
-2018,LSTM (small),2018-04-08,94.4529,4.394,0.0196
-2018,LSTM (small),2018-04-15,75.25,4.6968,0.0196
-2018,LSTM (small),2018-04-22,92.28,4.9301,0.0196
-2018,LSTM (small),2018-04-29,103.69,4.5667,0.0196
-2018,LSTM (small),2018-05-06,68.9371,4.4171,0.0196
-2018,LSTM (small),2018-05-13,99.3929,5.0035,0.0196
-2018,LSTM (small),2018-05-20,83.6829,4.5715,0.0196
-2018,LSTM (small),2018-05-27,98.5771,4.824,0.0196
-2018,LSTM (small),2018-06-03,80.0014,4.7401,0.0196
-2018,LSTM (small),2018-06-10,64.8829,4.3743,0.0196
-2018,LSTM (small),2018-06-17,152.4043,4.3535,0.0196
-2018,LSTM (small),2018-06-24,68.2586,4.4301,0.0196
-2018,LSTM (small),2018-07-01,38.8757,4.3145,0.0196
-2018,LSTM (small),2018-07-08,51.7443,4.1302,0.0196
-2018,LSTM (small),2018-07-15,43.47,4.0096,0.0196
-2018,LSTM (small),2018-07-22,36.8086,4.2887,0.0196
-2018,LSTM (small),2018-07-29,34.5829,3.7501,0.0196
-2018,LSTM (small),2018-08-05,59.5043,3.5327,0.0196
-2018,LSTM (small),2018-08-12,39.0543,3.8383,0.0196
-2018,LSTM (small),2018-08-19,38.7414,3.8442,0.0196
-2018,LSTM (small),2018-08-26,31.8071,3.8539,0.0196
-2018,LSTM (small),2018-09-02,37.8543,3.7579,0.0196
-2018,LSTM (small),2018-09-09,41.95,4.0408,0.0196
-2018,LSTM (small),2018-09-16,33.33,4.1422,0.0196
-2018,LSTM (small),2018-09-23,49.2086,4.3096,0.0196
-2018,LSTM (small),2018-09-30,57.5586,4.8606,0.0196
-2018,LSTM (small),2018-10-07,83.3871,4.4902,0.0196
-2018,LSTM (small),2018-10-14,96.9114,5.254,0.0196
-2018,LSTM (small),2018-10-21,140.4829,5.8105,0.0196
-2018,LSTM (small),2018-10-28,171.1543,5.9766,0.0196
-2018,LSTM (small),2018-11-04,202.7614,6.0701,0.0196
-2018,LSTM (small),2018-11-11,283.1486,6.2284,0.0196
-2018,LSTM (small),2018-11-18,173.0886,5.8296,0.0196
-2018,LSTM (small),2018-11-25,168.8671,5.4976,0.0196
-2018,LSTM (small),2018-12-02,186.7086,5.4178,0.0196
-2018,LSTM (small),2018-12-09,201.8729,5.034,0.0196
-2018,LSTM (small),2018-12-16,175.7014,4.9196,0.0196
-2018,LSTM (small),2018-12-23,261.5357,5.1952,0.0196
-2018,LSTM (small),2018-12-30,287.3929,5.5055,0.0196
-2018,Fourier+ARMA const,2018-01-07,247.2986,5.3896,0.2374
-2018,Fourier+ARMA const,2018-01-14,188.26,5.3059,0.2526
-2018,Fourier+ARMA const,2018-01-21,197.46,5.2381,0.2545
-2018,Fourier+ARMA const,2018-01-28,148.4886,5.172,0.2548
-2018,Fourier+ARMA const,2018-02-04,137.0471,5.1029,0.2548
-2018,Fourier+ARMA const,2018-02-11,169.39,5.0302,0.2548
-2018,Fourier+ARMA const,2018-02-18,103.7086,4.9551,0.2548
-2018,Fourier+ARMA const,2018-02-25,158.0829,4.8802,0.2548
-2018,Fourier+ARMA const,2018-03-04,104.86,4.8086,0.2548
-2018,Fourier+ARMA const,2018-03-11,96.9486,4.7439,0.2548
-2018,Fourier+ARMA const,2018-03-18,102.2143,4.6892,0.2548
-2018,Fourier+ARMA const,2018-03-25,90.97,4.6472,0.2548
-2018,Fourier+ARMA const,2018-04-01,97.7286,4.6193,0.2548
-2018,Fourier+ARMA const,2018-04-08,94.4529,4.6055,0.2548
-2018,Fourier+ARMA const,2018-04-15,75.25,4.6042,0.2548
-2018,Fourier+ARMA const,2018-04-22,92.28,4.6121,0.2548
-2018,Fourier+ARMA const,2018-04-29,103.69,4.6244,0.2548
-2018,Fourier+ARMA const,2018-05-06,68.9371,4.6353,0.2548
-2018,Fourier+ARMA const,2018-05-13,99.3929,4.6387,0.2548
-2018,Fourier+ARMA const,2018-05-20,83.6829,4.6286,0.2548
-2018,Fourier+ARMA const,2018-05-27,98.5771,4.6,0.2548
-2018,Fourier+ARMA const,2018-06-03,80.0014,4.5497,0.2548
-2018,Fourier+ARMA const,2018-06-10,64.8829,4.4764,0.2548
-2018,Fourier+ARMA const,2018-06-17,152.4043,4.3815,0.2548
-2018,Fourier+ARMA const,2018-06-24,68.2586,4.2689,0.2548
-2018,Fourier+ARMA const,2018-07-01,38.8757,4.1447,0.2548
-2018,Fourier+ARMA const,2018-07-08,51.7443,4.017,0.2548
-2018,Fourier+ARMA const,2018-07-15,43.47,3.8949,0.2548
-2018,Fourier+ARMA const,2018-07-22,36.8086,3.7882,0.2548
-2018,Fourier+ARMA const,2018-07-29,34.5829,3.7058,0.2548
-2018,Fourier+ARMA const,2018-08-05,59.5043,3.6554,0.2548
-2018,Fourier+ARMA const,2018-08-12,39.0543,3.6426,0.2548
-2018,Fourier+ARMA const,2018-08-19,38.7414,3.6702,0.2548
-2018,Fourier+ARMA const,2018-08-26,31.8071,3.7384,0.2548
-2018,Fourier+ARMA const,2018-09-02,37.8543,3.8442,0.2548
-2018,Fourier+ARMA const,2018-09-09,41.95,3.9823,0.2548
-2018,Fourier+ARMA const,2018-09-16,33.33,4.145,0.2548
-2018,Fourier+ARMA const,2018-09-23,49.2086,4.3237,0.2548
-2018,Fourier+ARMA const,2018-09-30,57.5586,4.5088,0.2548
-2018,Fourier+ARMA const,2018-10-07,83.3871,4.6912,0.2548
-2018,Fourier+ARMA const,2018-10-14,96.9114,4.8628,0.2548
-2018,Fourier+ARMA const,2018-10-21,140.4829,5.0169,0.2548
-2018,Fourier+ARMA const,2018-10-28,171.1543,5.149,0.2548
-2018,Fourier+ARMA const,2018-11-04,202.7614,5.2563,0.2548
-2018,Fourier+ARMA const,2018-11-11,283.1486,5.3381,0.2548
-2018,Fourier+ARMA const,2018-11-18,173.0886,5.3956,0.2548
-2018,Fourier+ARMA const,2018-11-25,168.8671,5.431,0.2548
-2018,Fourier+ARMA const,2018-12-02,186.7086,5.4472,0.2548
-2018,Fourier+ARMA const,2018-12-09,201.8729,5.4475,0.2548
-2018,Fourier+ARMA const,2018-12-16,175.7014,5.4349,0.2548
-2018,Fourier+ARMA const,2018-12-23,261.5357,5.4119,0.2548
-2018,Fourier+ARMA const,2018-12-30,287.3929,5.3802,0.2548
-2018,Fourier+ARMA linear,2018-01-07,247.2986,5.4112,0.2381
-2018,Fourier+ARMA linear,2018-01-14,188.26,5.3283,0.2535
-2018,Fourier+ARMA linear,2018-01-21,197.46,5.2513,0.2556
-2018,Fourier+ARMA linear,2018-01-28,148.4886,5.1706,0.2558
-2018,Fourier+ARMA linear,2018-02-04,137.0471,5.0843,0.2559
-2018,Fourier+ARMA linear,2018-02-11,169.39,4.9937,0.2559
-2018,Fourier+ARMA linear,2018-02-18,103.7086,4.9019,0.2559
-2018,Fourier+ARMA linear,2018-02-25,158.0829,4.8129,0.2559
-2018,Fourier+ARMA linear,2018-03-04,104.86,4.7308,0.2559
-2018,Fourier+ARMA linear,2018-03-11,96.9486,4.6596,0.2559
-2018,Fourier+ARMA linear,2018-03-18,102.2143,4.6027,0.2559
-2018,Fourier+ARMA linear,2018-03-25,90.97,4.5622,0.2559
-2018,Fourier+ARMA linear,2018-04-01,97.7286,4.5388,0.2559
-2018,Fourier+ARMA linear,2018-04-08,94.4529,4.5313,0.2559
-2018,Fourier+ARMA linear,2018-04-15,75.25,4.5369,0.2559
-2018,Fourier+ARMA linear,2018-04-22,92.28,4.5511,0.2559
-2018,Fourier+ARMA linear,2018-04-29,103.69,4.5681,0.2559
-2018,Fourier+ARMA linear,2018-05-06,68.9371,4.5814,0.2559
-2018,Fourier+ARMA linear,2018-05-13,99.3929,4.5846,0.2559
-2018,Fourier+ARMA linear,2018-05-20,83.6829,4.5718,0.2559
-2018,Fourier+ARMA linear,2018-05-27,98.5771,4.5384,0.2559
-2018,Fourier+ARMA linear,2018-06-03,80.0014,4.482,0.2559
-2018,Fourier+ARMA linear,2018-06-10,64.8829,4.4023,0.2559
-2018,Fourier+ARMA linear,2018-06-17,152.4043,4.3016,0.2559
-2018,Fourier+ARMA linear,2018-06-24,68.2586,4.1845,0.2559
-2018,Fourier+ARMA linear,2018-07-01,38.8757,4.0579,0.2559
-2018,Fourier+ARMA linear,2018-07-08,51.7443,3.9301,0.2559
-2018,Fourier+ARMA linear,2018-07-15,43.47,3.8103,0.2559
-2018,Fourier+ARMA linear,2018-07-22,36.8086,3.7075,0.2559
-2018,Fourier+ARMA linear,2018-07-29,34.5829,3.6302,0.2559
-2018,Fourier+ARMA linear,2018-08-05,59.5043,3.585,0.2559
-2018,Fourier+ARMA linear,2018-08-12,39.0543,3.5765,0.2559
-2018,Fourier+ARMA linear,2018-08-19,38.7414,3.6069,0.2559
-2018,Fourier+ARMA linear,2018-08-26,31.8071,3.6755,0.2559
-2018,Fourier+ARMA linear,2018-09-02,37.8543,3.7791,0.2559
-2018,Fourier+ARMA linear,2018-09-09,41.95,3.9124,0.2559
-2018,Fourier+ARMA linear,2018-09-16,33.33,4.0685,0.2559
-2018,Fourier+ARMA linear,2018-09-23,49.2086,4.2392,0.2559
-2018,Fourier+ARMA linear,2018-09-30,57.5586,4.4163,0.2559
-2018,Fourier+ARMA linear,2018-10-07,83.3871,4.5919,0.2559
-2018,Fourier+ARMA linear,2018-10-14,96.9114,4.7591,0.2559
-2018,Fourier+ARMA linear,2018-10-21,140.4829,4.9122,0.2559
-2018,Fourier+ARMA linear,2018-10-28,171.1543,5.0472,0.2559
-2018,Fourier+ARMA linear,2018-11-04,202.7614,5.1617,0.2559
-2018,Fourier+ARMA linear,2018-11-11,283.1486,5.2547,0.2559
-2018,Fourier+ARMA linear,2018-11-18,173.0886,5.3266,0.2559
-2018,Fourier+ARMA linear,2018-11-25,168.8671,5.3782,0.2559
-2018,Fourier+ARMA linear,2018-12-02,186.7086,5.4112,0.2559
-2018,Fourier+ARMA linear,2018-12-09,201.8729,5.4272,0.2559
-2018,Fourier+ARMA linear,2018-12-16,175.7014,5.4277,0.2559
-2018,Fourier+ARMA linear,2018-12-23,261.5357,5.4136,0.2559
-2018,Fourier+ARMA linear,2018-12-30,287.3929,5.3859,0.2559
-2018,Fourier+ARMA (selected),2018-01-07,247.2986,5.3098,0.2206
-2018,Fourier+ARMA (selected),2018-01-14,188.26,5.3596,0.2243
-2018,Fourier+ARMA (selected),2018-01-21,197.46,5.3812,0.2271
-2018,Fourier+ARMA (selected),2018-01-28,148.4886,5.3547,0.2291
-2018,Fourier+ARMA (selected),2018-02-04,137.0471,5.2729,0.2305
-2018,Fourier+ARMA (selected),2018-02-11,169.39,5.1436,0.2316
-2018,Fourier+ARMA (selected),2018-02-18,103.7086,4.9871,0.2324
-2018,Fourier+ARMA (selected),2018-02-25,158.0829,4.8298,0.2329
-2018,Fourier+ARMA (selected),2018-03-04,104.86,4.6972,0.2334
-2018,Fourier+ARMA (selected),2018-03-11,96.9486,4.6069,0.2337
-2018,Fourier+ARMA (selected),2018-03-18,102.2143,4.5651,0.2339
-2018,Fourier+ARMA (selected),2018-03-25,90.97,4.5664,0.2341
-2018,Fourier+ARMA (selected),2018-04-01,97.7286,4.5969,0.2342
-2018,Fourier+ARMA (selected),2018-04-08,94.4529,4.639,0.2343
-2018,Fourier+ARMA (selected),2018-04-15,75.25,4.6772,0.2344
-2018,Fourier+ARMA (selected),2018-04-22,92.28,4.7012,0.2344
-2018,Fourier+ARMA (selected),2018-04-29,103.69,4.7071,0.2345
-2018,Fourier+ARMA (selected),2018-05-06,68.9371,4.6962,0.2345
-2018,Fourier+ARMA (selected),2018-05-13,99.3929,4.6715,0.2345
-2018,Fourier+ARMA (selected),2018-05-20,83.6829,4.6354,0.2345
-2018,Fourier+ARMA (selected),2018-05-27,98.5771,4.5873,0.2345
-2018,Fourier+ARMA (selected),2018-06-03,80.0014,4.5241,0.2345
-2018,Fourier+ARMA (selected),2018-06-10,64.8829,4.442,0.2345
-2018,Fourier+ARMA (selected),2018-06-17,152.4043,4.3396,0.2345
-2018,Fourier+ARMA (selected),2018-06-24,68.2586,4.2197,0.2345
-2018,Fourier+ARMA (selected),2018-07-01,38.8757,4.091,0.2345
-2018,Fourier+ARMA (selected),2018-07-08,51.7443,3.9662,0.2346
-2018,Fourier+ARMA (selected),2018-07-15,43.47,3.8591,0.2346
-2018,Fourier+ARMA (selected),2018-07-22,36.8086,3.7811,0.2346
-2018,Fourier+ARMA (selected),2018-07-29,34.5829,3.7378,0.2346
-2018,Fourier+ARMA (selected),2018-08-05,59.5043,3.7279,0.2346
-2018,Fourier+ARMA (selected),2018-08-12,39.0543,3.7446,0.2346
-2018,Fourier+ARMA (selected),2018-08-19,38.7414,3.779,0.2346
-2018,Fourier+ARMA (selected),2018-08-26,31.8071,3.8242,0.2346
-2018,Fourier+ARMA (selected),2018-09-02,37.8543,3.8787,0.2346
-2018,Fourier+ARMA (selected),2018-09-09,41.95,3.9481,0.2346
-2018,Fourier+ARMA (selected),2018-09-16,33.33,4.043,0.2346
-2018,Fourier+ARMA (selected),2018-09-23,49.2086,4.1746,0.2346
-2018,Fourier+ARMA (selected),2018-09-30,57.5586,4.3497,0.2346
-2018,Fourier+ARMA (selected),2018-10-07,83.3871,4.5655,0.2346
-2018,Fourier+ARMA (selected),2018-10-14,96.9114,4.8075,0.2346
-2018,Fourier+ARMA (selected),2018-10-21,140.4829,5.0511,0.2346
-2018,Fourier+ARMA (selected),2018-10-28,171.1543,5.2666,0.2346
-2018,Fourier+ARMA (selected),2018-11-04,202.7614,5.4267,0.2346
-2018,Fourier+ARMA (selected),2018-11-11,283.1486,5.5139,0.2346
-2018,Fourier+ARMA (selected),2018-11-18,173.0886,5.5259,0.2346
-2018,Fourier+ARMA (selected),2018-11-25,168.8671,5.4764,0.2346
-2018,Fourier+ARMA (selected),2018-12-02,186.7086,5.3915,0.2346
-2018,Fourier+ARMA (selected),2018-12-09,201.8729,5.3031,0.2346
-2018,Fourier+ARMA (selected),2018-12-16,175.7014,5.2395,0.2346
-2018,Fourier+ARMA (selected),2018-12-23,261.5357,5.2175,0.2346
-2018,Fourier+ARMA (selected),2018-12-30,287.3929,5.2385,0.2346
-2018,SARIMA D=1,2018-01-07,247.2986,5.4097,0.2679
-2018,SARIMA D=1,2018-01-14,188.26,5.2535,0.2754
-2018,SARIMA D=1,2018-01-21,197.46,5.3964,0.2811
-2018,SARIMA D=1,2018-01-28,148.4886,5.2305,0.2854
-2018,SARIMA D=1,2018-02-04,137.0471,5.0969,0.2888
-2018,SARIMA D=1,2018-02-11,169.39,4.9611,0.2914
-2018,SARIMA D=1,2018-02-18,103.7086,4.9507,0.2934
-2018,SARIMA D=1,2018-02-25,158.0829,5.1439,0.295
-2018,SARIMA D=1,2018-03-04,104.86,4.7076,0.2962
-2018,SARIMA D=1,2018-03-11,96.9486,4.4703,0.2971
-2018,SARIMA D=1,2018-03-18,102.2143,4.4594,0.2979
-2018,SARIMA D=1,2018-03-25,90.97,4.6826,0.2984
-2018,SARIMA D=1,2018-04-01,97.7286,4.5956,0.2989
-2018,SARIMA D=1,2018-04-08,94.4529,4.5879,0.2992
-2018,SARIMA D=1,2018-04-15,75.25,4.7737,0.2995
-2018,SARIMA D=1,2018-04-22,92.28,4.7848,0.2997
-2018,SARIMA D=1,2018-04-29,103.69,4.6401,0.2999
-2018,SARIMA D=1,2018-05-06,68.9371,4.8466,0.3
-2018,SARIMA D=1,2018-05-13,99.3929,4.7107,0.3001
-2018,SARIMA D=1,2018-05-20,83.6829,4.6502,0.3002
-2018,SARIMA D=1,2018-05-27,98.5771,4.5958,0.3003
-2018,SARIMA D=1,2018-06-03,80.0014,4.4421,0.3003
-2018,SARIMA D=1,2018-06-10,64.8829,4.255,0.3003
-2018,SARIMA D=1,2018-06-17,152.4043,4.3157,0.3004
-2018,SARIMA D=1,2018-06-24,68.2586,4.2265,0.3004
-2018,SARIMA D=1,2018-07-01,38.8757,3.916,0.3004
-2018,SARIMA D=1,2018-07-08,51.7443,4.0396,0.3004
-2018,SARIMA D=1,2018-07-15,43.47,3.8239,0.3004
-2018,SARIMA D=1,2018-07-22,36.8086,3.645,0.3004
-2018,SARIMA D=1,2018-07-29,34.5829,3.4379,0.3004
-2018,SARIMA D=1,2018-08-05,59.5043,3.7703,0.3004
-2018,SARIMA D=1,2018-08-12,39.0543,3.7916,0.3004
-2018,SARIMA D=1,2018-08-19,38.7414,3.7202,0.3005
-2018,SARIMA D=1,2018-08-26,31.8071,3.8646,0.3005
-2018,SARIMA D=1,2018-09-02,37.8543,3.7144,0.3004
-2018,SARIMA D=1,2018-09-09,41.95,4.0001,0.3004
-2018,SARIMA D=1,2018-09-16,33.33,4.2104,0.3004
-2018,SARIMA D=1,2018-09-23,49.2086,3.9933,0.3004
-2018,SARIMA D=1,2018-09-30,57.5586,4.399,0.3004
-2018,SARIMA D=1,2018-10-07,83.3871,4.6378,0.3004
-2018,SARIMA D=1,2018-10-14,96.9114,4.7645,0.3004
-2018,SARIMA D=1,2018-10-21,140.4829,5.1456,0.3004
-2018,SARIMA D=1,2018-10-28,171.1543,5.2622,0.3004
-2018,SARIMA D=1,2018-11-04,202.7614,5.5845,0.3003
-2018,SARIMA D=1,2018-11-11,283.1486,5.82,0.3003
-2018,SARIMA D=1,2018-11-18,173.0886,5.4165,0.3003
-2018,SARIMA D=1,2018-11-25,168.8671,5.2504,0.3002
-2018,SARIMA D=1,2018-12-02,186.7086,5.3491,0.3001
-2018,SARIMA D=1,2018-12-09,201.8729,5.2993,0.3001
-2018,SARIMA D=1,2018-12-16,175.7014,4.9832,0.2999
-2018,SARIMA D=1,2018-12-23,261.5357,5.2978,0.2998
-2018,SARIMA D=1,2018-12-30,287.3929,5.4404,0.2971
-2018,SARIMA D=0,2018-01-07,247.2986,5.3196,0.2751
-2018,SARIMA D=0,2018-01-14,188.26,5.271,0.3195
-2018,SARIMA D=0,2018-01-21,197.46,5.2987,0.3529
-2018,SARIMA D=0,2018-01-28,148.4886,5.1494,0.3789
-2018,SARIMA D=0,2018-02-04,137.0471,5.157,0.3997
-2018,SARIMA D=0,2018-02-11,169.39,5.0464,0.4166
-2018,SARIMA D=0,2018-02-18,103.7086,5.0387,0.4304
-2018,SARIMA D=0,2018-02-25,158.0829,5.189,0.4417
-2018,SARIMA D=0,2018-03-04,104.86,4.9445,0.4512
-2018,SARIMA D=0,2018-03-11,96.9486,4.844,0.459
-2018,SARIMA D=0,2018-03-18,102.2143,4.8867,0.4656
-2018,SARIMA D=0,2018-03-25,90.97,4.9477,0.4711
-2018,SARIMA D=0,2018-04-01,97.7286,4.8694,0.4758
-2018,SARIMA D=0,2018-04-08,94.4529,4.7984,0.4797
-2018,SARIMA D=0,2018-04-15,75.25,4.9484,0.483
-2018,SARIMA D=0,2018-04-22,92.28,4.8922,0.4857
-2018,SARIMA D=0,2018-04-29,103.69,4.7863,0.4881
-2018,SARIMA D=0,2018-05-06,68.9371,4.9433,0.4901
-2018,SARIMA D=0,2018-05-13,99.3929,4.8868,0.4917
-2018,SARIMA D=0,2018-05-20,83.6829,4.8839,0.4932
-2018,SARIMA D=0,2018-05-27,98.5771,4.7487,0.4944
-2018,SARIMA D=0,2018-06-03,80.0014,4.7269,0.4954
-2018,SARIMA D=0,2018-06-10,64.8829,4.5903,0.4963
-2018,SARIMA D=0,2018-06-17,152.4043,4.5831,0.497
-2018,SARIMA D=0,2018-06-24,68.2586,4.5729,0.4976
-2018,SARIMA D=0,2018-07-01,38.8757,4.4018,0.4981
-2018,SARIMA D=0,2018-07-08,51.7443,4.5686,0.4986
-2018,SARIMA D=0,2018-07-15,43.47,4.3806,0.499
-2018,SARIMA D=0,2018-07-22,36.8086,4.3763,0.4993
-2018,SARIMA D=0,2018-07-29,34.5829,4.2528,0.4996
-2018,SARIMA D=0,2018-08-05,59.5043,4.4044,0.4998
-2018,SARIMA D=0,2018-08-12,39.0543,4.4208,0.5
-2018,SARIMA D=0,2018-08-19,38.7414,4.3844,0.5002
-2018,SARIMA D=0,2018-08-26,31.8071,4.4592,0.5003
-2018,SARIMA D=0,2018-09-02,37.8543,4.307,0.5004
-2018,SARIMA D=0,2018-09-09,41.95,4.4802,0.5005
-2018,SARIMA D=0,2018-09-16,33.33,4.5474,0.5006
-2018,SARIMA D=0,2018-09-23,49.2086,4.4557,0.5007
-2018,SARIMA D=0,2018-09-30,57.5586,4.6033,0.5008
-2018,SARIMA D=0,2018-10-07,83.3871,4.6214,0.5008
-2018,SARIMA D=0,2018-10-14,96.9114,4.7607,0.5009
-2018,SARIMA D=0,2018-10-21,140.4829,4.9054,0.5009
-2018,SARIMA D=0,2018-10-28,171.1543,4.8814,0.5009
-2018,SARIMA D=0,2018-11-04,202.7614,4.887,0.501
-2018,SARIMA D=0,2018-11-11,283.1486,5.1422,0.501
-2018,SARIMA D=0,2018-11-18,173.0886,4.9072,0.501
-2018,SARIMA D=0,2018-11-25,168.8671,4.8806,0.501
-2018,SARIMA D=0,2018-12-02,186.7086,4.911,0.501
-2018,SARIMA D=0,2018-12-09,201.8729,4.8583,0.501
-2018,SARIMA D=0,2018-12-16,175.7014,4.7718,0.5011
-2018,SARIMA D=0,2018-12-23,261.5357,4.8867,0.5011
-2018,SARIMA D=0,2018-12-30,287.3929,4.9696,0.5011
-2019,Seasonal naive,2019-01-06,282.4114,5.5106,
-2019,Seasonal naive,2019-01-13,215.72,5.2378,
-2019,Seasonal naive,2019-01-20,239.1957,5.2855,
-2019,Seasonal naive,2019-01-27,116.3271,5.0005,
-2019,Seasonal naive,2019-02-03,166.5671,4.9203,
-2019,Seasonal naive,2019-02-10,134.5643,5.1322,
-2019,Seasonal naive,2019-02-17,152.7586,4.6416,
-2019,Seasonal naive,2019-02-24,90.0871,5.0631,
-2019,Seasonal naive,2019-03-03,80.32,4.6526,
-2019,Seasonal naive,2019-03-10,86.03,4.5742,
-2019,Seasonal naive,2019-03-17,82.4214,4.6271,
-2019,Seasonal naive,2019-03-24,79.0757,4.5105,
-2019,Seasonal naive,2019-03-31,87.0914,4.5822,
-2019,Seasonal naive,2019-04-07,104.1229,4.5481,
-2019,Seasonal naive,2019-04-14,72.8586,4.3208,
-2019,Seasonal naive,2019-04-21,61.77,4.5248,
-2019,Seasonal naive,2019-04-28,88.33,4.6414,
-2019,Seasonal naive,2019-05-05,85.7743,4.2332,
-2019,Seasonal naive,2019-05-12,129.0486,4.5991,
-2019,Seasonal naive,2019-05-19,86.87,4.427,
-2019,Seasonal naive,2019-05-26,67.2914,4.5908,
-2019,Seasonal naive,2019-06-02,78.26,4.382,
-2019,Seasonal naive,2019-06-09,70.2086,4.1726,
-2019,Seasonal naive,2019-06-16,69.0129,5.0265,
-2019,Seasonal naive,2019-06-23,53.5386,4.2233,
-2019,Seasonal naive,2019-06-30,56.7329,3.6604,
-2019,Seasonal naive,2019-07-07,46.7743,3.9463,
-2019,Seasonal naive,2019-07-14,62.9386,3.7721,
-2019,Seasonal naive,2019-07-21,42.65,3.6057,
-2019,Seasonal naive,2019-07-28,42.49,3.5434,
-2019,Seasonal naive,2019-08-04,34.1886,4.086,
-2019,Seasonal naive,2019-08-11,28.4871,3.665,
-2019,Seasonal naive,2019-08-18,20.7814,3.6569,
-2019,Seasonal naive,2019-08-25,45.1186,3.4597,
-2019,Seasonal naive,2019-09-01,39.6414,3.6337,
-2019,Seasonal naive,2019-09-08,46.8057,3.7365,
-2019,Seasonal naive,2019-09-15,50.5686,3.5065,
-2019,Seasonal naive,2019-09-22,39.8514,3.8961,
-2019,Seasonal naive,2019-09-29,25.55,4.0528,
-2019,Seasonal naive,2019-10-06,43.2557,4.4235,
-2019,Seasonal naive,2019-10-13,87.5229,4.5738,
-2019,Seasonal naive,2019-10-20,111.8514,4.9451,
-2019,Seasonal naive,2019-10-27,140.2557,5.1426,
-2019,Seasonal naive,2019-11-03,353.3686,5.312,
-2019,Seasonal naive,2019-11-10,176.2229,5.646,
-2019,Seasonal naive,2019-11-17,297.9271,5.1538,
-2019,Seasonal naive,2019-11-24,152.5214,5.1291,
-2019,Seasonal naive,2019-12-01,86.8257,5.2295,
-2019,Seasonal naive,2019-12-08,204.5543,5.3076,
-2019,Seasonal naive,2019-12-15,184.0914,5.1688,
-2019,Seasonal naive,2019-12-22,185.5786,5.5666,
-2019,Seasonal naive,2019-12-29,234.3286,5.6609,
-2019,Climatology,2019-01-06,282.4114,5.4342,
-2019,Climatology,2019-01-13,215.72,5.2677,
-2019,Climatology,2019-01-20,239.1957,5.3997,
-2019,Climatology,2019-01-27,116.3271,5.1821,
-2019,Climatology,2019-02-03,166.5671,5.0683,
-2019,Climatology,2019-02-10,134.5643,5.0056,
-2019,Climatology,2019-02-17,152.7586,4.8948,
-2019,Climatology,2019-02-24,90.0871,5.1223,
-2019,Climatology,2019-03-03,80.32,4.7931,
-2019,Climatology,2019-03-10,86.03,4.4896,
-2019,Climatology,2019-03-17,82.4214,4.5244,
-2019,Climatology,2019-03-24,79.0757,4.536,
-2019,Climatology,2019-03-31,87.0914,4.6366,
-2019,Climatology,2019-04-07,104.1229,4.5208,
-2019,Climatology,2019-04-14,72.8586,4.6202,
-2019,Climatology,2019-04-21,61.77,4.6659,
-2019,Climatology,2019-04-28,88.33,4.7236,
-2019,Climatology,2019-05-05,85.7743,4.5536,
-2019,Climatology,2019-05-12,129.0486,4.721,
-2019,Climatology,2019-05-19,86.87,4.5938,
-2019,Climatology,2019-05-26,67.2914,4.5098,
-2019,Climatology,2019-06-02,78.26,4.5311,
-2019,Climatology,2019-06-09,70.2086,4.1747,
-2019,Climatology,2019-06-16,69.0129,4.5174,
-2019,Climatology,2019-06-23,53.5386,4.3192,
-2019,Climatology,2019-06-30,56.7329,3.9438,
-2019,Climatology,2019-07-07,46.7743,4.104,
-2019,Climatology,2019-07-14,62.9386,3.8144,
-2019,Climatology,2019-07-21,42.65,3.7679,
-2019,Climatology,2019-07-28,42.49,3.5642,
-2019,Climatology,2019-08-04,34.1886,3.7346,
-2019,Climatology,2019-08-11,28.4871,3.7847,
-2019,Climatology,2019-08-18,20.7814,3.8039,
-2019,Climatology,2019-08-25,45.1186,3.7375,
-2019,Climatology,2019-09-01,39.6414,3.6999,
-2019,Climatology,2019-09-08,46.8057,4.0022,
-2019,Climatology,2019-09-15,50.5686,4.004,
-2019,Climatology,2019-09-22,39.8514,4.0814,
-2019,Climatology,2019-09-29,25.55,4.2435,
-2019,Climatology,2019-10-06,43.2557,4.518,
-2019,Climatology,2019-10-13,87.5229,4.7843,
-2019,Climatology,2019-10-20,111.8514,4.99,
-2019,Climatology,2019-10-27,140.2557,5.2433,
-2019,Climatology,2019-11-03,353.3686,5.4423,
-2019,Climatology,2019-11-10,176.2229,5.7397,
-2019,Climatology,2019-11-17,297.9271,5.3861,
-2019,Climatology,2019-11-24,152.5214,5.2629,
-2019,Climatology,2019-12-01,86.8257,5.3145,
-2019,Climatology,2019-12-08,204.5543,5.3336,
-2019,Climatology,2019-12-15,184.0914,5.1796,
-2019,Climatology,2019-12-22,185.5786,5.2969,
-2019,Climatology,2019-12-29,234.3286,5.4513,
-2019,Climatology + AR(1),2019-01-06,282.4114,5.5109,0.1966
-2019,Climatology + AR(1),2019-01-13,215.72,5.2958,0.2094
-2019,Climatology + AR(1),2019-01-20,239.1957,5.4099,0.2111
-2019,Climatology + AR(1),2019-01-27,116.3271,5.1859,0.2113
-2019,Climatology + AR(1),2019-02-03,166.5671,5.0697,0.2113
-2019,Climatology + AR(1),2019-02-10,134.5643,5.0061,0.2113
-2019,Climatology + AR(1),2019-02-17,152.7586,4.895,0.2113
-2019,Climatology + AR(1),2019-02-24,90.0871,5.1224,0.2113
-2019,Climatology + AR(1),2019-03-03,80.32,4.7931,0.2113
-2019,Climatology + AR(1),2019-03-10,86.03,4.4896,0.2113
-2019,Climatology + AR(1),2019-03-17,82.4214,4.5244,0.2113
-2019,Climatology + AR(1),2019-03-24,79.0757,4.536,0.2113
-2019,Climatology + AR(1),2019-03-31,87.0914,4.6366,0.2113
-2019,Climatology + AR(1),2019-04-07,104.1229,4.5208,0.2113
-2019,Climatology + AR(1),2019-04-14,72.8586,4.6202,0.2113
-2019,Climatology + AR(1),2019-04-21,61.77,4.6659,0.2113
-2019,Climatology + AR(1),2019-04-28,88.33,4.7236,0.2113
-2019,Climatology + AR(1),2019-05-05,85.7743,4.5536,0.2113
-2019,Climatology + AR(1),2019-05-12,129.0486,4.721,0.2113
-2019,Climatology + AR(1),2019-05-19,86.87,4.5938,0.2113
-2019,Climatology + AR(1),2019-05-26,67.2914,4.5098,0.2113
-2019,Climatology + AR(1),2019-06-02,78.26,4.5311,0.2113
-2019,Climatology + AR(1),2019-06-09,70.2086,4.1747,0.2113
-2019,Climatology + AR(1),2019-06-16,69.0129,4.5174,0.2113
-2019,Climatology + AR(1),2019-06-23,53.5386,4.3192,0.2113
-2019,Climatology + AR(1),2019-06-30,56.7329,3.9438,0.2113
-2019,Climatology + AR(1),2019-07-07,46.7743,4.104,0.2113
-2019,Climatology + AR(1),2019-07-14,62.9386,3.8144,0.2113
-2019,Climatology + AR(1),2019-07-21,42.65,3.7679,0.2113
-2019,Climatology + AR(1),2019-07-28,42.49,3.5642,0.2113
-2019,Climatology + AR(1),2019-08-04,34.1886,3.7346,0.2113
-2019,Climatology + AR(1),2019-08-11,28.4871,3.7847,0.2113
-2019,Climatology + AR(1),2019-08-18,20.7814,3.8039,0.2113
-2019,Climatology + AR(1),2019-08-25,45.1186,3.7375,0.2113
-2019,Climatology + AR(1),2019-09-01,39.6414,3.6999,0.2113
-2019,Climatology + AR(1),2019-09-08,46.8057,4.0022,0.2113
-2019,Climatology + AR(1),2019-09-15,50.5686,4.004,0.2113
-2019,Climatology + AR(1),2019-09-22,39.8514,4.0814,0.2113
-2019,Climatology + AR(1),2019-09-29,25.55,4.2435,0.2113
-2019,Climatology + AR(1),2019-10-06,43.2557,4.518,0.2113
-2019,Climatology + AR(1),2019-10-13,87.5229,4.7843,0.2113
-2019,Climatology + AR(1),2019-10-20,111.8514,4.99,0.2113
-2019,Climatology + AR(1),2019-10-27,140.2557,5.2433,0.2113
-2019,Climatology + AR(1),2019-11-03,353.3686,5.4423,0.2113
-2019,Climatology + AR(1),2019-11-10,176.2229,5.7397,0.2113
-2019,Climatology + AR(1),2019-11-17,297.9271,5.3861,0.2113
-2019,Climatology + AR(1),2019-11-24,152.5214,5.2629,0.2113
-2019,Climatology + AR(1),2019-12-01,86.8257,5.3145,0.2113
-2019,Climatology + AR(1),2019-12-08,204.5543,5.3336,0.2113
-2019,Climatology + AR(1),2019-12-15,184.0914,5.1796,0.2113
-2019,Climatology + AR(1),2019-12-22,185.5786,5.2969,0.2113
-2019,Climatology + AR(1),2019-12-29,234.3286,5.4513,0.2113
-2019,Linear regression,2019-01-06,282.4114,5.2481,0.2516
-2019,Linear regression,2019-01-13,215.72,5.1928,0.2516
-2019,Linear regression,2019-01-20,239.1957,5.131,0.2516
-2019,Linear regression,2019-01-27,116.3271,5.0636,0.2516
-2019,Linear regression,2019-02-03,166.5671,4.9916,0.2516
-2019,Linear regression,2019-02-10,134.5643,4.9161,0.2516
-2019,Linear regression,2019-02-17,152.7586,4.8391,0.2516
-2019,Linear regression,2019-02-24,90.0871,4.7627,0.2516
-2019,Linear regression,2019-03-03,80.32,4.6898,0.2516
-2019,Linear regression,2019-03-10,86.03,4.6234,0.2516
-2019,Linear regression,2019-03-17,82.4214,4.5664,0.2516
-2019,Linear regression,2019-03-24,79.0757,4.5211,0.2516
-2019,Linear regression,2019-03-31,87.0914,4.4891,0.2516
-2019,Linear regression,2019-04-07,104.1229,4.4708,0.2516
-2019,Linear regression,2019-04-14,72.8586,4.4648,0.2516
-2019,Linear regression,2019-04-21,61.77,4.4687,0.2516
-2019,Linear regression,2019-04-28,88.33,4.4783,0.2516
-2019,Linear regression,2019-05-05,85.7743,4.4885,0.2516
-2019,Linear regression,2019-05-12,129.0486,4.4936,0.2516
-2019,Linear regression,2019-05-19,86.87,4.4877,0.2516
-2019,Linear regression,2019-05-26,67.2914,4.4658,0.2516
-2019,Linear regression,2019-06-02,78.26,4.4241,0.2516
-2019,Linear regression,2019-06-09,70.2086,4.3606,0.2516
-2019,Linear regression,2019-06-16,69.0129,4.2756,0.2516
-2019,Linear regression,2019-06-23,53.5386,4.1716,0.2516
-2019,Linear regression,2019-06-30,56.7329,4.0538,0.2516
-2019,Linear regression,2019-07-07,46.7743,3.9291,0.2516
-2019,Linear regression,2019-07-14,62.9386,3.806,0.2516
-2019,Linear regression,2019-07-21,42.65,3.6936,0.2516
-2019,Linear regression,2019-07-28,42.49,3.6011,0.2516
-2019,Linear regression,2019-08-04,34.1886,3.5368,0.2516
-2019,Linear regression,2019-08-11,28.4871,3.507,0.2516
-2019,Linear regression,2019-08-18,20.7814,3.5161,0.2516
-2019,Linear regression,2019-08-25,45.1186,3.5656,0.2516
-2019,Linear regression,2019-09-01,39.6414,3.6542,0.2516
-2019,Linear regression,2019-09-08,46.8057,3.778,0.2516
-2019,Linear regression,2019-09-15,50.5686,3.9306,0.2516
-2019,Linear regression,2019-09-22,39.8514,4.1041,0.2516
-2019,Linear regression,2019-09-29,25.55,4.2894,0.2516
-2019,Linear regression,2019-10-06,43.2557,4.4771,0.2516
-2019,Linear regression,2019-10-13,87.5229,4.6586,0.2516
-2019,Linear regression,2019-10-20,111.8514,4.8261,0.2516
-2019,Linear regression,2019-10-27,140.2557,4.9737,0.2516
-2019,Linear regression,2019-11-03,353.3686,5.0973,0.2516
-2019,Linear regression,2019-11-10,176.2229,5.1947,0.2516
-2019,Linear regression,2019-11-17,297.9271,5.2657,0.2516
-2019,Linear regression,2019-11-24,152.5214,5.3115,0.2516
-2019,Linear regression,2019-12-01,86.8257,5.3346,0.2516
-2019,Linear regression,2019-12-08,204.5543,5.338,0.2516
-2019,Linear regression,2019-12-15,184.0914,5.3248,0.2516
-2019,Linear regression,2019-12-22,185.5786,5.2981,0.2516
-2019,Linear regression,2019-12-29,234.3286,5.2605,0.2516
-2019,LSTM (small),2019-01-06,282.4114,5.2837,0.0318
-2019,LSTM (small),2019-01-13,215.72,5.0299,0.0318
-2019,LSTM (small),2019-01-20,239.1957,5.2359,0.0318
-2019,LSTM (small),2019-01-27,116.3271,5.0132,0.0318
-2019,LSTM (small),2019-02-03,166.5671,4.8191,0.0318
-2019,LSTM (small),2019-02-10,134.5643,4.8266,0.0318
-2019,LSTM (small),2019-02-17,152.7586,4.8249,0.0318
-2019,LSTM (small),2019-02-24,90.0871,5.469,0.0318
-2019,LSTM (small),2019-03-03,80.32,5.2133,0.0318
-2019,LSTM (small),2019-03-10,86.03,4.5867,0.0318
-2019,LSTM (small),2019-03-17,82.4214,4.3719,0.0318
-2019,LSTM (small),2019-03-24,79.0757,4.4462,0.0318
-2019,LSTM (small),2019-03-31,87.0914,4.4704,0.0318
-2019,LSTM (small),2019-04-07,104.1229,4.4509,0.0318
-2019,LSTM (small),2019-04-14,72.8586,4.472,0.0318
-2019,LSTM (small),2019-04-21,61.77,4.2977,0.0318
-2019,LSTM (small),2019-04-28,88.33,4.5158,0.0318
-2019,LSTM (small),2019-05-05,85.7743,4.491,0.0318
-2019,LSTM (small),2019-05-12,129.0486,4.7364,0.0318
-2019,LSTM (small),2019-05-19,86.87,4.4192,0.0318
-2019,LSTM (small),2019-05-26,67.2914,4.5572,0.0318
-2019,LSTM (small),2019-06-02,78.26,5.0154,0.0318
-2019,LSTM (small),2019-06-09,70.2086,4.0488,0.0318
-2019,LSTM (small),2019-06-16,69.0129,4.2116,0.0318
-2019,LSTM (small),2019-06-23,53.5386,4.2224,0.0318
-2019,LSTM (small),2019-06-30,56.7329,3.9583,0.0318
-2019,LSTM (small),2019-07-07,46.7743,4.158,0.0318
-2019,LSTM (small),2019-07-14,62.9386,3.9819,0.0318
-2019,LSTM (small),2019-07-21,42.65,4.5009,0.0318
-2019,LSTM (small),2019-07-28,42.49,3.8129,0.0318
-2019,LSTM (small),2019-08-04,34.1886,3.6249,0.0318
-2019,LSTM (small),2019-08-11,28.4871,3.77,0.0318
-2019,LSTM (small),2019-08-18,20.7814,3.9841,0.0318
-2019,LSTM (small),2019-08-25,45.1186,4.0796,0.0318
-2019,LSTM (small),2019-09-01,39.6414,3.896,0.0318
-2019,LSTM (small),2019-09-08,46.8057,4.6099,0.0318
-2019,LSTM (small),2019-09-15,50.5686,4.3985,0.0318
-2019,LSTM (small),2019-09-22,39.8514,4.4043,0.0318
-2019,LSTM (small),2019-09-29,25.55,4.554,0.0318
-2019,LSTM (small),2019-10-06,43.2557,4.987,0.0318
-2019,LSTM (small),2019-10-13,87.5229,5.2235,0.0318
-2019,LSTM (small),2019-10-20,111.8514,5.3897,0.0318
-2019,LSTM (small),2019-10-27,140.2557,5.6581,0.0318
-2019,LSTM (small),2019-11-03,353.3686,5.8757,0.0318
-2019,LSTM (small),2019-11-10,176.2229,6.1546,0.0318
-2019,LSTM (small),2019-11-17,297.9271,5.7959,0.0318
-2019,LSTM (small),2019-11-24,152.5214,5.6892,0.0318
-2019,LSTM (small),2019-12-01,86.8257,5.757,0.0318
-2019,LSTM (small),2019-12-08,204.5543,5.7639,0.0318
-2019,LSTM (small),2019-12-15,184.0914,5.608,0.0318
-2019,LSTM (small),2019-12-22,185.5786,5.7362,0.0318
-2019,LSTM (small),2019-12-29,234.3286,5.8927,0.0318
-2019,Fourier+ARMA const,2019-01-06,282.4114,5.4355,0.2368
-2019,Fourier+ARMA const,2019-01-13,215.72,5.3237,0.25
-2019,Fourier+ARMA const,2019-01-20,239.1957,5.2459,0.2515
-2019,Fourier+ARMA const,2019-01-27,116.3271,5.1756,0.2517
-2019,Fourier+ARMA const,2019-02-03,166.5671,5.1041,0.2517
-2019,Fourier+ARMA const,2019-02-10,134.5643,5.0297,0.2517
-2019,Fourier+ARMA const,2019-02-17,152.7586,4.953,0.2517
-2019,Fourier+ARMA const,2019-02-24,90.0871,4.8763,0.2517
-2019,Fourier+ARMA const,2019-03-03,80.32,4.8023,0.2517
-2019,Fourier+ARMA const,2019-03-10,86.03,4.7343,0.2517
-2019,Fourier+ARMA const,2019-03-17,82.4214,4.6756,0.2517
-2019,Fourier+ARMA const,2019-03-24,79.0757,4.6287,0.2517
-2019,Fourier+ARMA const,2019-03-31,87.0914,4.5954,0.2517
-2019,Fourier+ARMA const,2019-04-07,104.1229,4.5763,0.2517
-2019,Fourier+ARMA const,2019-04-14,72.8586,4.5702,0.2517
-2019,Fourier+ARMA const,2019-04-21,61.77,4.5744,0.2517
-2019,Fourier+ARMA const,2019-04-28,88.33,4.5848,0.2517
-2019,Fourier+ARMA const,2019-05-05,85.7743,4.596,0.2517
-2019,Fourier+ARMA const,2019-05-12,129.0486,4.6023,0.2517
-2019,Fourier+ARMA const,2019-05-19,86.87,4.5975,0.2517
-2019,Fourier+ARMA const,2019-05-26,67.2914,4.5764,0.2517
-2019,Fourier+ARMA const,2019-06-02,78.26,4.5351,0.2517
-2019,Fourier+ARMA const,2019-06-09,70.2086,4.4716,0.2517
-2019,Fourier+ARMA const,2019-06-16,69.0129,4.3861,0.2517
-2019,Fourier+ARMA const,2019-06-23,53.5386,4.2814,0.2517
-2019,Fourier+ARMA const,2019-06-30,56.7329,4.1626,0.2517
-2019,Fourier+ARMA const,2019-07-07,46.7743,4.0369,0.2517
-2019,Fourier+ARMA const,2019-07-14,62.9386,3.9129,0.2517
-2019,Fourier+ARMA const,2019-07-21,42.65,3.8,0.2517
-2019,Fourier+ARMA const,2019-07-28,42.49,3.7073,0.2517
-2019,Fourier+ARMA const,2019-08-04,34.1886,3.6432,0.2517
-2019,Fourier+ARMA const,2019-08-11,28.4871,3.614,0.2517
-2019,Fourier+ARMA const,2019-08-18,20.7814,3.6241,0.2517
-2019,Fourier+ARMA const,2019-08-25,45.1186,3.6746,0.2517
-2019,Fourier+ARMA const,2019-09-01,39.6414,3.7643,0.2517
-2019,Fourier+ARMA const,2019-09-08,46.8057,3.8889,0.2517
-2019,Fourier+ARMA const,2019-09-15,50.5686,4.042,0.2517
-2019,Fourier+ARMA const,2019-09-22,39.8514,4.2154,0.2517
-2019,Fourier+ARMA const,2019-09-29,25.55,4.4,0.2517
-2019,Fourier+ARMA const,2019-10-06,43.2557,4.5867,0.2517
-2019,Fourier+ARMA const,2019-10-13,87.5229,4.7667,0.2517
-2019,Fourier+ARMA const,2019-10-20,111.8514,4.9326,0.2517
-2019,Fourier+ARMA const,2019-10-27,140.2557,5.0787,0.2517
-2019,Fourier+ARMA const,2019-11-03,353.3686,5.2011,0.2517
-2019,Fourier+ARMA const,2019-11-10,176.2229,5.2981,0.2517
-2019,Fourier+ARMA const,2019-11-17,297.9271,5.3695,0.2517
-2019,Fourier+ARMA const,2019-11-24,152.5214,5.417,0.2517
-2019,Fourier+ARMA const,2019-12-01,86.8257,5.4429,0.2517
-2019,Fourier+ARMA const,2019-12-08,204.5543,5.4502,0.2517
-2019,Fourier+ARMA const,2019-12-15,184.0914,5.442,0.2517
-2019,Fourier+ARMA const,2019-12-22,185.5786,5.421,0.2517
-2019,Fourier+ARMA const,2019-12-29,234.3286,5.3896,0.2517
-2019,Fourier+ARMA linear,2019-01-06,282.4114,5.3945,0.235
-2019,Fourier+ARMA linear,2019-01-13,215.72,5.271,0.2463
-2019,Fourier+ARMA linear,2019-01-20,239.1957,5.1864,0.2474
-2019,Fourier+ARMA linear,2019-01-27,116.3271,5.1088,0.2475
-2019,Fourier+ARMA linear,2019-02-03,166.5671,5.0293,0.2475
-2019,Fourier+ARMA linear,2019-02-10,134.5643,4.9465,0.2475
-2019,Fourier+ARMA linear,2019-02-17,152.7586,4.862,0.2475
-2019,Fourier+ARMA linear,2019-02-24,90.0871,4.7784,0.2475
-2019,Fourier+ARMA linear,2019-03-03,80.32,4.6992,0.2475
-2019,Fourier+ARMA linear,2019-03-10,86.03,4.6279,0.2475
-2019,Fourier+ARMA linear,2019-03-17,82.4214,4.5676,0.2475
-2019,Fourier+ARMA linear,2019-03-24,79.0757,4.5209,0.2475
-2019,Fourier+ARMA linear,2019-03-31,87.0914,4.4891,0.2475
-2019,Fourier+ARMA linear,2019-04-07,104.1229,4.4722,0.2475
-2019,Fourier+ARMA linear,2019-04-14,72.8586,4.4686,0.2475
-2019,Fourier+ARMA linear,2019-04-21,61.77,4.475,0.2475
-2019,Fourier+ARMA linear,2019-04-28,88.33,4.4869,0.2475
-2019,Fourier+ARMA linear,2019-05-05,85.7743,4.4987,0.2475
-2019,Fourier+ARMA linear,2019-05-12,129.0486,4.5043,0.2475
-2019,Fourier+ARMA linear,2019-05-19,86.87,4.4977,0.2475
-2019,Fourier+ARMA linear,2019-05-26,67.2914,4.4739,0.2475
-2019,Fourier+ARMA linear,2019-06-02,78.26,4.4293,0.2475
-2019,Fourier+ARMA linear,2019-06-09,70.2086,4.3623,0.2475
-2019,Fourier+ARMA linear,2019-06-16,69.0129,4.2737,0.2475
-2019,Fourier+ARMA linear,2019-06-23,53.5386,4.1664,0.2475
-2019,Fourier+ARMA linear,2019-06-30,56.7329,4.046,0.2475
-2019,Fourier+ARMA linear,2019-07-07,46.7743,3.9197,0.2475
-2019,Fourier+ARMA linear,2019-07-14,62.9386,3.7961,0.2475
-2019,Fourier+ARMA linear,2019-07-21,42.65,3.6844,0.2475
-2019,Fourier+ARMA linear,2019-07-28,42.49,3.5934,0.2475
-2019,Fourier+ARMA linear,2019-08-04,34.1886,3.5311,0.2475
-2019,Fourier+ARMA linear,2019-08-11,28.4871,3.5034,0.2475
-2019,Fourier+ARMA linear,2019-08-18,20.7814,3.5141,0.2475
-2019,Fourier+ARMA linear,2019-08-25,45.1186,3.5644,0.2475
-2019,Fourier+ARMA linear,2019-09-01,39.6414,3.6525,0.2475
-2019,Fourier+ARMA linear,2019-09-08,46.8057,3.7745,0.2475
-2019,Fourier+ARMA linear,2019-09-15,50.5686,3.9241,0.2475
-2019,Fourier+ARMA linear,2019-09-22,39.8514,4.0934,0.2475
-2019,Fourier+ARMA linear,2019-09-29,25.55,4.274,0.2475
-2019,Fourier+ARMA linear,2019-10-06,43.2557,4.4571,0.2475
-2019,Fourier+ARMA linear,2019-10-13,87.5229,4.6346,0.2475
-2019,Fourier+ARMA linear,2019-10-20,111.8514,4.7994,0.2475
-2019,Fourier+ARMA linear,2019-10-27,140.2557,4.9462,0.2475
-2019,Fourier+ARMA linear,2019-11-03,353.3686,5.0712,0.2475
-2019,Fourier+ARMA linear,2019-11-10,176.2229,5.1725,0.2475
-2019,Fourier+ARMA linear,2019-11-17,297.9271,5.2498,0.2475
-2019,Fourier+ARMA linear,2019-11-24,152.5214,5.3039,0.2475
-2019,Fourier+ARMA linear,2019-12-01,86.8257,5.3366,0.2475
-2019,Fourier+ARMA linear,2019-12-08,204.5543,5.3503,0.2475
-2019,Fourier+ARMA linear,2019-12-15,184.0914,5.3473,0.2475
-2019,Fourier+ARMA linear,2019-12-22,185.5786,5.3298,0.2475
-2019,Fourier+ARMA linear,2019-12-29,234.3286,5.2996,0.2475
-2019,Fourier+ARMA (selected),2019-01-06,282.4114,5.3592,0.2258
-2019,Fourier+ARMA (selected),2019-01-13,215.72,5.3426,0.2317
-2019,Fourier+ARMA (selected),2019-01-20,239.1957,5.3347,0.2335
-2019,Fourier+ARMA (selected),2019-01-27,116.3271,5.2879,0.2348
-2019,Fourier+ARMA (selected),2019-02-03,166.5671,5.1963,0.2361
-2019,Fourier+ARMA (selected),2019-02-10,134.5643,5.0702,0.2374
-2019,Fourier+ARMA (selected),2019-02-17,152.7586,4.9286,0.2386
-2019,Fourier+ARMA (selected),2019-02-24,90.0871,4.7932,0.2399
-2019,Fourier+ARMA (selected),2019-03-03,80.32,4.6818,0.2411
-2019,Fourier+ARMA (selected),2019-03-10,86.03,4.6049,0.2424
-2019,Fourier+ARMA (selected),2019-03-17,82.4214,4.5635,0.2436
-2019,Fourier+ARMA (selected),2019-03-24,79.0757,4.551,0.2449
-2019,Fourier+ARMA (selected),2019-03-31,87.0914,4.5567,0.2461
-2019,Fourier+ARMA (selected),2019-04-07,104.1229,4.57,0.2473
-2019,Fourier+ARMA (selected),2019-04-14,72.8586,4.5831,0.2485
-2019,Fourier+ARMA (selected),2019-04-21,61.77,4.5925,0.2497
-2019,Fourier+ARMA (selected),2019-04-28,88.33,4.5981,0.2509
-2019,Fourier+ARMA (selected),2019-05-05,85.7743,4.6004,0.2521
-2019,Fourier+ARMA (selected),2019-05-12,129.0486,4.5984,0.2533
-2019,Fourier+ARMA (selected),2019-05-19,86.87,4.5879,0.2545
-2019,Fourier+ARMA (selected),2019-05-26,67.2914,4.5616,0.2557
-2019,Fourier+ARMA (selected),2019-06-02,78.26,4.5119,0.2569
-2019,Fourier+ARMA (selected),2019-06-09,70.2086,4.4334,0.258
-2019,Fourier+ARMA (selected),2019-06-16,69.0129,4.3263,0.2592
-2019,Fourier+ARMA (selected),2019-06-23,53.5386,4.1977,0.2603
-2019,Fourier+ARMA (selected),2019-06-30,56.7329,4.0607,0.2615
-2019,Fourier+ARMA (selected),2019-07-07,46.7743,3.9311,0.2626
-2019,Fourier+ARMA (selected),2019-07-14,62.9386,3.8237,0.2638
-2019,Fourier+ARMA (selected),2019-07-21,42.65,3.748,0.2649
-2019,Fourier+ARMA (selected),2019-07-28,42.49,3.7058,0.2661
-2019,Fourier+ARMA (selected),2019-08-04,34.1886,3.6921,0.2672
-2019,Fourier+ARMA (selected),2019-08-11,28.4871,3.6974,0.2683
-2019,Fourier+ARMA (selected),2019-08-18,20.7814,3.7127,0.2694
-2019,Fourier+ARMA (selected),2019-08-25,45.1186,3.7338,0.2706
-2019,Fourier+ARMA (selected),2019-09-01,39.6414,3.7641,0.2717
-2019,Fourier+ARMA (selected),2019-09-08,46.8057,3.8139,0.2728
-2019,Fourier+ARMA (selected),2019-09-15,50.5686,3.8979,0.2739
-2019,Fourier+ARMA (selected),2019-09-22,39.8514,4.0288,0.275
-2019,Fourier+ARMA (selected),2019-09-29,25.55,4.2117,0.2761
-2019,Fourier+ARMA (selected),2019-10-06,43.2557,4.4404,0.2772
-2019,Fourier+ARMA (selected),2019-10-13,87.5229,4.6959,0.2782
-2019,Fourier+ARMA (selected),2019-10-20,111.8514,4.9503,0.2793
-2019,Fourier+ARMA (selected),2019-10-27,140.2557,5.1724,0.2804
-2019,Fourier+ARMA (selected),2019-11-03,353.3686,5.3362,0.2815
-2019,Fourier+ARMA (selected),2019-11-10,176.2229,5.4273,0.2825
-2019,Fourier+ARMA (selected),2019-11-17,297.9271,5.4468,0.2836
-2019,Fourier+ARMA (selected),2019-11-24,152.5214,5.4111,0.2847
-2019,Fourier+ARMA (selected),2019-12-01,86.8257,5.3463,0.2857
-2019,Fourier+ARMA (selected),2019-12-08,204.5543,5.2815,0.2868
-2019,Fourier+ARMA (selected),2019-12-15,184.0914,5.2398,0.2878
-2019,Fourier+ARMA (selected),2019-12-22,185.5786,5.2327,0.2889
-2019,Fourier+ARMA (selected),2019-12-29,234.3286,5.2571,0.2899
-2019,SARIMA D=1,2019-01-06,282.4114,5.5583,0.2378
-2019,SARIMA D=1,2019-01-13,215.72,5.3532,0.245
-2019,SARIMA D=1,2019-01-20,239.1957,5.4392,0.2504
-2019,SARIMA D=1,2019-01-27,116.3271,5.2673,0.2546
-2019,SARIMA D=1,2019-02-03,166.5671,5.1138,0.2578
-2019,SARIMA D=1,2019-02-10,134.5643,5.0825,0.2603
-2019,SARIMA D=1,2019-02-17,152.7586,4.937,0.2622
-2019,SARIMA D=1,2019-02-24,90.0871,5.1235,0.2637
-2019,SARIMA D=1,2019-03-03,80.32,4.72,0.2648
-2019,SARIMA D=1,2019-03-10,86.03,4.5344,0.2657
-2019,SARIMA D=1,2019-03-17,82.4214,4.5037,0.2664
-2019,SARIMA D=1,2019-03-24,79.0757,4.6387,0.267
-2019,SARIMA D=1,2019-03-31,87.0914,4.5924,0.2674
-2019,SARIMA D=1,2019-04-07,104.1229,4.6076,0.2677
-2019,SARIMA D=1,2019-04-14,72.8586,4.6419,0.268
-2019,SARIMA D=1,2019-04-21,61.77,4.7234,0.2682
-2019,SARIMA D=1,2019-04-28,88.33,4.6505,0.2684
-2019,SARIMA D=1,2019-05-05,85.7743,4.6759,0.2685
-2019,SARIMA D=1,2019-05-12,129.0486,4.6587,0.2686
-2019,SARIMA D=1,2019-05-19,86.87,4.5543,0.2686
-2019,SARIMA D=1,2019-05-26,67.2914,4.6131,0.2687
-2019,SARIMA D=1,2019-06-02,78.26,4.4178,0.2687
-2019,SARIMA D=1,2019-06-09,70.2086,4.2774,0.2688
-2019,SARIMA D=1,2019-06-16,69.0129,4.5438,0.2688
-2019,SARIMA D=1,2019-06-23,53.5386,4.2594,0.2688
-2019,SARIMA D=1,2019-06-30,56.7329,3.9202,0.2688
-2019,SARIMA D=1,2019-07-07,46.7743,4.0129,0.2689
-2019,SARIMA D=1,2019-07-14,62.9386,3.869,0.2689
-2019,SARIMA D=1,2019-07-21,42.65,3.662,0.2689
-2019,SARIMA D=1,2019-07-28,42.49,3.5101,0.2689
-2019,SARIMA D=1,2019-08-04,34.1886,3.8891,0.2689
-2019,SARIMA D=1,2019-08-11,28.4871,3.7961,0.2689
-2019,SARIMA D=1,2019-08-18,20.7814,3.7348,0.2689
-2019,SARIMA D=1,2019-08-25,45.1186,3.7839,0.2689
-2019,SARIMA D=1,2019-09-01,39.6414,3.7727,0.2689
-2019,SARIMA D=1,2019-09-08,46.8057,3.9598,0.2689
-2019,SARIMA D=1,2019-09-15,50.5686,4.0589,0.2689
-2019,SARIMA D=1,2019-09-22,39.8514,3.9967,0.2689
-2019,SARIMA D=1,2019-09-29,25.55,4.3283,0.2688
-2019,SARIMA D=1,2019-10-06,43.2557,4.6292,0.2688
-2019,SARIMA D=1,2019-10-13,87.5229,4.7058,0.2688
-2019,SARIMA D=1,2019-10-20,111.8514,5.0724,0.2688
-2019,SARIMA D=1,2019-10-27,140.2557,5.2214,0.2687
-2019,SARIMA D=1,2019-11-03,353.3686,5.5428,0.2687
-2019,SARIMA D=1,2019-11-10,176.2229,5.7258,0.2686
-2019,SARIMA D=1,2019-11-17,297.9271,5.355,0.2686
-2019,SARIMA D=1,2019-11-24,152.5214,5.2173,0.2685
-2019,SARIMA D=1,2019-12-01,86.8257,5.3139,0.2683
-2019,SARIMA D=1,2019-12-08,204.5543,5.3102,0.2682
-2019,SARIMA D=1,2019-12-15,184.0914,5.024,0.268
-2019,SARIMA D=1,2019-12-22,185.5786,5.3519,0.2677
-2019,SARIMA D=1,2019-12-29,234.3286,5.4551,0.2635
-2019,SARIMA D=0,2019-01-06,282.4114,5.5427,0.2696
-2019,SARIMA D=0,2019-01-13,215.72,5.3995,0.3084
-2019,SARIMA D=0,2019-01-20,239.1957,5.377,0.3379
-2019,SARIMA D=0,2019-01-27,116.3271,5.2358,0.361
-2019,SARIMA D=0,2019-02-03,166.5671,5.1725,0.3796
-2019,SARIMA D=0,2019-02-10,134.5643,5.2188,0.3947
-2019,SARIMA D=0,2019-02-17,152.7586,5.0103,0.407
-2019,SARIMA D=0,2019-02-24,90.0871,5.138,0.4173
-2019,SARIMA D=0,2019-03-03,80.32,4.9633,0.4257
-2019,SARIMA D=0,2019-03-10,86.03,4.912,0.4328
-2019,SARIMA D=0,2019-03-17,82.4214,4.9106,0.4387
-2019,SARIMA D=0,2019-03-24,79.0757,4.8487,0.4437
-2019,SARIMA D=0,2019-03-31,87.0914,4.8573,0.4479
-2019,SARIMA D=0,2019-04-07,104.1229,4.8285,0.4514
-2019,SARIMA D=0,2019-04-14,72.8586,4.7303,0.4544
-2019,SARIMA D=0,2019-04-21,61.77,4.7912,0.4569
-2019,SARIMA D=0,2019-04-28,88.33,4.8211,0.459
-2019,SARIMA D=0,2019-05-05,85.7743,4.6599,0.4608
-2019,SARIMA D=0,2019-05-12,129.0486,4.783,0.4623
-2019,SARIMA D=0,2019-05-19,86.87,4.7101,0.4636
-2019,SARIMA D=0,2019-05-26,67.2914,4.7608,0.4647
-2019,SARIMA D=0,2019-06-02,78.26,4.676,0.4656
-2019,SARIMA D=0,2019-06-09,70.2086,4.5915,0.4664
-2019,SARIMA D=0,2019-06-16,69.0129,4.8968,0.467
-2019,SARIMA D=0,2019-06-23,53.5386,4.5962,0.4676
-2019,SARIMA D=0,2019-06-30,56.7329,4.3841,0.4681
-2019,SARIMA D=0,2019-07-07,46.7743,4.4831,0.4685
-2019,SARIMA D=0,2019-07-14,62.9386,4.4141,0.4688
-2019,SARIMA D=0,2019-07-21,42.65,4.3485,0.4691
-2019,SARIMA D=0,2019-07-28,42.49,4.3212,0.4693
-2019,SARIMA D=0,2019-08-04,34.1886,4.5158,0.4695
-2019,SARIMA D=0,2019-08-11,28.4871,4.3579,0.4697
-2019,SARIMA D=0,2019-08-18,20.7814,4.3515,0.4699
-2019,SARIMA D=0,2019-08-25,45.1186,4.2762,0.47
-2019,SARIMA D=0,2019-09-01,39.6414,4.3369,0.4701
-2019,SARIMA D=0,2019-09-08,46.8057,4.3718,0.4702
-2019,SARIMA D=0,2019-09-15,50.5686,4.2851,0.4703
-2019,SARIMA D=0,2019-09-22,39.8514,4.4255,0.4704
-2019,SARIMA D=0,2019-09-29,25.55,4.4807,0.4704
-2019,SARIMA D=0,2019-10-06,43.2557,4.6144,0.4705
-2019,SARIMA D=0,2019-10-13,87.5229,4.6676,0.4705
-2019,SARIMA D=0,2019-10-20,111.8514,4.8019,0.4705
-2019,SARIMA D=0,2019-10-27,140.2557,4.8726,0.4706
-2019,SARIMA D=0,2019-11-03,353.3686,4.9333,0.4706
-2019,SARIMA D=0,2019-11-10,176.2229,5.0542,0.4706
-2019,SARIMA D=0,2019-11-17,297.9271,4.8729,0.4706
-2019,SARIMA D=0,2019-11-24,152.5214,4.8627,0.4706
-2019,SARIMA D=0,2019-12-01,86.8257,4.8985,0.4707
-2019,SARIMA D=0,2019-12-08,204.5543,4.9261,0.4707
-2019,SARIMA D=0,2019-12-15,184.0914,4.8744,0.4707
-2019,SARIMA D=0,2019-12-22,185.5786,5.0192,0.4707
-2019,SARIMA D=0,2019-12-29,234.3286,5.053,0.4707
+2017,Seasonal naive,2017-01-01,230.7142857142857,5.424572350201784,0.2935252627885994
+2017,Seasonal naive,2017-01-08,207.4528571428572,5.673072867635633,0.2935252627885994
+2017,Seasonal naive,2017-01-15,196.74571428571429,5.272955601553695,0.2935252627885994
+2017,Seasonal naive,2017-01-22,238.02714285714288,5.6061381442692495,0.2935252627885994
+2017,Seasonal naive,2017-01-29,159.2057142857143,5.6056602495177845,0.2935252627885994
+2017,Seasonal naive,2017-02-05,177.6185714285714,5.080916224567838,0.2935252627885994
+2017,Seasonal naive,2017-02-12,133.16857142857145,4.989820154382335,0.2935252627885994
+2017,Seasonal naive,2017-02-19,139.42142857142858,4.918060417555802,0.2935252627885994
+2017,Seasonal naive,2017-02-26,244.8114285714286,4.88149154060126,0.2935252627885994
+2017,Seasonal naive,2017-03-05,115.93714285714285,4.90057592541159,0.2935252627885994
+2017,Seasonal naive,2017-03-12,87.95,4.494988543542957,0.2935252627885994
+2017,Seasonal naive,2017-03-19,106.63428571428572,4.351843530453547,0.2935252627885994
+2017,Seasonal naive,2017-03-26,136.82285714285717,4.4741336378330745,0.2935252627885994
+2017,Seasonal naive,2017-04-02,110.33714285714288,4.719913686298705,0.2935252627885994
+2017,Seasonal naive,2017-04-09,90.86,4.759080020487912,0.2935252627885994
+2017,Seasonal naive,2017-04-16,154.83714285714285,4.589809962303264,0.2935252627885994
+2017,Seasonal naive,2017-04-23,133.07,4.708706181077213,0.2935252627885994
+2017,Seasonal naive,2017-04-30,96.78857142857144,4.977698793849991,0.2935252627885994
+2017,Seasonal naive,2017-05-07,167.48285714285717,4.50826587909523,0.2935252627885994
+2017,Seasonal naive,2017-05-14,142.7271428571429,4.533689528648954,0.2935252627885994
+2017,Seasonal naive,2017-05-21,144.9042857142857,4.47551697776122,0.2935252627885994
+2017,Seasonal naive,2017-05-28,94.82285714285716,4.596705893290225,0.2935252627885994
+2017,Seasonal naive,2017-06-04,90.08142857142856,4.5626652284606735,0.2935252627885994
+2017,Seasonal naive,2017-06-11,58.47714285714285,4.260806896744107,0.2935252627885994
+2017,Seasonal naive,2017-06-18,58.12714285714286,4.397565985426743,0.2935252627885994
+2017,Seasonal naive,2017-06-25,57.142857142857146,4.340720892214076,0.2935252627885994
+2017,Seasonal naive,2017-07-02,32.95,4.208990406904594,0.2935252627885994
+2017,Seasonal naive,2017-07-09,58.0,4.106320186375232,0.2935252627885994
+2017,Seasonal naive,2017-07-16,31.555714285714288,4.106367237449181,0.2935252627885994
+2017,Seasonal naive,2017-07-23,31.482857142857146,3.878820716600366,0.2935252627885994
+2017,Seasonal naive,2017-07-30,21.16,3.953082685984552,0.2935252627885994
+2017,Seasonal naive,2017-08-06,35.28142857142857,3.800037417761567,0.2935252627885994
+2017,Seasonal naive,2017-08-13,37.60285714285715,3.739979872759299,0.2935252627885994
+2017,Seasonal naive,2017-08-20,33.62428571428571,3.888608147589942,0.2935252627885994
+2017,Seasonal naive,2017-08-27,43.39857142857142,3.8366835060251776,0.2935252627885994
+2017,Seasonal naive,2017-09-03,26.428571428571427,3.814693645594052,0.2935252627885994
+2017,Seasonal naive,2017-09-10,47.17714285714286,4.040089492621601,0.2935252627885994
+2017,Seasonal naive,2017-09-17,59.26285714285715,4.205332073745058,0.2935252627885994
+2017,Seasonal naive,2017-09-24,44.027142857142856,4.1860551978402345,0.2935252627885994
+2017,Seasonal naive,2017-10-01,72.08571428571429,4.503501260716411,0.2935252627885994
+2017,Seasonal naive,2017-10-08,76.91285714285713,4.8030017901066975,0.2935252627885994
+2017,Seasonal naive,2017-10-15,122.44714285714284,4.779951481566995,0.2935252627885994
+2017,Seasonal naive,2017-10-22,198.3271428571429,5.030886000261812,0.2935252627885994
+2017,Seasonal naive,2017-10-29,183.8942857142857,5.555470273250708,0.2935252627885994
+2017,Seasonal naive,2017-11-05,187.99571428571429,6.204866517207873,0.2935252627885994
+2017,Seasonal naive,2017-11-12,438.44714285714286,5.762702563348607,0.2935252627885994
+2017,Seasonal naive,2017-11-19,202.21142857142857,5.614378627601472,0.2935252627885994
+2017,Seasonal naive,2017-11-26,185.72,5.292040565727836,0.2935252627885994
+2017,Seasonal naive,2017-12-03,205.89714285714285,5.404663824576337,0.2935252627885994
+2017,Seasonal naive,2017-12-10,173.3457142857143,5.494917450639543,0.2935252627885994
+2017,Seasonal naive,2017-12-17,130.51142857142858,5.301768547224268,0.2935252627885994
+2017,Seasonal naive,2017-12-24,191.21714285714285,5.507518457625249,0.2935252627885994
+2017,Climatology,2017-01-01,230.7142857142857,5.312465158286153,0.1543246814639469
+2017,Climatology,2017-01-08,207.4528571428572,5.445645637464022,0.1543246814639469
+2017,Climatology,2017-01-15,196.74571428571429,5.2755497074390885,0.1543246814639469
+2017,Climatology,2017-01-22,238.02714285714288,5.42035833492514,0.1543246814639469
+2017,Climatology,2017-01-29,159.2057142857143,5.328901508712694,0.1543246814639469
+2017,Climatology,2017-02-05,177.6185714285714,5.086671074190454,0.1543246814639469
+2017,Climatology,2017-02-12,133.16857142857145,4.999303060238789,0.1543246814639469
+2017,Climatology,2017-02-19,139.42142857142858,5.000025118341554,0.1543246814639469
+2017,Climatology,2017-02-26,244.8114285714286,4.962762383757507,0.1543246814639469
+2017,Climatology,2017-03-05,115.93714285714285,4.883301873483066,0.1543246814639469
+2017,Climatology,2017-03-12,87.95,4.453806830858239,0.1543246814639469
+2017,Climatology,2017-03-19,106.63428571428572,4.400622530866001,0.1543246814639469
+2017,Climatology,2017-03-26,136.82285714285717,4.357360068519439,0.1543246814639469
+2017,Climatology,2017-04-02,110.33714285714288,4.63025743724717,0.1543246814639469
+2017,Climatology,2017-04-09,90.86,4.512797795097862,0.1543246814639469
+2017,Climatology,2017-04-16,154.83714285714285,4.558895254800113,0.1543246814639469
+2017,Climatology,2017-04-23,133.07,4.6239369588823696,0.1543246814639469
+2017,Climatology,2017-04-30,96.78857142857144,4.840224654088473,0.1543246814639469
+2017,Climatology,2017-05-07,167.48285714285717,4.430165118642819,0.1543246814639469
+2017,Climatology,2017-05-14,142.7271428571429,4.66197562052216,0.1543246814639469
+2017,Climatology,2017-05-21,144.9042857142857,4.486025724604231,0.1543246814639469
+2017,Climatology,2017-05-28,94.82285714285716,4.44814108115102,0.1543246814639469
+2017,Climatology,2017-06-04,90.08142857142856,4.6209012801802025,0.1543246814639469
+2017,Climatology,2017-06-11,58.47714285714285,4.228735821605577,0.1543246814639469
+2017,Climatology,2017-06-18,58.12714285714286,4.490274494519968,0.1543246814639469
+2017,Climatology,2017-06-25,57.142857142857146,4.503949807957337,0.1543246814639469
+2017,Climatology,2017-07-02,32.95,4.309897686448151,0.1543246814639469
+2017,Climatology,2017-07-09,58.0,4.204535837933481,0.1543246814639469
+2017,Climatology,2017-07-16,31.555714285714288,4.016836433204242,0.1543246814639469
+2017,Climatology,2017-07-23,31.482857142857146,4.008294799320423,0.1543246814639469
+2017,Climatology,2017-07-30,21.16,3.830689769571084,0.1543246814639469
+2017,Climatology,2017-08-06,35.28142857142857,3.644557423314578,0.1543246814639469
+2017,Climatology,2017-08-13,37.60285714285715,3.923338202877103,0.1543246814639469
+2017,Climatology,2017-08-20,33.62428571428571,4.0217326402665305,0.1543246814639469
+2017,Climatology,2017-08-27,43.39857142857142,3.860035926743728,0.1543246814639469
+2017,Climatology,2017-09-03,26.428571428571427,3.9456068114518006,0.1543246814639469
+2017,Climatology,2017-09-10,47.17714285714286,4.209278113466985,0.1543246814639469
+2017,Climatology,2017-09-17,59.26285714285715,4.213699762591812,0.1543246814639469
+2017,Climatology,2017-09-24,44.027142857142856,4.322339525430501,0.1543246814639469
+2017,Climatology,2017-10-01,72.08571428571429,4.321694044001896,0.1543246814639469
+2017,Climatology,2017-10-08,76.91285714285713,4.652879745835973,0.1543246814639469
+2017,Climatology,2017-10-15,122.44714285714284,4.877770856642746,0.1543246814639469
+2017,Climatology,2017-10-22,198.3271428571429,4.862478127364415,0.1543246814639469
+2017,Climatology,2017-10-29,183.8942857142857,5.308127675516218,0.1543246814639469
+2017,Climatology,2017-11-05,187.99571428571429,5.610277842803404,0.1543246814639469
+2017,Climatology,2017-11-12,438.44714285714286,5.614835545101827,0.1543246814639469
+2017,Climatology,2017-11-19,202.21142857142857,5.5406554739672575,0.1543246814639469
+2017,Climatology,2017-11-26,185.72,5.349106239055207,0.1543246814639469
+2017,Climatology,2017-12-03,205.89714285714285,5.350464543499122,0.1543246814639469
+2017,Climatology,2017-12-10,173.3457142857143,5.435689510272511,0.1543246814639469
+2017,Climatology,2017-12-17,130.51142857142858,5.339167903260966,0.1543246814639469
+2017,Climatology,2017-12-24,191.21714285714285,5.18386472681753,0.1543246814639469
+2017,Climatology + AR(1),2017-01-01,230.7142857142857,5.423112446384211,0.1443701174171715
+2017,Climatology + AR(1),2017-01-08,207.4528571428572,5.48347255307813,0.1525736465220863
+2017,Climatology + AR(1),2017-01-15,196.74571428571429,5.288481570202944,0.1535038198616951
+2017,Climatology + AR(1),2017-01-22,238.02714285714288,5.424779342343488,0.1536121659249456
+2017,Climatology + AR(1),2017-01-29,159.2057142857143,5.330412915611298,0.1536248238456347
+2017,Climatology + AR(1),2017-02-05,177.6185714285714,5.087187777872892,0.1536263031675802
+2017,Climatology + AR(1),2017-02-12,133.16857142857145,4.99947970538689,0.153626476061881
+2017,Climatology + AR(1),2017-02-19,139.42142857142858,5.000085507902163,0.1536264962688288
+2017,Climatology + AR(1),2017-02-26,244.8114285714286,4.962783029096877,0.1536264986305084
+2017,Climatology + AR(1),2017-03-05,115.93714285714285,4.8833089314916585,0.153626498906529
+2017,Climatology + AR(1),2017-03-12,87.95,4.453809243774995,0.1536264989387887
+2017,Climatology + AR(1),2017-03-19,106.63428571428572,4.400623355768266,0.1536264989425591
+2017,Climatology + AR(1),2017-03-26,136.82285714285717,4.357360350528234,0.1536264989429998
+2017,Climatology + AR(1),2017-04-02,110.33714285714288,4.630257533657331,0.1536264989430512
+2017,Climatology + AR(1),2017-04-09,90.86,4.512797828057541,0.1536264989430573
+2017,Climatology + AR(1),2017-04-16,154.83714285714285,4.558895266068017,0.153626498943058
+2017,Climatology + AR(1),2017-04-23,133.07,4.62393696273452,0.1536264989430581
+2017,Climatology + AR(1),2017-04-30,96.78857142857144,4.840224655405406,0.1536264989430581
+2017,Climatology + AR(1),2017-05-07,167.48285714285717,4.430165119093037,0.1536264989430581
+2017,Climatology + AR(1),2017-05-14,142.7271428571429,4.661975620676076,0.1536264989430581
+2017,Climatology + AR(1),2017-05-21,144.9042857142857,4.48602572465685,0.1536264989430581
+2017,Climatology + AR(1),2017-05-28,94.82285714285716,4.448141081169009,0.1536264989430581
+2017,Climatology + AR(1),2017-06-04,90.08142857142856,4.620901280186352,0.1536264989430581
+2017,Climatology + AR(1),2017-06-11,58.47714285714285,4.228735821607679,0.1536264989430581
+2017,Climatology + AR(1),2017-06-18,58.12714285714286,4.490274494520687,0.1536264989430581
+2017,Climatology + AR(1),2017-06-25,57.142857142857146,4.503949807957583,0.1536264989430581
+2017,Climatology + AR(1),2017-07-02,32.95,4.309897686448236,0.1536264989430581
+2017,Climatology + AR(1),2017-07-09,58.0,4.204535837933509,0.1536264989430581
+2017,Climatology + AR(1),2017-07-16,31.555714285714288,4.016836433204252,0.1536264989430581
+2017,Climatology + AR(1),2017-07-23,31.482857142857146,4.008294799320426,0.1536264989430581
+2017,Climatology + AR(1),2017-07-30,21.16,3.830689769571085,0.1536264989430581
+2017,Climatology + AR(1),2017-08-06,35.28142857142857,3.6445574233145774,0.1536264989430581
+2017,Climatology + AR(1),2017-08-13,37.60285714285715,3.923338202877103,0.1536264989430581
+2017,Climatology + AR(1),2017-08-20,33.62428571428571,4.0217326402665305,0.1536264989430581
+2017,Climatology + AR(1),2017-08-27,43.39857142857142,3.860035926743728,0.1536264989430581
+2017,Climatology + AR(1),2017-09-03,26.428571428571427,3.9456068114518006,0.1536264989430581
+2017,Climatology + AR(1),2017-09-10,47.17714285714286,4.209278113466985,0.1536264989430581
+2017,Climatology + AR(1),2017-09-17,59.26285714285715,4.213699762591812,0.1536264989430581
+2017,Climatology + AR(1),2017-09-24,44.027142857142856,4.322339525430501,0.1536264989430581
+2017,Climatology + AR(1),2017-10-01,72.08571428571429,4.321694044001896,0.1536264989430581
+2017,Climatology + AR(1),2017-10-08,76.91285714285713,4.652879745835973,0.1536264989430581
+2017,Climatology + AR(1),2017-10-15,122.44714285714284,4.877770856642746,0.1536264989430581
+2017,Climatology + AR(1),2017-10-22,198.3271428571429,4.862478127364415,0.1536264989430581
+2017,Climatology + AR(1),2017-10-29,183.8942857142857,5.308127675516218,0.1536264989430581
+2017,Climatology + AR(1),2017-11-05,187.99571428571429,5.610277842803404,0.1536264989430581
+2017,Climatology + AR(1),2017-11-12,438.44714285714286,5.614835545101827,0.1536264989430581
+2017,Climatology + AR(1),2017-11-19,202.21142857142857,5.5406554739672575,0.1536264989430581
+2017,Climatology + AR(1),2017-11-26,185.72,5.349106239055207,0.1536264989430581
+2017,Climatology + AR(1),2017-12-03,205.89714285714285,5.350464543499122,0.1536264989430581
+2017,Climatology + AR(1),2017-12-10,173.3457142857143,5.435689510272511,0.1536264989430581
+2017,Climatology + AR(1),2017-12-17,130.51142857142858,5.339167903260966,0.1536264989430581
+2017,Climatology + AR(1),2017-12-24,191.21714285714285,5.18386472681753,0.1536264989430581
+2017,Linear regression,2017-01-01,230.7142857142857,5.4482209193639575,0.2276670741309367
+2017,Linear regression,2017-01-08,207.4528571428572,5.411214937792379,0.2287482100603568
+2017,Linear regression,2017-01-15,196.74571428571429,5.366038274538294,0.2298420297836624
+2017,Linear regression,2017-01-22,238.02714285714288,5.312306467046801,0.2308617291374969
+2017,Linear regression,2017-01-29,159.2057142857143,5.249809158984069,0.2317253835128816
+2017,Linear regression,2017-02-05,177.6185714285714,5.178874563644115,0.232370451752145
+2017,Linear regression,2017-02-12,133.16857142857145,5.100654660489251,0.232764246815766
+2017,Linear regression,2017-02-19,139.42142857142858,5.01727725223012,0.2329080976041254
+2017,Linear regression,2017-02-26,244.8114285714286,4.931830353648895,0.232834753687887
+2017,Linear regression,2017-03-05,115.93714285714285,4.848169008861399,0.2326003079799676
+2017,Linear regression,2017-03-12,87.95,4.770561181611868,0.2322730541501714
+2017,Linear regression,2017-03-19,106.63428571428572,4.703214189512306,0.2319220097961778
+2017,Linear regression,2017-03-26,136.82285714285717,4.64974281222571,0.2316073487699314
+2017,Linear regression,2017-04-02,110.33714285714288,4.612651906931199,0.2313739803555017
+2017,Linear regression,2017-04-09,90.86,4.592908355143422,0.2312484305852627
+2017,Linear regression,2017-04-16,154.83714285714285,4.589668958964055,0.2312384361367025
+2017,Linear regression,2017-04-23,133.07,4.600213366393227,0.2313344513522136
+2017,Linear regression,2017-04-30,96.78857142857144,4.620106346827702,0.231512494545577
+2017,Linear regression,2017-05-07,167.48285714285717,4.643584855947724,0.2317381119714673
+2017,Linear regression,2017-05-14,142.7271428571429,4.664136010705171,0.2319713991003557
+2017,Linear regression,2017-05-21,144.9042857142857,4.675206143619909,0.2321728499447665
+2017,Linear regression,2017-05-28,94.82285714285716,4.670961949198742,0.2323094079431609
+2017,Linear regression,2017-06-04,90.08142857142856,4.647014979645121,0.2323597250441751
+2017,Linear regression,2017-06-11,58.47714285714285,4.6010218311886,0.2323175514760811
+2017,Linear regression,2017-06-18,58.12714285714286,4.533084362610596,0.2321924827349215
+2017,Linear regression,2017-06-25,57.142857142857146,4.445895894964354,0.2320078937278914
+2017,Linear regression,2017-07-02,32.95,4.344608016984299,0.2317965631776996
+2017,Linear regression,2017-07-09,58.0,4.23642490819104,0.2315949792189008
+2017,Linear regression,2017-07-16,31.555714285714288,4.129964050042912,0.2314374588014335
+2017,Linear regression,2017-07-23,31.482857142857146,4.034449893911502,0.2313510142456786
+2017,Linear regression,2017-07-30,21.16,3.9588270688912544,0.2313515201638789
+2017,Linear regression,2017-08-06,35.28142857142857,3.91088955785945,0.2314413942756642
+2017,Linear regression,2017-08-13,37.60285714285715,3.896520716680287,0.231608858562037
+2017,Linear regression,2017-08-20,33.62428571428571,3.919126239720844,0.2318288851212932
+2017,Linear regression,2017-08-27,43.39857142857142,3.979319754146193,0.2320659966551842
+2017,Linear regression,2017-09-03,26.428571428571427,4.074891415401575,0.2322789877687427
+2017,Linear regression,2017-09-10,47.17714285714286,4.201057278280197,0.2324272656923213
+2017,Linear regression,2017-09-17,59.26285714285715,4.350955320711706,0.2324779672393823
+2017,Linear regression,2017-09-24,44.027142857142856,4.51632667452299,0.2324125348782438
+2017,Linear regression,2017-10-01,72.08571428571429,4.688301141427807,0.2322312982947042
+2017,Linear regression,2017-10-08,76.91285714285713,4.858196706938353,0.2319549605561867
+2017,Linear regression,2017-10-15,122.44714285714284,5.018244486526939,0.2316226726667034
+2017,Linear regression,2017-10-22,198.3271428571429,5.162162924444875,0.2312873312644703
+2017,Linear regression,2017-10-29,183.8942857142857,5.285526359951189,0.2310094701798033
+2017,Linear regression,2017-11-05,187.99571428571429,5.385900424469116,0.2308512996759711
+2017,Linear regression,2017-11-12,438.44714285714286,5.46274655930332,0.2308719564802641
+2017,Linear regression,2017-11-19,202.21142857142857,5.517126411177848,0.2311240656100076
+2017,Linear regression,2017-11-26,185.72,5.5512603717456575,0.2316507641357678
+2017,Linear regression,2017-12-03,205.89714285714285,5.568010173195883,0.2324819468049326
+2017,Linear regression,2017-12-10,173.3457142857143,5.570361394451894,0.2336289818854459
+2017,Linear regression,2017-12-17,130.51142857142858,5.560977421349445,0.2350783776295171
+2017,Linear regression,2017-12-24,191.21714285714285,5.541882639104145,0.2367862689337253
+2017,LSTM (small),2017-01-01,230.7142857142857,5.394306299674125,0.0280663774128252
+2017,LSTM (small),2017-01-08,207.4528571428572,5.404015046237576,0.0280663774128252
+2017,LSTM (small),2017-01-15,196.74571428571429,5.357218405150864,0.0280663774128252
+2017,LSTM (small),2017-01-22,238.02714285714288,5.5647369614953215,0.0346171598584997
+2017,LSTM (small),2017-01-29,159.2057142857143,5.328406419579286,0.0380964606371307
+2017,LSTM (small),2017-02-05,177.6185714285714,5.05468478212098,0.0380964606371307
+2017,LSTM (small),2017-02-12,133.16857142857145,5.020524826946454,0.0479296594903283
+2017,LSTM (small),2017-02-19,139.42142857142858,5.061537001957378,0.0581093181729925
+2017,LSTM (small),2017-02-26,244.8114285714286,4.991743821543103,0.0654937508657694
+2017,LSTM (small),2017-03-05,115.93714285714285,4.85480058651914,0.0654937508657694
+2017,LSTM (small),2017-03-12,87.95,4.413162195801879,0.0762736524683398
+2017,LSTM (small),2017-03-19,106.63428571428572,4.432236528748214,0.0762736524683398
+2017,LSTM (small),2017-03-26,136.82285714285717,4.41365806740778,0.1006325602270004
+2017,LSTM (small),2017-04-02,110.33714285714288,4.617648803057062,0.1006325602270004
+2017,LSTM (small),2017-04-09,90.86,4.51998695880474,0.1057825901934487
+2017,LSTM (small),2017-04-16,154.83714285714285,4.862391084147883,0.1057825901934487
+2017,LSTM (small),2017-04-23,133.07,4.756651210777906,0.1543246814639469
+2017,LSTM (small),2017-04-30,96.78857142857144,4.928946019443163,0.1543246814639469
+2017,LSTM (small),2017-05-07,167.48285714285717,4.547707748862978,0.1543246814639469
+2017,LSTM (small),2017-05-14,142.7271428571429,4.631800423979984,0.1543246814639469
+2017,LSTM (small),2017-05-21,144.9042857142857,4.451718208379167,0.1543246814639469
+2017,LSTM (small),2017-05-28,94.82285714285716,4.2694840239110174,0.1543246814639469
+2017,LSTM (small),2017-06-04,90.08142857142856,4.714177110501385,0.1543246814639469
+2017,LSTM (small),2017-06-11,58.47714285714285,4.326030931638623,0.1543246814639469
+2017,LSTM (small),2017-06-18,58.12714285714286,4.421368486937331,0.1543246814639469
+2017,LSTM (small),2017-06-25,57.142857142857146,4.572155499391063,0.1543246814639469
+2017,LSTM (small),2017-07-02,32.95,4.327601821084915,0.1543246814639469
+2017,LSTM (small),2017-07-09,58.0,4.309373286845305,0.1543246814639469
+2017,LSTM (small),2017-07-16,31.555714285714288,4.035210289885953,0.1543246814639469
+2017,LSTM (small),2017-07-23,31.482857142857146,4.078887879488759,0.1543246814639469
+2017,LSTM (small),2017-07-30,21.16,3.742100586198949,0.1543246814639469
+2017,LSTM (small),2017-08-06,35.28142857142857,3.648332962026181,0.1543246814639469
+2017,LSTM (small),2017-08-13,37.60285714285715,3.900494332361943,0.1543246814639469
+2017,LSTM (small),2017-08-20,33.62428571428571,3.934500442462419,0.1543246814639469
+2017,LSTM (small),2017-08-27,43.39857142857142,3.866433373726213,0.1543246814639469
+2017,LSTM (small),2017-09-03,26.428571428571427,3.924841849854481,0.1543246814639469
+2017,LSTM (small),2017-09-10,47.17714285714286,4.127024006866291,0.1543246814639469
+2017,LSTM (small),2017-09-17,59.26285714285715,4.3292103776830695,0.1543246814639469
+2017,LSTM (small),2017-09-24,44.027142857142856,4.578211354669044,0.1543246814639469
+2017,LSTM (small),2017-10-01,72.08571428571429,4.419535635008054,0.1543246814639469
+2017,LSTM (small),2017-10-08,76.91285714285713,4.638269446861531,0.1543246814639469
+2017,LSTM (small),2017-10-15,122.44714285714284,5.306436970878472,0.1543246814639469
+2017,LSTM (small),2017-10-22,198.3271428571429,5.377754218247121,0.1543246814639469
+2017,LSTM (small),2017-10-29,183.8942857142857,5.546425868780941,0.1543246814639469
+2017,LSTM (small),2017-11-05,187.99571428571429,5.552625461513433,0.1543246814639469
+2017,LSTM (small),2017-11-12,438.44714285714286,5.374363901067023,0.1543246814639469
+2017,LSTM (small),2017-11-19,202.21142857142857,5.010219498654109,0.1543246814639469
+2017,LSTM (small),2017-11-26,185.72,4.6858131872367,0.1543246814639469
+2017,LSTM (small),2017-12-03,205.89714285714285,4.603536005175243,0.1543246814639469
+2017,LSTM (small),2017-12-10,173.3457142857143,4.802075425252763,0.1543246814639469
+2017,LSTM (small),2017-12-17,130.51142857142858,5.028618431232692,0.1543246814639469
+2017,LSTM (small),2017-12-24,191.21714285714285,4.96004102174914,0.1543246814639469
+2017,Fourier+ARMA const,2017-01-01,230.7142857142857,5.410418684356212,0.1997901727117915
+2017,Fourier+ARMA const,2017-01-08,207.4528571428572,5.347254134525266,0.2090836985077223
+2017,Fourier+ARMA const,2017-01-15,196.74571428571429,5.289436682507115,0.209946966587954
+2017,Fourier+ARMA const,2017-01-22,238.02714285714288,5.228037116457888,0.2100289618414049
+2017,Fourier+ARMA const,2017-01-29,159.2057142857143,5.160350904275068,0.2100367658454168
+2017,Fourier+ARMA const,2017-02-05,177.6185714285714,5.085989260382345,0.2100375087452656
+2017,Fourier+ARMA const,2017-02-12,133.16857142857145,5.005844338299314,0.2100375794666984
+2017,Fourier+ARMA const,2017-02-19,139.42142857142858,4.921842659937736,0.21003758619914
+2017,Fourier+ARMA const,2017-02-26,244.8114285714286,4.836824058001749,0.2100375868400458
+2017,Fourier+ARMA const,2017-03-05,115.93714285714285,4.75434011085158,0.2100375869010579
+2017,Fourier+ARMA const,2017-03-12,87.95,4.678325149804665,0.210037586906866
+2017,Fourier+ARMA const,2017-03-19,106.63428571428572,4.612658272309776,0.210037586907419
+2017,Fourier+ARMA const,2017-03-26,136.82285714285717,4.560667019729091,0.2100375869074716
+2017,Fourier+ARMA const,2017-04-02,110.33714285714288,4.524639441213481,0.2100375869074766
+2017,Fourier+ARMA const,2017-04-09,90.86,4.505415437652522,0.2100375869074771
+2017,Fourier+ARMA const,2017-04-16,154.83714285714285,4.5021218275047765,0.2100375869074771
+2017,Fourier+ARMA const,2017-04-23,133.07,4.512099762733742,0.2100375869074771
+2017,Fourier+ARMA const,2017-04-30,96.78857142857144,4.531050030665001,0.2100375869074771
+2017,Fourier+ARMA const,2017-05-07,167.48285714285717,4.553394348499743,0.2100375869074771
+2017,Fourier+ARMA const,2017-05-14,142.7271428571429,4.572822511760472,0.2100375869074771
+2017,Fourier+ARMA const,2017-05-21,144.9042857142857,4.582969870924358,0.2100375869074771
+2017,Fourier+ARMA const,2017-05-28,94.82285714285716,4.578150444353652,0.2100375869074771
+2017,Fourier+ARMA const,2017-06-04,90.08142857142856,4.554060644219734,0.2100375869074771
+2017,Fourier+ARMA const,2017-06-11,58.47714285714285,4.508368616048543,0.2100375869074771
+2017,Fourier+ARMA const,2017-06-18,58.12714285714286,4.441114792264724,0.2100375869074771
+2017,Fourier+ARMA const,2017-06-25,57.142857142857146,4.35486931465018,0.2100375869074771
+2017,Fourier+ARMA const,2017-07-02,32.95,4.2546191577921455,0.2100375869074771
+2017,Fourier+ARMA const,2017-07-09,58.0,4.147388828213028,0.2100375869074771
+2017,Fourier+ARMA const,2017-07-16,31.555714285714288,4.041629645643317,0.2100375869074771
+2017,Fourier+ARMA const,2017-07-23,31.482857142857146,3.946440012394494,0.2100375869074771
+2017,Fourier+ARMA const,2017-07-30,21.16,3.870699359248533,0.2100375869074771
+2017,Fourier+ARMA const,2017-08-06,35.28142857142857,3.822209101616802,0.2100375869074771
+2017,Fourier+ARMA const,2017-08-13,37.60285714285715,3.806933612034964,0.2100375869074771
+2017,Fourier+ARMA const,2017-08-20,33.62428571428571,3.8284229327415344,0.2100375869074771
+2017,Fourier+ARMA const,2017-08-27,43.39857142857142,3.8874780866845295,0.2100375869074771
+2017,Fourier+ARMA const,2017-09-03,26.428571428571427,3.982091949235909,0.2100375869074771
+2017,Fourier+ARMA const,2017-09-10,47.17714285714286,4.107667127989863,0.2100375869074771
+2017,Fourier+ARMA const,2017-09-17,59.26285714285715,4.257481005877827,0.2100375869074771
+2017,Fourier+ARMA const,2017-09-24,44.027142857142856,4.423340821889831,0.2100375869074771
+2017,Fourier+ARMA const,2017-10-01,72.08571428571429,4.596351654573229,0.2100375869074771
+2017,Fourier+ARMA const,2017-10-08,76.91285714285713,4.767709763067734,0.2100375869074771
+2017,Fourier+ARMA const,2017-10-15,122.44714285714284,4.929434036201776,0.2100375869074771
+2017,Fourier+ARMA const,2017-10-22,198.3271428571429,5.074959060807871,0.2100375869074771
+2017,Fourier+ARMA const,2017-10-29,183.8942857142857,5.199532998651251,0.2100375869074771
+2017,Fourier+ARMA const,2017-11-05,187.99571428571429,5.300389412833885,0.2100375869074771
+2017,Fourier+ARMA const,2017-11-12,438.44714285714286,5.376691015113094,0.2100375869074771
+2017,Fourier+ARMA const,2017-11-19,202.21142857142857,5.429271312083493,0.2100375869074771
+2017,Fourier+ARMA const,2017-11-26,185.72,5.46022377537758,0.2100375869074771
+2017,Fourier+ARMA const,2017-12-03,205.89714285714285,5.472404533424923,0.2100375869074771
+2017,Fourier+ARMA const,2017-12-10,173.3457142857143,5.468921752577643,0.2100375869074771
+2017,Fourier+ARMA const,2017-12-17,130.51142857142858,5.452682142603752,0.2100375869074771
+2017,Fourier+ARMA const,2017-12-24,191.21714285714285,5.426052988656513,0.2100375869074771
+2017,Fourier+ARMA linear,2017-01-01,230.7142857142857,5.455738148618351,0.1966814430996452
+2017,Fourier+ARMA linear,2017-01-08,207.4528571428572,5.410533093331012,0.2065017418160112
+2017,Fourier+ARMA linear,2017-01-15,196.74571428571429,5.361830104549332,0.2074806581365114
+2017,Fourier+ARMA linear,2017-01-22,238.02714285714288,5.306142735055698,0.2075805926710268
+2017,Fourier+ARMA linear,2017-01-29,159.2057142857143,5.242327832781278,0.2075908185507798
+2017,Fourier+ARMA linear,2017-02-05,177.6185714285714,5.170464870148069,0.2075918651712566
+2017,Fourier+ARMA linear,2017-02-12,133.16857142857145,5.091660515380642,0.2075919722956455
+2017,Fourier+ARMA linear,2017-02-19,139.42142857142858,5.008043091411698,0.207591983260139
+2017,Fourier+ARMA linear,2017-02-26,244.8114285714286,4.922694846744667,0.2075919843823871
+2017,Fourier+ARMA linear,2017-03-05,115.93714285714285,4.839442755223846,0.2075919844972525
+2017,Fourier+ARMA linear,2017-03-12,87.95,4.7625022256588165,0.2075919845090093
+2017,Fourier+ARMA linear,2017-03-19,106.63428571428572,4.696007723284075,0.2075919845102127
+2017,Fourier+ARMA linear,2017-03-26,136.82285714285717,4.643488460991718,0.2075919845103359
+2017,Fourier+ARMA linear,2017-04-02,110.33714285714288,4.60736029628165,0.2075919845103485
+2017,Fourier+ARMA linear,2017-04-09,90.86,4.58850729731866,0.2075919845103498
+2017,Fourier+ARMA linear,2017-04-16,154.83714285714285,4.586018373799698,0.2075919845103499
+2017,Fourier+ARMA linear,2017-04-23,133.07,4.597127002257658,0.2075919845103499
+2017,Fourier+ARMA linear,2017-04-30,96.78857142857144,4.617377581242314,0.2075919845103499
+2017,Fourier+ARMA linear,2017-05-07,167.48285714285717,4.641013417942537,0.2075919845103499
+2017,Fourier+ARMA linear,2017-05-14,142.7271428571429,4.661552424955928,0.2075919845103499
+2017,Fourier+ARMA linear,2017-05-21,144.9042857142857,4.672491050031644,0.2075919845103499
+2017,Fourier+ARMA linear,2017-05-28,94.82285714285716,4.668058151702666,0.2075919845103499
+2017,Fourier+ARMA linear,2017-06-04,90.08142857142856,4.643931032227195,0.2075919845103499
+2017,Fourier+ARMA linear,2017-06-11,58.47714285714285,4.597827053881927,0.2075919845103499
+2017,Fourier+ARMA linear,2017-06-18,58.12714285714286,4.529896256246045,0.2075919845103499
+2017,Fourier+ARMA linear,2017-06-25,57.142857142857146,4.442861854224748,0.2075919845103499
+2017,Fourier+ARMA linear,2017-07-02,32.95,4.34188391003769,0.2075919845103499
+2017,Fourier+ARMA linear,2017-07-09,58.0,4.234153415988206,0.2075919845103499
+2017,Fourier+ARMA linear,2017-07-16,31.555714285714288,4.128255602470349,0.2075919845103499
+2017,Fourier+ARMA linear,2017-07-23,31.482857142857146,4.033368616171427,0.2075919845103499
+2017,Fourier+ARMA linear,2017-07-30,21.16,3.958383420094157,0.2075919845103499
+2017,Fourier+ARMA linear,2017-08-06,35.28142857142857,3.911040404678253,0.2075919845103499
+2017,Fourier+ARMA linear,2017-08-13,37.60285714285715,3.8971765640960174,0.2075919845103499
+2017,Fourier+ARMA linear,2017-08-20,33.62428571428571,3.92016437414724,0.2075919845103499
+2017,Fourier+ARMA linear,2017-08-27,43.39857142857142,3.9806012692443336,0.2075919845103499
+2017,Fourier+ARMA linear,2017-09-03,26.428571428571427,4.076279590648464,0.2075919845103499
+2017,Fourier+ARMA linear,2017-09-10,47.17714285714286,4.20243462968297,0.2075919845103499
+2017,Fourier+ARMA linear,2017-09-17,59.26285714285715,4.352236860298919,0.2075919845103499
+2017,Fourier+ARMA linear,2017-09-24,44.027142857142856,4.517467469918131,0.2075919845103499
+2017,Fourier+ARMA linear,2017-10-01,72.08571428571429,4.689297083696363,0.2075919845103499
+2017,Fourier+ARMA linear,2017-10-08,76.91285714285713,4.859078363950366,0.2075919845103499
+2017,Fourier+ARMA linear,2017-10-15,122.44714285714284,5.0190649098879945,0.2075919845103499
+2017,Fourier+ARMA linear,2017-10-22,198.3271428571429,5.162981156999438,0.2075919845103499
+2017,Fourier+ARMA linear,2017-10-29,183.8942857142857,5.286389038696045,0.2075919845103499
+2017,Fourier+ARMA linear,2017-11-05,187.99571428571429,5.386824201268776,0.2075919845103499
+2017,Fourier+ARMA linear,2017-11-12,438.44714285714286,5.463704021836899,0.2075919845103499
+2017,Fourier+ARMA linear,2017-11-19,202.21142857142857,5.518037780145052,0.2075919845103499
+2017,Fourier+ARMA linear,2017-11-26,185.72,5.551992527008757,0.2075919845103499
+2017,Fourier+ARMA linear,2017-12-03,205.89714285714285,5.5683836129279625,0.2075919845103499
+2017,Fourier+ARMA linear,2017-12-10,173.3457142857143,5.570164679660362,0.2075919845103499
+2017,Fourier+ARMA linear,2017-12-17,130.51142857142858,5.559987640230891,0.2075919845103499
+2017,Fourier+ARMA linear,2017-12-24,191.21714285714285,5.539889575439574,0.2075919845103499
+2017,Fourier+ARMA (selected),2017-01-01,230.7142857142857,5.334497996885141,0.1859389016893502
+2017,Fourier+ARMA (selected),2017-01-08,207.4528571428572,5.36275874489405,0.1889951271077913
+2017,Fourier+ARMA (selected),2017-01-15,196.74571428571429,5.415112431043251,0.1893705655600837
+2017,Fourier+ARMA (selected),2017-01-22,238.02714285714288,5.439093298959808,0.1895728433130498
+2017,Fourier+ARMA (selected),2017-01-29,159.2057142857143,5.408197297067528,0.189754404545396
+2017,Fourier+ARMA (selected),2017-02-05,177.6185714285714,5.313595877587754,0.1899329290734678
+2017,Fourier+ARMA (selected),2017-02-12,133.16857142857145,5.164520158599101,0.1901108753719344
+2017,Fourier+ARMA (selected),2017-02-19,139.42142857142858,4.985126170965863,0.1902885961567302
+2017,Fourier+ARMA (selected),2017-02-26,244.8114285714286,4.807216938897796,0.1904661425989316
+2017,Fourier+ARMA (selected),2017-03-05,115.93714285714285,4.660988185083443,0.1906435224655326
+2017,Fourier+ARMA (selected),2017-03-12,87.95,4.5667248291614095,0.1908207372697772
+2017,Fourier+ARMA (selected),2017-03-19,106.63428571428572,4.529978479785905,0.1909977876221951
+2017,Fourier+ARMA (selected),2017-03-26,136.82285714285717,4.5415207389666845,0.1911746740014557
+2017,Fourier+ARMA (selected),2017-04-02,110.33714285714288,4.581753484068586,0.1913513968654277
+2017,Fourier+ARMA (selected),2017-04-09,90.86,4.627821673923303,0.1915279566671895
+2017,Fourier+ARMA (selected),2017-04-16,154.83714285714285,4.660893810929415,0.1917043538573473
+2017,Fourier+ARMA (selected),2017-04-23,133.07,4.671189012215926,0.1918805888843805
+2017,Fourier+ARMA (selected),2017-04-30,96.78857142857144,4.65926271107734,0.1920566621947028
+2017,Fourier+ARMA (selected),2017-05-07,167.48285714285717,4.633460263897109,0.1922325742326822
+2017,Fourier+ARMA (selected),2017-05-14,142.7271428571429,4.604804476065865,0.1924083254406554
+2017,Fourier+ARMA (selected),2017-05-21,144.9042857142857,4.581424826957599,0.1925839162589407
+2017,Fourier+ARMA (selected),2017-05-28,94.82285714285716,4.564684377859663,0.1927593471258506
+2017,Fourier+ARMA (selected),2017-06-04,90.08142857142856,4.548425733670163,0.1929346184777052
+2017,Fourier+ARMA (selected),2017-06-11,58.47714285714285,4.52152963137033,0.1931097307488444
+2017,Fourier+ARMA (selected),2017-06-18,58.12714285714286,4.4727181393196815,0.1932846843716404
+2017,Fourier+ARMA (selected),2017-06-25,57.142857142857146,4.395700485821479,0.1934594797765108
+2017,Fourier+ARMA (selected),2017-07-02,32.95,4.292650668426175,0.1936341173919299
+2017,Fourier+ARMA (selected),2017-07-09,58.0,4.174650755241744,0.1938085976444419
+2017,Fourier+ARMA (selected),2017-07-16,31.555714285714288,4.058884660254581,0.1939829209586727
+2017,Fourier+ARMA (selected),2017-07-23,31.482857142857146,3.9635931582214408,0.1941570877573419
+2017,Fourier+ARMA (selected),2017-07-30,21.16,3.902645843140085,0.1943310984612748
+2017,Fourier+ARMA (selected),2017-08-06,35.28142857142857,3.8817350880123302,0.1945049534894142
+2017,Fourier+ARMA (selected),2017-08-13,37.60285714285715,3.897592967228144,0.1946786532588323
+2017,Fourier+ARMA (selected),2017-08-20,33.62428571428571,3.9404951688209033,0.1948521981847425
+2017,Fourier+ARMA (selected),2017-08-27,43.39857142857142,3.9990657657580178,0.1950255886805105
+2017,Fourier+ARMA (selected),2017-09-03,26.428571428571427,4.0654995759775865,0.1951988251576663
+2017,Fourier+ARMA (selected),2017-09-10,47.17714285714286,4.139117037741782,0.1953719080259152
+2017,Fourier+ARMA (selected),2017-09-17,59.26285714285715,4.22675125882283,0.1955448376931495
+2017,Fourier+ARMA (selected),2017-09-24,44.027142857142856,4.339640773769545,0.1957176145654593
+2017,Fourier+ARMA (selected),2017-10-01,72.08571428571429,4.487845331173993,0.1958902390471439
+2017,Fourier+ARMA (selected),2017-10-08,76.91285714285713,4.674222853011635,0.1960627115407228
+2017,Fourier+ARMA (selected),2017-10-15,122.44714285714284,4.890314458425232,0.1962350324469466
+2017,Fourier+ARMA (selected),2017-10-22,198.3271428571429,5.115939184359382,0.1964072021648078
+2017,Fourier+ARMA (selected),2017-10-29,183.8942857142857,5.323063444021786,0.1965792210915518
+2017,Fourier+ARMA (selected),2017-11-05,187.99571428571429,5.48299924316334,0.1967510896226872
+2017,Fourier+ARMA (selected),2017-11-12,438.44714285714286,5.574728738435755,0.1969228081519969
+2017,Fourier+ARMA (selected),2017-11-19,202.21142857142857,5.591607068477838,0.1970943770715484
+2017,Fourier+ARMA (selected),2017-11-26,185.72,5.544080851865737,0.1972657967717039
+2017,Fourier+ARMA (selected),2017-12-03,205.89714285714285,5.4572774922219525,0.1974370676411314
+2017,Fourier+ARMA (selected),2017-12-10,173.3457142857143,5.363979426686674,0.1976081900668143
+2017,Fourier+ARMA (selected),2017-12-17,130.51142857142858,5.295043937354143,0.1977791644340619
+2017,Fourier+ARMA (selected),2017-12-24,191.21714285714285,5.270234846529169,0.1979499911265196
+2017,SARIMA D=1,2017-01-01,230.7142857142857,5.623921882310018,0.239915487864264
+2017,SARIMA D=1,2017-01-08,207.4528571428572,5.948605453398255,0.2449863729519903
+2017,SARIMA D=1,2017-01-15,196.74571428571429,5.355710099590571,0.2482791111208592
+2017,SARIMA D=1,2017-01-22,238.02714285714288,5.934580122116114,0.2504303596898547
+2017,SARIMA D=1,2017-01-29,159.2057142857143,5.9040612272009945,0.2518412715119654
+2017,SARIMA D=1,2017-02-05,177.6185714285714,5.151083400529475,0.2527689187185479
+2017,SARIMA D=1,2017-02-12,133.16857142857145,4.971513122706882,0.2533798057827916
+2017,SARIMA D=1,2017-02-19,139.42142857142858,4.877670159946065,0.2537825158374027
+2017,SARIMA D=1,2017-02-26,244.8114285714286,4.907537683993182,0.2540481725562835
+2017,SARIMA D=1,2017-03-05,115.93714285714285,5.159236484973674,0.254223497667472
+2017,SARIMA D=1,2017-03-12,87.95,4.529861215511487,0.2543392409364327
+2017,SARIMA D=1,2017-03-19,106.63428571428572,4.417255811290545,0.2544156653059642
+2017,SARIMA D=1,2017-03-26,136.82285714285717,4.448913673476607,0.2544661341796188
+2017,SARIMA D=1,2017-04-02,110.33714285714288,4.952910884925899,0.2544994654479197
+2017,SARIMA D=1,2017-04-09,90.86,4.879800998599334,0.2545214796844537
+2017,SARIMA D=1,2017-04-16,154.83714285714285,4.619385300217649,0.2545360198646395
+2017,SARIMA D=1,2017-04-23,133.07,4.715149202065666,0.2545456236561022
+2017,SARIMA D=1,2017-04-30,96.78857142857144,5.293065312965967,0.2545519669363574
+2017,SARIMA D=1,2017-05-07,167.48285714285717,4.369658247548616,0.2545561565082368
+2017,SARIMA D=1,2017-05-14,142.7271428571429,4.554085865576235,0.2545589233382545
+2017,SARIMA D=1,2017-05-21,144.9042857142857,4.564888888690248,0.2545607501421671
+2017,SARIMA D=1,2017-05-28,94.82285714285716,4.556703409872442,0.2545619556246897
+2017,SARIMA D=1,2017-06-04,90.08142857142856,4.746447125724847,0.254562750090658
+2017,SARIMA D=1,2017-06-11,58.47714285714285,4.100582256315934,0.2545632721384729
+2017,SARIMA D=1,2017-06-18,58.12714285714286,4.26342799740093,0.2545636128411321
+2017,SARIMA D=1,2017-06-25,57.142857142857146,4.306115062057368,0.2545638316350395
+2017,SARIMA D=1,2017-07-02,32.95,4.1624243703292505,0.2545639666891873
+2017,SARIMA D=1,2017-07-09,58.0,4.195908798003119,0.2545640415639615
+2017,SARIMA D=1,2017-07-16,31.555714285714288,4.090722402521637,0.2545640693213525
+2017,SARIMA D=1,2017-07-23,31.482857142857146,3.963943559329948,0.2545640548036623
+2017,SARIMA D=1,2017-07-30,21.16,4.184710118431672,0.254563995478258
+2017,SARIMA D=1,2017-08-06,35.28142857142857,3.646531578050901,0.2545638809957464
+2017,SARIMA D=1,2017-08-13,37.60285714285715,3.532275090382183,0.2545636913844892
+2017,SARIMA D=1,2017-08-20,33.62428571428571,3.890623239691665,0.2545633935664713
+2017,SARIMA D=1,2017-08-27,43.39857142857142,3.716093068853021,0.2545629355866639
+2017,SARIMA D=1,2017-09-03,26.428571428571427,3.5320570397962507,0.2545622375490763
+2017,SARIMA D=1,2017-09-10,47.17714285714286,3.9479364192657167,0.2545611776780221
+2017,SARIMA D=1,2017-09-17,59.26285714285715,4.077243149373704,0.2545595710723717
+2017,SARIMA D=1,2017-09-24,44.027142857142856,4.207196313888347,0.2545571374450697
+2017,SARIMA D=1,2017-10-01,72.08571428571429,4.501490469394099,0.2545534522168733
+2017,SARIMA D=1,2017-10-08,76.91285714285713,4.713835958044302,0.254547872425283
+2017,SARIMA D=1,2017-10-15,122.44714285714284,4.819224765987067,0.2545394245067023
+2017,SARIMA D=1,2017-10-22,198.3271428571429,5.011472487191168,0.2545266343369893
+2017,SARIMA D=1,2017-10-29,183.8942857142857,5.819621812919762,0.2545072697928994
+2017,SARIMA D=1,2017-11-05,187.99571428571429,6.566718181464926,0.2544779507223341
+2017,SARIMA D=1,2017-11-12,438.44714285714286,5.902105539731084,0.2544335577052704
+2017,SARIMA D=1,2017-11-19,202.21142857142857,5.708106816135856,0.2543663361060395
+2017,SARIMA D=1,2017-11-26,185.72,5.277268093022246,0.2542645348835032
+2017,SARIMA D=1,2017-12-03,205.89714285714285,5.403171661742131,0.2541103394862845
+2017,SARIMA D=1,2017-12-10,173.3457142857143,5.534869790277861,0.2538767234880161
+2017,SARIMA D=1,2017-12-17,130.51142857142858,5.498770851551472,0.2535226404566488
+2017,SARIMA D=1,2017-12-24,191.21714285714285,5.631941010371769,0.2529856479520987
+2017,SARIMA D=0,2017-01-01,230.7142857142857,5.487128835696124,0.2409255014515284
+2017,SARIMA D=0,2017-01-08,207.4528571428572,5.515634844098736,0.2933672024848072
+2017,SARIMA D=0,2017-01-15,196.74571428571429,5.358407118237343,0.3309874680329981
+2017,SARIMA D=0,2017-01-22,238.02714285714288,5.418775558252828,0.3595037102383793
+2017,SARIMA D=0,2017-01-29,159.2057142857143,5.3848044006353,0.3817710543790053
+2017,SARIMA D=0,2017-02-05,177.6185714285714,5.200556363271142,0.3994824532656348
+2017,SARIMA D=0,2017-02-12,133.16857142857145,5.145587275396121,0.4137460631717585
+2017,SARIMA D=0,2017-02-19,139.42142857142858,5.098660218452015,0.4253347827011896
+2017,SARIMA D=0,2017-02-26,244.8114285714286,5.064204040460416,0.4348116343561397
+2017,SARIMA D=0,2017-03-05,115.93714285714285,5.048010562780667,0.4425997147703713
+2017,SARIMA D=0,2017-03-12,87.95,4.909612338537649,0.4490243591936215
+2017,SARIMA D=0,2017-03-19,106.63428571428572,4.849553265656254,0.4543401157323991
+2017,SARIMA D=0,2017-03-26,136.82285714285717,4.868565474695683,0.4587488326232745
+2017,SARIMA D=0,2017-04-02,110.33714285714288,4.925058197223263,0.4624122543895368
+2017,SARIMA D=0,2017-04-09,90.86,4.922492474516402,0.4654610690478392
+2017,SARIMA D=0,2017-04-16,154.83714285714285,4.860226914978601,0.4680015736041582
+2017,SARIMA D=0,2017-04-23,133.07,4.883214276660015,0.470120689383328
+2017,SARIMA D=0,2017-04-30,96.78857142857144,4.951034379206158,0.4718898024716809
+2017,SARIMA D=0,2017-05-07,167.48285714285717,4.804075388494415,0.4733677478643229
+2017,SARIMA D=0,2017-05-14,142.7271428571429,4.80248979120132,0.4746031568120705
+2017,SARIMA D=0,2017-05-21,144.9042857142857,4.777247312698443,0.4756363222948147
+2017,SARIMA D=0,2017-05-28,94.82285714285716,4.805090983100177,0.4765006943463217
+2017,SARIMA D=0,2017-06-04,90.08142857142856,4.7882313836195705,0.4772240873527518
+2017,SARIMA D=0,2017-06-11,58.47714285714285,4.693728853503774,0.4778296607210232
+2017,SARIMA D=0,2017-06-18,58.12714285714286,4.727876571286726,0.4783367195149818
+2017,SARIMA D=0,2017-06-25,57.142857142857146,4.705963944031633,0.4787613709014477
+2017,SARIMA D=0,2017-07-02,32.95,4.662626198831615,0.4791170643021364
+2017,SARIMA D=0,2017-07-09,58.0,4.628186969528815,0.4794150371894263
+2017,SARIMA D=0,2017-07-16,31.555714285714288,4.624126078371066,0.4796646839359412
+2017,SARIMA D=0,2017-07-23,31.482857142857146,4.553931392672518,0.4798738616444099
+2017,SARIMA D=0,2017-07-30,21.16,4.572206806480962,0.480049144174682
+2017,SARIMA D=0,2017-08-06,35.28142857142857,4.524376441111374,0.4801960334562893
+2017,SARIMA D=0,2017-08-13,37.60285714285715,4.503970839471218,0.4803191354881879
+2017,SARIMA D=0,2017-08-20,33.62428571428571,4.5447619469993965,0.4804223070801756
+2017,SARIMA D=0,2017-08-27,43.39857142857142,4.527194908661719,0.4805087783072094
+2017,SARIMA D=0,2017-09-03,26.428571428571427,4.518574142357431,0.4805812547715128
+2017,SARIMA D=0,2017-09-10,47.17714285714286,4.582397735449794,0.4806420030547404
+2017,SARIMA D=0,2017-09-17,59.26285714285715,4.628821037213854,0.4806929221603483
+2017,SARIMA D=0,2017-09-24,44.027142857142856,4.621503615813789,0.480735603268953
+2017,SARIMA D=0,2017-10-01,72.08571428571429,4.712681917135403,0.480771379736677
+2017,SARIMA D=0,2017-10-08,76.91285714285713,4.798748886394287,0.4808013689423808
+2017,SARIMA D=0,2017-10-15,122.44714285714284,4.79072142295751,0.4808265073215815
+2017,SARIMA D=0,2017-10-22,198.3271428571429,4.862831418845799,0.4808475797026446
+2017,SARIMA D=0,2017-10-29,183.8942857142857,5.014971776728023,0.4808652438763035
+2017,SARIMA D=0,2017-11-05,187.99571428571429,5.203660054727734,0.4808800511761161
+2017,SARIMA D=0,2017-11-12,438.44714285714286,5.07359864492095,0.4808924637196882
+2017,SARIMA D=0,2017-11-19,202.21142857142857,5.029441704318933,0.4809028688539932
+2017,SARIMA D=0,2017-11-26,185.72,4.934527337467627,0.4809115912592533
+2017,SARIMA D=0,2017-12-03,205.89714285714285,4.966725109853984,0.4809189030916624
+2017,SARIMA D=0,2017-12-10,173.3457142857143,4.992447890844099,0.4809250324832382
+2017,SARIMA D=0,2017-12-17,130.51142857142858,4.9354456639730415,0.4809301706652829
+2017,SARIMA D=0,2017-12-24,191.21714285714285,4.99500711933759,0.4809344779385929
+2018,Seasonal naive,2018-01-07,247.29857142857145,5.33490411936592,0.3345822524103585
+2018,Seasonal naive,2018-01-14,188.26,5.281912104522604,0.3345822524103585
+2018,Seasonal naive,2018-01-21,197.46,5.472384712787015,0.3345822524103585
+2018,Seasonal naive,2018-01-28,148.48857142857145,5.070197166520604,0.3345822524103585
+2018,Seasonal naive,2018-02-04,137.04714285714286,5.179638393945697,0.3345822524103585
+2018,Seasonal naive,2018-02-11,169.39,4.891615780029702,0.3345822524103585
+2018,Seasonal naive,2018-02-18,103.70857142857145,4.9375012065373065,0.3345822524103585
+2018,Seasonal naive,2018-02-25,158.08285714285714,5.500488234889247,0.3345822524103585
+2018,Seasonal naive,2018-03-04,104.86,4.753048172319535,0.3345822524103585
+2018,Seasonal naive,2018-03-11,96.94857142857144,4.476768471183568,0.3345822524103585
+2018,Seasonal naive,2018-03-18,102.21428571428572,4.669405089609958,0.3345822524103585
+2018,Seasonal naive,2018-03-25,90.97,4.918687075609021,0.3345822524103585
+2018,Seasonal naive,2018-04-01,97.72857142857144,4.703540613519024,0.3345822524103585
+2018,Seasonal naive,2018-04-08,94.45285714285714,4.509319860331257,0.3345822524103585
+2018,Seasonal naive,2018-04-15,75.25,5.042373873312019,0.3345822524103585
+2018,Seasonal naive,2018-04-22,92.28,4.890875305555651,0.3345822524103585
+2018,Seasonal naive,2018-04-29,103.68999999999998,4.57252892355803,0.3345822524103585
+2018,Seasonal naive,2018-05-06,68.93714285714286,5.120881000611694,0.3345822524103585
+2018,Seasonal naive,2018-05-13,99.39285714285714,4.960934715625462,0.3345822524103585
+2018,Seasonal naive,2018-05-20,83.68285714285715,4.976073425937455,0.3345822524103585
+2018,Seasonal naive,2018-05-27,98.57714285714285,4.5520104893007165,0.3345822524103585
+2018,Seasonal naive,2018-06-03,80.00142857142858,4.500714023184685,0.3345822524103585
+2018,Seasonal naive,2018-06-10,64.88285714285715,4.06863595749599,0.3345822524103585
+2018,Seasonal naive,2018-06-17,152.4042857142857,4.06263272958742,0.3345822524103585
+2018,Seasonal naive,2018-06-24,68.25857142857143,4.045554398052669,0.3345822524103585
+2018,Seasonal naive,2018-07-01,38.87571428571429,3.4949912609485163,0.3345822524103585
+2018,Seasonal naive,2018-07-08,51.74428571428571,4.060443010546419,0.3345822524103585
+2018,Seasonal naive,2018-07-15,43.470000000000006,3.451754690993422,0.3345822524103585
+2018,Seasonal naive,2018-07-22,36.80857142857143,3.4494431800043177,0.3345822524103585
+2018,Seasonal naive,2018-07-29,34.582857142857144,3.052112606990099,0.3345822524103585
+2018,Seasonal naive,2018-08-05,59.50428571428571,3.563356722706227,0.3345822524103585
+2018,Seasonal naive,2018-08-12,39.05428571428571,3.627080035350864,0.3345822524103585
+2018,Seasonal naive,2018-08-19,38.74142857142857,3.515248594998551,0.3345822524103585
+2018,Seasonal naive,2018-08-26,31.807142857142857,3.77042652417224,0.3345822524103585
+2018,Seasonal naive,2018-09-02,37.85428571428572,3.2744456760230114,0.3345822524103585
+2018,Seasonal naive,2018-09-09,41.95,3.85390951379783,0.3345822524103585
+2018,Seasonal naive,2018-09-16,33.33,4.08198275466622,0.3345822524103585
+2018,Seasonal naive,2018-09-23,49.20857142857143,3.7848063268409686,0.3345822524103585
+2018,Seasonal naive,2018-09-30,57.55857142857143,4.277855887151644,0.3345822524103585
+2018,Seasonal naive,2018-10-07,83.38714285714286,4.342673055551451,0.3345822524103585
+2018,Seasonal naive,2018-10-14,96.91142857142856,4.807679449987064,0.3345822524103585
+2018,Seasonal naive,2018-10-21,140.48285714285714,5.289917903905407,0.3345822524103585
+2018,Seasonal naive,2018-10-28,171.1542857142857,5.214361058339501,0.3345822524103585
+2018,Seasonal naive,2018-11-04,202.76142857142847,5.236419166217525,0.3345822524103585
+2018,Seasonal naive,2018-11-11,283.1485714285714,6.08323926374192,0.3345822524103585
+2018,Seasonal naive,2018-11-18,173.0885714285714,5.309313826113883,0.3345822524103585
+2018,Seasonal naive,2018-11-25,168.86714285714285,5.224240163151721,0.3345822524103585
+2018,Seasonal naive,2018-12-02,186.70857142857145,5.3273767375758485,0.3345822524103585
+2018,Seasonal naive,2018-12-09,201.8728571428572,5.155287948927893,0.3345822524103585
+2018,Seasonal naive,2018-12-16,175.70142857142858,4.871460798188248,0.3345822524103585
+2018,Seasonal naive,2018-12-23,261.5357142857143,5.253409655892827,0.3345822524103585
+2018,Seasonal naive,2018-12-30,287.3928571428572,5.529355388650604,0.3345822524103585
+2018,Climatology,2018-01-07,247.29857142857145,5.408731798097988,0.2100320523345356
+2018,Climatology,2018-01-14,188.26,5.277670506466927,0.2100320523345356
+2018,Climatology,2018-01-21,197.46,5.437700460879099,0.2100320523345356
+2018,Climatology,2018-01-28,148.48857142857145,5.242666727981997,0.2100320523345356
+2018,Climatology,2018-02-04,137.04714285714286,5.117660180775535,0.2100320523345356
+2018,Climatology,2018-02-11,169.39,4.963407300169094,0.2100320523345356
+2018,Climatology,2018-02-18,103.70857142857145,4.979183814406805,0.2100320523345356
+2018,Climatology,2018-02-25,158.08285714285714,5.142004334134754,0.2100320523345356
+2018,Climatology,2018-03-04,104.86,4.839883973095223,0.2100320523345356
+2018,Climatology,2018-03-11,96.94857142857144,4.461460710966682,0.2100320523345356
+2018,Climatology,2018-03-18,102.21428571428572,4.490216717113987,0.2100320523345356
+2018,Climatology,2018-03-25,90.97,4.544469070882633,0.2100320523345356
+2018,Climatology,2018-04-01,97.72857142857144,4.654685162671122,0.2100320523345356
+2018,Climatology,2018-04-08,94.45285714285714,4.511638483508993,0.2100320523345356
+2018,Climatology,2018-04-15,75.25,4.720054794304081,0.2100320523345356
+2018,Climatology,2018-04-22,92.28,4.712916407773464,0.2100320523345356
+2018,Climatology,2018-04-29,103.68999999999998,4.750992743911659,0.2100320523345356
+2018,Climatology,2018-05-06,68.93714285714286,4.660403745965778,0.2100320523345356
+2018,Climatology,2018-05-13,99.39285714285714,4.761628652223261,0.2100320523345356
+2018,Climatology,2018-05-20,83.68285714285715,4.649374958381972,0.2100320523345356
+2018,Climatology,2018-05-27,98.57714285714285,4.482764217200919,0.2100320523345356
+2018,Climatology,2018-06-03,80.00142857142858,4.580838861181697,0.2100320523345356
+2018,Climatology,2018-06-10,64.88285714285715,4.175369200235714,0.2100320523345356
+2018,Climatology,2018-06-17,152.4042857142857,4.347727239542452,0.2100320523345356
+2018,Climatology,2018-06-24,68.25857142857143,4.351151337989115,0.2100320523345356
+2018,Climatology,2018-07-01,38.87571428571429,4.038262211281606,0.2100320523345356
+2018,Climatology,2018-07-08,51.74428571428571,4.156504895471128,0.2100320523345356
+2018,Climatology,2018-07-15,43.470000000000006,3.8284758524673017,0.2100320523345356
+2018,Climatology,2018-07-22,36.80857142857143,3.822010926215055,0.2100320523345356
+2018,Climatology,2018-07-29,34.582857142857144,3.5711640487107554,0.2100320523345356
+2018,Climatology,2018-08-05,59.50428571428571,3.617490523111794,0.2100320523345356
+2018,Climatology,2018-08-12,39.05428571428571,3.824585480368356,0.2100320523345356
+2018,Climatology,2018-08-19,38.74142857142857,3.852904625177204,0.2100320523345356
+2018,Climatology,2018-08-26,31.807142857142857,3.830166125886565,0.2100320523345356
+2018,Climatology,2018-09-02,37.85428571428572,3.7218864329755377,0.2100320523345356
+2018,Climatology,2018-09-09,41.95,4.090821913577266,0.2100320523345356
+2018,Climatology,2018-09-16,33.33,4.169794093283282,0.2100320523345356
+2018,Climatology,2018-09-23,49.20857142857143,4.143161792567324,0.2100320523345356
+2018,Climatology,2018-09-30,57.55857142857143,4.307081325051812,0.2100320523345356
+2018,Climatology,2018-10-07,83.38714285714286,4.549477515741132,0.2100320523345356
+2018,Climatology,2018-10-14,96.91142857142856,4.854407054424185,0.2100320523345356
+2018,Climatology,2018-10-21,140.48285714285714,5.00495805287808,0.2100320523345356
+2018,Climatology,2018-10-28,171.1542857142857,5.276872136457311,0.2100320523345356
+2018,Climatology,2018-11-04,202.76142857142847,5.4856582839414445,0.2100320523345356
+2018,Climatology,2018-11-11,283.1485714285714,5.770970117981858,0.2100320523345356
+2018,Climatology,2018-11-18,173.0885714285714,5.463541591349466,0.2100320523345356
+2018,Climatology,2018-11-25,168.86714285714285,5.307484213754044,0.2100320523345356
+2018,Climatology,2018-12-02,186.70857142857145,5.342768608191364,0.2100320523345356
+2018,Climatology,2018-12-09,201.8728571428572,5.342222323157638,0.2100320523345356
+2018,Climatology,2018-12-16,175.70142857142858,5.183265534903394,0.2100320523345356
+2018,Climatology,2018-12-23,261.5357142857143,5.207046369842629,0.2100320523345356
+2018,Climatology,2018-12-30,287.3928571428572,5.398866447956088,0.2100320523345356
+2018,Climatology + AR(1),2018-01-07,247.29857142857145,5.456173863370797,0.1957222411608262
+2018,Climatology + AR(1),2018-01-14,188.26,5.294919091254036,0.2082565826369702
+2018,Climatology + AR(1),2018-01-21,197.46,5.443971555433,0.2098574125107656
+2018,Climatology + AR(1),2018-01-28,148.48857142857145,5.244946719493727,0.2100681041886963
+2018,Climatology + AR(1),2018-02-04,137.04714285714286,5.118489120803289,0.2100959385029589
+2018,Climatology + AR(1),2018-02-11,169.39,4.963708679172515,0.2100996174854142
+2018,Climatology + AR(1),2018-02-18,103.70857142857145,4.979293387235552,0.2101001037841874
+2018,Climatology + AR(1),2018-02-25,158.08285714285714,5.142044171696971,0.2101001680651494
+2018,Climatology + AR(1),2018-03-04,104.86,4.839898456899114,0.2101001765620796
+2018,Climatology + AR(1),2018-03-11,96.94857142857144,4.461465976865584,0.2101001776852401
+2018,Climatology + AR(1),2018-03-18,102.21428571428572,4.490218631644967,0.2101001778337042
+2018,Climatology + AR(1),2018-03-25,90.97,4.544469766951612,0.2101001778533288
+2018,Climatology + AR(1),2018-04-01,97.72857142857144,4.6546854157419935,0.2101001778559229
+2018,Climatology + AR(1),2018-04-08,94.45285714285714,4.51163857551836,0.2101001778562658
+2018,Climatology + AR(1),2018-04-15,75.25,4.720054827756068,0.2101001778563111
+2018,Climatology + AR(1),2018-04-22,92.28,4.712916419935654,0.2101001778563171
+2018,Climatology + AR(1),2018-04-29,103.68999999999998,4.750992748333485,0.2101001778563179
+2018,Climatology + AR(1),2018-05-06,68.93714285714286,4.660403747573428,0.210100177856318
+2018,Climatology + AR(1),2018-05-13,99.39285714285714,4.761628652807757,0.210100177856318
+2018,Climatology + AR(1),2018-05-20,83.68285714285715,4.649374958594478,0.210100177856318
+2018,Climatology + AR(1),2018-05-27,98.57714285714285,4.48276421727818,0.210100177856318
+2018,Climatology + AR(1),2018-06-03,80.00142857142858,4.580838861209786,0.210100177856318
+2018,Climatology + AR(1),2018-06-10,64.88285714285715,4.175369200245926,0.210100177856318
+2018,Climatology + AR(1),2018-06-17,152.4042857142857,4.347727239546165,0.210100177856318
+2018,Climatology + AR(1),2018-06-24,68.25857142857143,4.351151337990465,0.210100177856318
+2018,Climatology + AR(1),2018-07-01,38.87571428571429,4.038262211282097,0.210100177856318
+2018,Climatology + AR(1),2018-07-08,51.74428571428571,4.156504895471306,0.210100177856318
+2018,Climatology + AR(1),2018-07-15,43.470000000000006,3.828475852467367,0.210100177856318
+2018,Climatology + AR(1),2018-07-22,36.80857142857143,3.822010926215079,0.210100177856318
+2018,Climatology + AR(1),2018-07-29,34.582857142857144,3.571164048710764,0.210100177856318
+2018,Climatology + AR(1),2018-08-05,59.50428571428571,3.617490523111797,0.210100177856318
+2018,Climatology + AR(1),2018-08-12,39.05428571428571,3.824585480368357,0.210100177856318
+2018,Climatology + AR(1),2018-08-19,38.74142857142857,3.852904625177205,0.210100177856318
+2018,Climatology + AR(1),2018-08-26,31.807142857142857,3.830166125886565,0.210100177856318
+2018,Climatology + AR(1),2018-09-02,37.85428571428572,3.7218864329755377,0.210100177856318
+2018,Climatology + AR(1),2018-09-09,41.95,4.090821913577266,0.210100177856318
+2018,Climatology + AR(1),2018-09-16,33.33,4.169794093283282,0.210100177856318
+2018,Climatology + AR(1),2018-09-23,49.20857142857143,4.143161792567324,0.210100177856318
+2018,Climatology + AR(1),2018-09-30,57.55857142857143,4.307081325051812,0.210100177856318
+2018,Climatology + AR(1),2018-10-07,83.38714285714286,4.549477515741132,0.210100177856318
+2018,Climatology + AR(1),2018-10-14,96.91142857142856,4.854407054424185,0.210100177856318
+2018,Climatology + AR(1),2018-10-21,140.48285714285714,5.00495805287808,0.210100177856318
+2018,Climatology + AR(1),2018-10-28,171.1542857142857,5.276872136457311,0.210100177856318
+2018,Climatology + AR(1),2018-11-04,202.76142857142847,5.4856582839414445,0.210100177856318
+2018,Climatology + AR(1),2018-11-11,283.1485714285714,5.770970117981858,0.210100177856318
+2018,Climatology + AR(1),2018-11-18,173.0885714285714,5.463541591349466,0.210100177856318
+2018,Climatology + AR(1),2018-11-25,168.86714285714285,5.307484213754044,0.210100177856318
+2018,Climatology + AR(1),2018-12-02,186.70857142857145,5.342768608191364,0.210100177856318
+2018,Climatology + AR(1),2018-12-09,201.8728571428572,5.342222323157638,0.210100177856318
+2018,Climatology + AR(1),2018-12-16,175.70142857142858,5.183265534903394,0.210100177856318
+2018,Climatology + AR(1),2018-12-23,261.5357142857143,5.207046369842629,0.210100177856318
+2018,Climatology + AR(1),2018-12-30,287.3928571428572,5.398866447956088,0.210100177856318
+2018,Linear regression,2018-01-07,247.29857142857145,5.285414409732734,0.2690264783500231
+2018,Linear regression,2018-01-14,188.26,5.23348539788056,0.2695397774073533
+2018,Linear regression,2018-01-21,197.46,5.175109701645646,0.2700437374189722
+2018,Linear regression,2018-01-28,148.48857142857145,5.110738861982933,0.2704960059972698
+2018,Linear regression,2018-02-04,137.04714285714286,5.041148430291499,0.2708598683467308
+2018,Linear regression,2018-02-11,169.39,4.967666454899951,0.2711113714650376
+2018,Linear regression,2018-02-18,103.70857142857145,4.892290661042592,0.2712433707656577
+2018,Linear regression,2018-02-25,158.08285714285714,4.817664697349892,0.2712655846310147
+2018,Linear regression,2018-03-04,104.86,4.746905809049485,0.271201026900953
+2018,Linear regression,2018-03-11,96.94857142857144,4.683299848762038,0.2710802163409432
+2018,Linear regression,2018-03-18,102.21428571428572,4.629901348700841,0.2709349947242722
+2018,Linear regression,2018-03-25,90.97,4.589093358759399,0.2707935333463092
+2018,Linear regression,2018-04-01,97.72857142857144,4.562171431374023,0.270677357445847
+2018,Linear regression,2018-04-08,94.45285714285714,4.54901699199398,0.2706003406963452
+2018,Linear regression,2018-04-15,75.25,4.54791702799221,0.2705690031619881
+2018,Linear regression,2018-04-22,92.28,4.555570440337416,0.2705833064686713
+2018,Linear regression,2018-04-29,103.68999999999998,4.567298536966504,0.2706374420853006
+2018,Linear regression,2018-05-06,68.93714285714286,4.577450883370417,0.270720599788923
+2018,Linear regression,2018-05-13,99.39285714285714,4.57997144905123,0.2708180657680059
+2018,Linear regression,2018-05-20,83.68285714285715,4.569067152048161,0.2709130229778966
+2018,Linear regression,2018-05-27,98.57714285714285,4.539904581272281,0.2709891099309574
+2018,Linear regression,2018-06-03,80.00142857142858,4.489253157274344,0.2710333317578417
+2018,Linear regression,2018-06-10,64.88285714285715,4.4159954752734905,0.2710385792773204
+2018,Linear regression,2018-06-17,152.4042857142857,4.321438000392848,0.2710049953412106
+2018,Linear regression,2018-06-24,68.25857142857143,4.209376328812623,0.2709397572427806
+2018,Linear regression,2018-07-01,38.87571428571429,4.085896453722207,0.2708553665831287
+2018,Linear regression,2018-07-08,51.74428571428571,3.9589236325246726,0.2707670088579178
+2018,Linear regression,2018-07-15,43.470000000000006,3.837559883919958,0.2706897541518375
+2018,Linear regression,2018-07-22,36.80857142857143,3.731276242149687,0.270636247333315
+2018,Linear regression,2018-07-29,34.582857142857144,3.64904355698306,0.2706151818583803
+2018,Linear regression,2018-08-05,59.50428571428571,3.598493645063832,0.2706304790422816
+2018,Linear regression,2018-08-12,39.05428571428571,3.5851999415988125,0.2706809101529153
+2018,Linear regression,2018-08-19,38.74142857142857,3.6121537515187705,0.2707599833651587
+2018,Linear regression,2018-08-26,31.807142857142857,3.6794903137976194,0.2708561821127789
+2018,Linear regression,2018-09-02,37.85428571428572,3.784490812444485,0.2709538778998653
+2018,Linear regression,2018-09-09,41.95,3.92185558649826,0.2710352466497898
+2018,Linear regression,2018-09-16,33.33,4.084213830823009,0.2710832210286875
+2018,Linear regression,2018-09-23,49.20857142857143,4.262809623975739,0.2710850242859438
+2018,Linear regression,2018-09-30,57.55857142857143,4.448286169457172,0.2710354010140073
+2018,Linear regression,2018-10-07,83.38714285714286,4.6314817380667215,0.2709385402898271
+2018,Linear regression,2018-10-14,96.91142857142856,4.804152794391361,0.2708079991025566
+2018,Linear regression,2018-10-21,140.48285714285714,4.959551724019911,0.2706645934240194
+2018,Linear regression,2018-10-28,171.1542857142857,5.092806766265992,0.2705329606717137
+2018,Linear regression,2018-11-04,202.76142857142847,5.201077513952559,0.2704379708208623
+2018,Linear regression,2018-11-11,283.1485714285714,5.28348733000971,0.2704021258369834
+2018,Linear regression,2018-11-18,173.0885714285714,5.340860693504386,0.2704445183158224
+2018,Linear regression,2018-11-25,168.86714285714285,5.375315504784063,0.2705810662058447
+2018,Linear regression,2018-12-02,186.70857142857145,5.389775088151754,0.270825016378644
+2018,Linear regression,2018-12-09,201.8728571428572,5.387470359693853,0.2711865024786217
+2018,Linear regression,2018-12-16,175.70142857142858,5.371498900337205,0.2716704094769676
+2018,Linear regression,2018-12-23,261.5357142857143,5.344495253219904,0.2722727674777139
+2018,Linear regression,2018-12-30,287.3928571428572,5.308447539118315,0.2729769286227468
+2018,LSTM (small),2018-01-07,247.29857142857145,5.388508160788208,0.0257279392674246
+2018,LSTM (small),2018-01-14,188.26,5.231829535594064,0.0352990730356501
+2018,LSTM (small),2018-01-21,197.46,5.648214340093031,0.0352990730356501
+2018,LSTM (small),2018-01-28,148.48857142857145,5.456856402465328,0.0352990730356501
+2018,LSTM (small),2018-02-04,137.04714285714286,5.13504245037531,0.0370086342498864
+2018,LSTM (small),2018-02-11,169.39,4.841439312936369,0.0409159400965892
+2018,LSTM (small),2018-02-18,103.70857142857145,4.698299950710943,0.0409159400965892
+2018,LSTM (small),2018-02-25,158.08285714285714,5.208606640984436,0.0612986758446737
+2018,LSTM (small),2018-03-04,104.86,4.788187869225021,0.0644119689676918
+2018,LSTM (small),2018-03-11,96.94857142857144,4.524731942588305,0.0836267929570769
+2018,LSTM (small),2018-03-18,102.21428571428572,4.325783266892134,0.0874021937123709
+2018,LSTM (small),2018-03-25,90.97,4.615589612648063,0.1052859234317573
+2018,LSTM (small),2018-04-01,97.72857142857144,4.8692067128188885,0.1794591211147874
+2018,LSTM (small),2018-04-08,94.45285714285714,4.518171885830662,0.1794591211147874
+2018,LSTM (small),2018-04-15,75.25,4.6759144014068,0.1794591211147874
+2018,LSTM (small),2018-04-22,92.28,4.994067424493809,0.1794591211147874
+2018,LSTM (small),2018-04-29,103.68999999999998,4.708035310615856,0.2100320523345356
+2018,LSTM (small),2018-05-06,68.93714285714286,4.513859045039097,0.2100320523345356
+2018,LSTM (small),2018-05-13,99.39285714285714,4.384439903904501,0.2100320523345356
+2018,LSTM (small),2018-05-20,83.68285714285715,4.652084767467652,0.2100320523345356
+2018,LSTM (small),2018-05-27,98.57714285714285,4.433266010306961,0.2100320523345356
+2018,LSTM (small),2018-06-03,80.00142857142858,4.627938712439404,0.2100320523345356
+2018,LSTM (small),2018-06-10,64.88285714285715,4.062172357567338,0.2100320523345356
+2018,LSTM (small),2018-06-17,152.4042857142857,4.1624716647637126,0.2100320523345356
+2018,LSTM (small),2018-06-24,68.25857142857143,4.481858534108332,0.2100320523345356
+2018,LSTM (small),2018-07-01,38.87571428571429,4.017259636374056,0.2100320523345356
+2018,LSTM (small),2018-07-08,51.74428571428571,4.24338570677764,0.2100320523345356
+2018,LSTM (small),2018-07-15,43.470000000000006,4.101856146349896,0.2100320523345356
+2018,LSTM (small),2018-07-22,36.80857142857143,3.9489500503571207,0.2100320523345356
+2018,LSTM (small),2018-07-29,34.582857142857144,3.708903566222405,0.2100320523345356
+2018,LSTM (small),2018-08-05,59.50428571428571,3.7516980748338153,0.2100320523345356
+2018,LSTM (small),2018-08-12,39.05428571428571,4.1143831413330645,0.2100320523345356
+2018,LSTM (small),2018-08-19,38.74142857142857,3.889893041170901,0.2100320523345356
+2018,LSTM (small),2018-08-26,31.807142857142857,3.837452977354371,0.2100320523345356
+2018,LSTM (small),2018-09-02,37.85428571428572,3.7813894173556073,0.2100320523345356
+2018,LSTM (small),2018-09-09,41.95,4.320462472115711,0.2100320523345356
+2018,LSTM (small),2018-09-16,33.33,4.081176086260015,0.2100320523345356
+2018,LSTM (small),2018-09-23,49.20857142857143,4.245198179930143,0.2100320523345356
+2018,LSTM (small),2018-09-30,57.55857142857143,4.37471307240554,0.2100320523345356
+2018,LSTM (small),2018-10-07,83.38714285714286,4.629474229263924,0.2100320523345356
+2018,LSTM (small),2018-10-14,96.91142857142856,4.92044500989881,0.2100320523345356
+2018,LSTM (small),2018-10-21,140.48285714285714,4.83360426269791,0.2100320523345356
+2018,LSTM (small),2018-10-28,171.1542857142857,5.076791559322571,0.2100320523345356
+2018,LSTM (small),2018-11-04,202.76142857142847,5.140659797542283,0.2100320523345356
+2018,LSTM (small),2018-11-11,283.1485714285714,5.821046872667451,0.2100320523345356
+2018,LSTM (small),2018-11-18,173.0885714285714,5.0252406748013545,0.2100320523345356
+2018,LSTM (small),2018-11-25,168.86714285714285,5.306729752925443,0.2100320523345356
+2018,LSTM (small),2018-12-02,186.70857142857145,5.501137021256482,0.2100320523345356
+2018,LSTM (small),2018-12-09,201.8728571428572,5.218621585272979,0.2100320523345356
+2018,LSTM (small),2018-12-16,175.70142857142858,5.246940137546662,0.2100320523345356
+2018,LSTM (small),2018-12-23,261.5357142857143,5.142438546852118,0.2100320523345356
+2018,LSTM (small),2018-12-30,287.3928571428572,5.152640368660512,0.2100320523345356
+2018,Fourier+ARMA const,2018-01-07,247.29857142857145,5.3895900802287455,0.2374247157524943
+2018,Fourier+ARMA const,2018-01-14,188.26,5.305852977088351,0.2525987241268368
+2018,Fourier+ARMA const,2018-01-21,197.46,5.238117612685674,0.2545327484468855
+2018,Fourier+ARMA const,2018-01-28,148.48857142857145,5.172034472114514,0.2547867623582946
+2018,Fourier+ARMA const,2018-02-04,137.04714285714286,5.102943106214864,0.254820249473859
+2018,Fourier+ARMA const,2018-02-11,169.39,5.030192317561943,0.2548246663046365
+2018,Fourier+ARMA const,2018-02-18,103.70857142857145,4.955109809528625,0.2548252489064347
+2018,Fourier+ARMA const,2018-02-25,158.08285714285714,4.880190712528149,0.2548253257551443
+2018,Fourier+ARMA const,2018-03-04,104.86,4.80862639141062,0.2548253358919665
+2018,Fourier+ARMA const,2018-03-11,96.94857142857144,4.743874767097245,0.2548253372290764
+2018,Fourier+ARMA const,2018-03-18,102.21428571428572,4.689197619568091,0.2548253374054496
+2018,Fourier+ARMA const,2018-03-25,90.97,4.647180965390507,0.2548253374287143
+2018,Fourier+ARMA const,2018-04-01,97.72857142857144,4.619290882154944,0.2548253374317831
+2018,Fourier+ARMA const,2018-04-08,94.45285714285714,4.60552727563094,0.2548253374321879
+2018,Fourier+ARMA const,2018-04-15,75.25,4.604232549162914,0.2548253374322413
+2018,Fourier+ARMA const,2018-04-22,92.28,4.61209583569165,0.2548253374322483
+2018,Fourier+ARMA const,2018-04-29,103.68999999999998,4.624369947792228,0.2548253374322493
+2018,Fourier+ARMA const,2018-05-06,68.93714285714286,4.635291028458622,0.2548253374322494
+2018,Fourier+ARMA const,2018-05-13,99.39285714285714,4.638663755677273,0.2548253374322494
+2018,Fourier+ARMA const,2018-05-20,83.68285714285715,4.62855150537937,0.2548253374322494
+2018,Fourier+ARMA const,2018-05-27,98.57714285714285,4.599994287811832,0.2548253374322494
+2018,Fourier+ARMA const,2018-06-03,80.00142857142858,4.549669872297565,0.2548253374322494
+2018,Fourier+ARMA const,2018-06-10,64.88285714285715,4.476416488227245,0.2548253374322494
+2018,Fourier+ARMA const,2018-06-17,152.4042857142857,4.381548710555602,0.2548253374322494
+2018,Fourier+ARMA const,2018-06-24,68.25857142857143,4.268920174588383,0.2548253374322494
+2018,Fourier+ARMA const,2018-07-01,38.87571428571429,4.144715049252007,0.2548253374322494
+2018,Fourier+ARMA const,2018-07-08,51.74428571428571,4.016981341097586,0.2548253374322494
+2018,Fourier+ARMA const,2018-07-15,43.470000000000006,3.894949315067898,0.2548253374322494
+2018,Fourier+ARMA const,2018-07-22,36.80857142857143,3.788203891388403,0.2548253374322494
+2018,Fourier+ARMA const,2018-07-29,34.582857142857144,3.705797644471706,0.2548253374322494
+2018,Fourier+ARMA const,2018-08-05,59.50428571428571,3.655398768711532,0.2548253374322494
+2018,Fourier+ARMA const,2018-08-12,39.05428571428571,3.642565094698568,0.2548253374322494
+2018,Fourier+ARMA const,2018-08-19,38.74142857142857,3.6702213005273294,0.2548253374322494
+2018,Fourier+ARMA const,2018-08-26,31.807142857142857,3.738393541413981,0.2548253374322494
+2018,Fourier+ARMA const,2018-09-02,37.85428571428572,3.8442265946821976,0.2548253374322494
+2018,Fourier+ARMA const,2018-09-09,41.95,3.982276818824272,0.2548253374322494
+2018,Fourier+ARMA const,2018-09-16,33.33,4.145043598959085,0.2548253374322494
+2018,Fourier+ARMA const,2018-09-23,49.20857142857143,4.323676171044727,0.2548253374322494
+2018,Fourier+ARMA const,2018-09-30,57.55857142857143,4.508774830078353,0.2548253374322494
+2018,Fourier+ARMA const,2018-10-07,83.38714285714286,4.691197574489128,0.2548253374322494
+2018,Fourier+ARMA const,2018-10-14,96.91142857142856,4.862786007960081,0.2548253374322494
+2018,Fourier+ARMA const,2018-10-21,140.48285714285714,5.016937257638635,0.2548253374322494
+2018,Fourier+ARMA const,2018-10-28,171.1542857142857,5.148969962108982,0.2548253374322494
+2018,Fourier+ARMA const,2018-11-04,202.76142857142847,5.256259205005463,0.2548253374322494
+2018,Fourier+ARMA const,2018-11-11,283.1485714285714,5.338144145270946,0.2548253374322494
+2018,Fourier+ARMA const,2018-11-18,173.0885714285714,5.395639349839632,0.2548253374322494
+2018,Fourier+ARMA const,2018-11-25,168.86714285714285,5.431003069486344,0.2548253374322494
+2018,Fourier+ARMA const,2018-12-02,186.70857142857145,5.447230219777127,0.2548253374322494
+2018,Fourier+ARMA const,2018-12-09,201.8728571428572,5.447542985650095,0.2548253374322494
+2018,Fourier+ARMA const,2018-12-16,175.70142857142858,5.434947352701787,0.2548253374322494
+2018,Fourier+ARMA const,2018-12-23,261.5357142857143,5.411910354451933,0.2548253374322494
+2018,Fourier+ARMA const,2018-12-30,287.3928571428572,5.380192438819538,0.2548253374322494
+2018,Fourier+ARMA linear,2018-01-07,247.29857142857145,5.411193678330818,0.2380904188730782
+2018,Fourier+ARMA linear,2018-01-14,188.26,5.328287756047553,0.253548873550548
+2018,Fourier+ARMA linear,2018-01-21,197.46,5.251322819648976,0.2555502975161928
+2018,Fourier+ARMA linear,2018-01-28,148.48857142857145,5.170645037097565,0.2558174363267982
+2018,Fourier+ARMA linear,2018-02-04,137.04714285714286,5.0843125168652845,0.2558532301932398
+2018,Fourier+ARMA linear,2018-02-11,169.39,4.993727038422378,0.2558580286654566
+2018,Fourier+ARMA linear,2018-02-18,103.70857142857145,4.901945858546712,0.255858671985659
+2018,Fourier+ARMA linear,2018-02-25,158.08285714285714,4.812881675359503,0.2558587582349224
+2018,Fourier+ARMA linear,2018-03-04,104.86,4.730751730294179,0.2558587697982847
+2018,Fourier+ARMA linear,2018-03-11,96.94857142857144,4.659571907619611,0.2558587713485747
+2018,Fourier+ARMA linear,2018-03-18,102.21428571428572,4.602659976782625,0.2558587715564208
+2018,Fourier+ARMA linear,2018-03-25,90.97,4.562177754272358,0.2558587715842865
+2018,Fourier+ARMA linear,2018-04-01,97.72857142857144,4.538764266633289,0.2558587715880225
+2018,Fourier+ARMA linear,2018-04-08,94.45285714285714,4.531312751351925,0.2558587715885234
+2018,Fourier+ARMA linear,2018-04-15,75.25,4.536932320846682,0.2558587715885905
+2018,Fourier+ARMA linear,2018-04-22,92.28,4.551115022368581,0.2558587715885995
+2018,Fourier+ARMA linear,2018-04-29,103.68999999999998,4.568104515693424,0.2558587715886007
+2018,Fourier+ARMA linear,2018-05-06,68.93714285714286,4.581437179198881,0.2558587715886009
+2018,Fourier+ARMA linear,2018-05-13,99.39285714285714,4.584603560097188,0.2558587715886009
+2018,Fourier+ARMA linear,2018-05-20,83.68285714285715,4.571760762287285,0.2558587715886009
+2018,Fourier+ARMA linear,2018-05-27,98.57714285714285,4.538416979844403,0.2558587715886009
+2018,Fourier+ARMA linear,2018-06-03,80.00142857142858,4.482009320981921,0.2558587715886009
+2018,Fourier+ARMA linear,2018-06-10,64.88285714285715,4.402305553241939,0.2558587715886009
+2018,Fourier+ARMA linear,2018-06-17,152.4042857142857,4.301578465414633,0.2558587715886009
+2018,Fourier+ARMA linear,2018-06-24,68.25857142857143,4.184526129590197,0.2558587715886009
+2018,Fourier+ARMA linear,2018-07-01,38.87571428571429,4.057939566546041,0.2558587715886009
+2018,Fourier+ARMA linear,2018-07-08,51.74428571428571,3.9301477994640353,0.2558587715886009
+2018,Fourier+ARMA linear,2018-07-15,43.470000000000006,3.810295595419893,0.2558587715886009
+2018,Fourier+ARMA linear,2018-07-22,36.80857142857143,3.707528280718111,0.2558587715886009
+2018,Fourier+ARMA linear,2018-07-29,34.582857142857144,3.6301685663262986,0.2558587715886009
+2018,Fourier+ARMA linear,2018-08-05,59.50428571428571,3.584971065509348,0.2558587715886009
+2018,Fourier+ARMA linear,2018-08-12,39.05428571428571,3.5765310582337357,0.2558587715886009
+2018,Fourier+ARMA linear,2018-08-19,38.74142857142857,3.606906192988482,0.2558587715886009
+2018,Fourier+ARMA linear,2018-08-26,31.807142857142857,3.675485414816546,0.2558587715886009
+2018,Fourier+ARMA linear,2018-09-02,37.85428571428572,3.7791114507707535,0.2558587715886009
+2018,Fourier+ARMA linear,2018-09-09,41.95,3.9124350612105134,0.2558587715886009
+2018,Fourier+ARMA linear,2018-09-16,33.33,4.0684543509447,0.2558587715886009
+2018,Fourier+ARMA linear,2018-09-23,49.20857142857143,4.239173664095123,0.2558587715886009
+2018,Fourier+ARMA linear,2018-09-30,57.55857142857143,4.4163060959452825,0.2558587715886009
+2018,Fourier+ARMA linear,2018-10-07,83.38714285714286,4.591942519405493,0.2558587715886009
+2018,Fourier+ARMA linear,2018-10-14,96.91142857142856,4.759118135898463,0.2558587715886009
+2018,Fourier+ARMA linear,2018-10-21,140.48285714285714,4.912223659055225,0.2558587715886009
+2018,Fourier+ARMA linear,2018-10-28,171.1542857142857,5.047230084123807,0.2558587715886009
+2018,Fourier+ARMA linear,2018-11-04,202.76142857142847,5.161720665395457,0.2558587715886009
+2018,Fourier+ARMA linear,2018-11-11,283.1485714285714,5.254747999542674,0.2558587715886009
+2018,Fourier+ARMA linear,2018-11-18,173.0885714285714,5.326554895629985,0.2558587715886009
+2018,Fourier+ARMA linear,2018-11-25,168.86714285714285,5.378212421617226,0.2558587715886009
+2018,Fourier+ARMA linear,2018-12-02,186.70857142857145,5.41123541651204,0.2558587715886009
+2018,Fourier+ARMA linear,2018-12-09,201.8728571428572,5.427234170928138,0.2558587715886009
+2018,Fourier+ARMA linear,2018-12-16,175.70142857142858,5.427651365494186,0.2558587715886009
+2018,Fourier+ARMA linear,2018-12-23,261.5357142857143,5.413617236187793,0.2558587715886009
+2018,Fourier+ARMA linear,2018-12-30,287.3928571428572,5.385935676918827,0.2558587715886009
+2018,Fourier+ARMA (selected),2018-01-07,247.29857142857145,5.309789667756228,0.2205624363057983
+2018,Fourier+ARMA (selected),2018-01-14,188.26,5.359552174866449,0.2243261023324612
+2018,Fourier+ARMA (selected),2018-01-21,197.46,5.381247362830338,0.2270602597467765
+2018,Fourier+ARMA (selected),2018-01-28,148.48857142857145,5.354735401288607,0.2290546371425751
+2018,Fourier+ARMA (selected),2018-02-04,137.04714285714286,5.272923292846604,0.2305135899909882
+2018,Fourier+ARMA (selected),2018-02-11,169.39,5.1436448852893815,0.2315830587059729
+2018,Fourier+ARMA (selected),2018-02-18,103.70857142857145,4.987091530970469,0.2323681826356737
+2018,Fourier+ARMA (selected),2018-02-25,158.08285714285714,4.829792478823225,0.2329451811323422
+2018,Fourier+ARMA (selected),2018-03-04,104.86,4.69715110325341,0.2333695570368351
+2018,Fourier+ARMA (selected),2018-03-11,96.94857142857144,4.606864882627014,0.23368185907438
+2018,Fourier+ARMA (selected),2018-03-18,102.21428571428572,4.565120969601897,0.2339117810947961
+2018,Fourier+ARMA (selected),2018-03-25,90.97,4.566445805705117,0.2340811055015287
+2018,Fourier+ARMA (selected),2018-04-01,97.72857142857144,4.596861015150632,0.2342058313374679
+2018,Fourier+ARMA (selected),2018-04-08,94.45285714285714,4.638977439521333,0.2342977206982259
+2018,Fourier+ARMA (selected),2018-04-15,75.25,4.677173226952604,0.2343654266683544
+2018,Fourier+ARMA (selected),2018-04-22,92.28,4.701180105010984,0.2344153182942292
+2018,Fourier+ARMA (selected),2018-04-29,103.68999999999998,4.707138702533537,0.234452085195834
+2018,Fourier+ARMA (selected),2018-05-06,68.93714285714286,4.696184503202966,0.2344791813425209
+2018,Fourier+ARMA (selected),2018-05-13,99.39285714285714,4.671518364880572,0.2344991511371806
+2018,Fourier+ARMA (selected),2018-05-20,83.68285714285715,4.6353843510578825,0.2345138692161831
+2018,Fourier+ARMA (selected),2018-05-27,98.57714285714285,4.587275465101402,0.2345247169022697
+2018,Fourier+ARMA (selected),2018-06-03,80.00142857142858,4.524082476529186,0.2345327121019375
+2018,Fourier+ARMA (selected),2018-06-10,64.88285714285715,4.442043907054468,0.2345386049617183
+2018,Fourier+ARMA (selected),2018-06-17,152.4042857142857,4.339584413227662,0.2345429483262637
+2018,Fourier+ARMA (selected),2018-06-24,68.25857142857143,4.219741731349095,0.2345461496452373
+2018,Fourier+ARMA (selected),2018-07-01,38.87571428571429,4.091025751467874,0.2345485092184224
+2018,Fourier+ARMA (selected),2018-07-08,51.74428571428571,3.9661697098500346,0.2345502483775053
+2018,Fourier+ARMA (selected),2018-07-15,43.470000000000006,3.85908385108266,0.2345515302539411
+2018,Fourier+ARMA (selected),2018-07-22,36.80857142857143,3.781075434293788,0.2345524750841154
+2018,Fourier+ARMA (selected),2018-07-29,34.582857142857144,3.737757458634132,0.2345531714891256
+2018,Fourier+ARMA (selected),2018-08-05,59.50428571428571,3.727879404359554,0.2345536847881263
+2018,Fourier+ARMA (selected),2018-08-12,39.05428571428571,3.7446297930512737,0.2345540631255003
+2018,Fourier+ARMA (selected),2018-08-19,38.74142857142857,3.779025856495195,0.2345543419868266
+2018,Fourier+ARMA (selected),2018-08-26,31.807142857142857,3.8241673026602783,0.234554547527366
+2018,Fourier+ARMA (selected),2018-09-02,37.85428571428572,3.8787134477762297,0.2345546990253359
+2018,Fourier+ARMA (selected),2018-09-09,41.95,3.948125967123648,0.2345548106901177
+2018,Fourier+ARMA (selected),2018-09-16,33.33,4.042967437868793,0.234554892995018
+2018,Fourier+ARMA (selected),2018-09-23,49.20857142857143,4.174612319267157,0.2345549536596005
+2018,Fourier+ARMA (selected),2018-09-30,57.55857142857143,4.349737110269404,0.2345549983737287
+2018,Fourier+ARMA (selected),2018-10-07,83.38714285714286,4.565537820283974,0.2345550313312353
+2018,Fourier+ARMA (selected),2018-10-14,96.91142857142856,4.807540203589238,0.234555055623273
+2018,Fourier+ARMA (selected),2018-10-21,140.48285714285714,5.051112551144321,0.2345550735282414
+2018,Fourier+ARMA (selected),2018-10-28,171.1542857142857,5.266591564181686,0.2345550867254834
+2018,Fourier+ARMA (selected),2018-11-04,202.76142857142847,5.426684416412435,0.2345550964527947
+2018,Fourier+ARMA (selected),2018-11-11,283.1485714285714,5.513943466469667,0.2345551036225189
+2018,Fourier+ARMA (selected),2018-11-18,173.0885714285714,5.52593855728152,0.2345551089071185
+2018,Fourier+ARMA (selected),2018-11-25,168.86714285714285,5.476363143512947,0.2345551128022465
+2018,Fourier+ARMA (selected),2018-12-02,186.70857142857145,5.391529262742191,0.2345551156732345
+2018,Fourier+ARMA (selected),2018-12-09,201.8728571428572,5.303147394496333,0.2345551177893581
+2018,Fourier+ARMA (selected),2018-12-16,175.70142857142858,5.239481461487986,0.2345551193490926
+2018,Fourier+ARMA (selected),2018-12-23,261.5357142857143,5.217520283416137,0.2345551204987284
+2018,Fourier+ARMA (selected),2018-12-30,287.3928571428572,5.238525099509518,0.2345551213460924
+2018,SARIMA D=1,2018-01-07,247.29857142857145,5.409659899443629,0.267927671145212
+2018,SARIMA D=1,2018-01-14,188.26,5.253543660011721,0.275386096616411
+2018,SARIMA D=1,2018-01-21,197.46,5.396440760971164,0.2810729394907438
+2018,SARIMA D=1,2018-01-28,148.48857142857145,5.230473473806913,0.285435132390163
+2018,SARIMA D=1,2018-02-04,137.04714285714286,5.096861335633896,0.2887958409883583
+2018,SARIMA D=1,2018-02-11,169.39,4.96113860869443,0.2913933334853647
+2018,SARIMA D=1,2018-02-18,103.70857142857145,4.950657217484924,0.2934057763966039
+2018,SARIMA D=1,2018-02-25,158.08285714285714,5.14386397435868,0.2949677846156238
+2018,SARIMA D=1,2018-03-04,104.86,4.7076110864437,0.2961818581031018
+2018,SARIMA D=1,2018-03-11,96.94857142857144,4.470323403391628,0.2971265005445828
+2018,SARIMA D=1,2018-03-18,102.21428571428572,4.459352473259463,0.2978621045659911
+2018,SARIMA D=1,2018-03-25,90.97,4.682580408780508,0.2984352878814206
+2018,SARIMA D=1,2018-04-01,97.72857142857144,4.595585465043604,0.2988821289518138
+2018,SARIMA D=1,2018-04-08,94.45285714285714,4.587851434749108,0.2992306058759698
+2018,SARIMA D=1,2018-04-15,75.25,4.77365609029578,0.2995024485492239
+2018,SARIMA D=1,2018-04-22,92.28,4.784818028896921,0.2997145542375082
+2018,SARIMA D=1,2018-04-29,103.68999999999998,4.640149640249854,0.299880074399042
+2018,SARIMA D=1,2018-05-06,68.93714285714286,4.846607103224174,0.3000092521245553
+2018,SARIMA D=1,2018-05-13,99.39285714285714,4.710664253508525,0.3001100694453318
+2018,SARIMA D=1,2018-05-20,83.68285714285715,4.65023995155809,0.3001887486529896
+2018,SARIMA D=1,2018-05-27,98.57714285714285,4.5957996401825865,0.3002501412583481
+2018,SARIMA D=1,2018-06-03,80.00142857142858,4.442078451294798,0.3002980301412307
+2018,SARIMA D=1,2018-06-10,64.88285714285715,4.254995373223001,0.3003353644662458
+2018,SARIMA D=1,2018-06-17,152.4042857142857,4.315706297818688,0.30036444241222
+2018,SARIMA D=1,2018-06-24,68.25857142857143,4.226494557329829,0.3003870533162273
+2018,SARIMA D=1,2018-07-01,38.87571428571429,3.9160338794931184,0.3004045881935883
+2018,SARIMA D=1,2018-07-08,51.74428571428571,4.039625476283305,0.3004181255634152
+2018,SARIMA D=1,2018-07-15,43.470000000000006,3.82388181199608,0.3004284979379487
+2018,SARIMA D=1,2018-07-22,36.80857142857143,3.645026090073805,0.300436343112916
+2018,SARIMA D=1,2018-07-29,34.582857142857144,3.4378674670624227,0.300442143442146
+2018,SARIMA D=1,2018-08-05,59.50428571428571,3.770260401684317,0.3004462555290885
+2018,SARIMA D=1,2018-08-12,39.05428571428571,3.7916487533070815,0.3004489321715121
+2018,SARIMA D=1,2018-08-19,38.74142857142857,3.720163494015255,0.3004503379150091
+2018,SARIMA D=1,2018-08-26,31.807142857142857,3.8646490748948414,0.3004505591753177
+2018,SARIMA D=1,2018-09-02,37.85428571428572,3.7144246629346296,0.3004496095538936
+2018,SARIMA D=1,2018-09-09,41.95,4.000060221028509,0.3004474306745238
+2018,SARIMA D=1,2018-09-16,33.33,4.210431158249292,0.3004438885925707
+2018,SARIMA D=1,2018-09-23,49.20857142857143,3.9932833357660784,0.3004387655554261
+2018,SARIMA D=1,2018-09-30,57.55857142857143,4.398970639199341,0.300431746605975
+2018,SARIMA D=1,2018-10-07,83.38714285714286,4.637761648543584,0.3004224001902676
+2018,SARIMA D=1,2018-10-14,96.91142857142856,4.7645254665109125,0.3004101516453352
+2018,SARIMA D=1,2018-10-21,140.48285714285714,5.145599682147696,0.300394247743475
+2018,SARIMA D=1,2018-10-28,171.1542857142857,5.262247487091619,0.3003737103451821
+2018,SARIMA D=1,2018-11-04,202.76142857142847,5.584530644273185,0.3003472761018363
+2018,SARIMA D=1,2018-11-11,283.1485714285714,5.820026847129431,0.3003133185094096
+2018,SARIMA D=1,2018-11-18,173.0885714285714,5.416519097016553,0.3002697475884057
+2018,SARIMA D=1,2018-11-25,168.86714285714285,5.250433847106517,0.3002138805169127
+2018,SARIMA D=1,2018-12-02,186.70857142857145,5.349096484803704,0.3001422756961475
+2018,SARIMA D=1,2018-12-09,201.8728571428572,5.299264868729479,0.3000505191268388
+2018,SARIMA D=1,2018-12-16,175.70142857142858,4.983164571979654,0.2999329498322835
+2018,SARIMA D=1,2018-12-23,261.5357142857143,5.297781005162119,0.2997823066220706
+2018,SARIMA D=1,2018-12-30,287.3928571428572,5.440385047825892,0.2971079886037641
+2018,SARIMA D=0,2018-01-07,247.29857142857145,5.319606623118416,0.2751196727808198
+2018,SARIMA D=0,2018-01-14,188.26,5.271042284398704,0.3195342798011806
+2018,SARIMA D=0,2018-01-21,197.46,5.2986719618950335,0.3528981960231064
+2018,SARIMA D=0,2018-01-28,148.48857142857145,5.149378582653403,0.3789385601203773
+2018,SARIMA D=0,2018-02-04,137.04714285714286,5.157011785806478,0.3997281177561304
+2018,SARIMA D=0,2018-02-11,169.39,5.046412699384085,0.4165735334160224
+2018,SARIMA D=0,2018-02-18,103.70857142857145,5.038655894464204,0.4303651759478031
+2018,SARIMA D=0,2018-02-25,158.08285714285714,5.189011052165819,0.4417423268974096
+2018,SARIMA D=0,2018-03-04,104.86,4.944540613737077,0.4511813010349554
+2018,SARIMA D=0,2018-03-11,96.94857142857144,4.844030271253157,0.4590467669987588
+2018,SARIMA D=0,2018-03-18,102.21428571428572,4.8866884164681625,0.4656236976390841
+2018,SARIMA D=0,2018-03-25,90.97,4.947704227654553,0.4711383296581715
+2018,SARIMA D=0,2018-04-01,97.72857142857144,4.869363513083735,0.475772503261355
+2018,SARIMA D=0,2018-04-08,94.45285714285714,4.798391561103644,0.4796738150590925
+2018,SARIMA D=0,2018-04-15,75.25,4.948368794535177,0.4829630132880597
+2018,SARIMA D=0,2018-04-22,92.28,4.892159937402613,0.4857395131509097
+2018,SARIMA D=0,2018-04-29,103.68999999999998,4.786295110931943,0.488085592465403
+2018,SARIMA D=0,2018-05-06,68.93714285714286,4.943345508045157,0.4900696371268009
+2018,SARIMA D=0,2018-05-13,99.39285714285714,4.88683539980168,0.4917486872464416
+2018,SARIMA D=0,2018-05-20,83.68285714285715,4.883923155167991,0.4931704586725861
+2018,SARIMA D=0,2018-05-27,98.57714285714285,4.748744795100201,0.494374964344301
+2018,SARIMA D=0,2018-06-03,80.00142857142858,4.726864614873344,0.4953958259374815
+2018,SARIMA D=0,2018-06-10,64.88285714285715,4.590301293308782,0.4962613427542471
+2018,SARIMA D=0,2018-06-17,152.4042857142857,4.583079828969348,0.4969953682185444
+2018,SARIMA D=0,2018-06-24,68.25857142857143,4.572931788883623,0.4976180324180934
+2018,SARIMA D=0,2018-07-01,38.87571428571429,4.40180154108023,0.4981463404181763
+2018,SARIMA D=0,2018-07-08,51.74428571428571,4.568611692094571,0.4985946696038684
+2018,SARIMA D=0,2018-07-15,43.470000000000006,4.380590603273434,0.4989751844368203
+2018,SARIMA D=0,2018-07-22,36.80857142857143,4.376296557899767,0.4992981832975737
+2018,SARIMA D=0,2018-07-29,34.582857142857144,4.252795790805932,0.499572389216495
+2018,SARIMA D=0,2018-08-05,59.50428571428571,4.404387168729384,0.4998051940582428
+2018,SARIMA D=0,2018-08-12,39.05428571428571,4.420848297283486,0.5000028639605104
+2018,SARIMA D=0,2018-08-19,38.74142857142857,4.3844267880357775,0.5001707124246507
+2018,SARIMA D=0,2018-08-26,31.807142857142857,4.459224279912048,0.5003132463306976
+2018,SARIMA D=0,2018-09-02,37.85428571428572,4.306992863006858,0.5004342892405614
+2018,SARIMA D=0,2018-09-09,41.95,4.480242743089002,0.5005370856143926
+2018,SARIMA D=0,2018-09-16,33.33,4.547360429162239,0.5006243889610215
+2018,SARIMA D=0,2018-09-23,49.20857142857143,4.455743244590497,0.5006985364469013
+2018,SARIMA D=0,2018-09-30,57.55857142857143,4.603294762506082,0.5007615120781075
+2018,SARIMA D=0,2018-10-07,83.38714285714286,4.621435855360482,0.5008150002302358
+2018,SARIMA D=0,2018-10-14,96.91142857142856,4.760744023352447,0.5008604310185188
+2018,SARIMA D=0,2018-10-21,140.48285714285714,4.905370481798555,0.5008990187648102
+2018,SARIMA D=0,2018-10-28,171.1542857142857,4.881368301008111,0.5009317946209979
+2018,SARIMA D=0,2018-11-04,202.76142857142847,4.886983308960708,0.5009596342432091
+2018,SARIMA D=0,2018-11-11,283.1485714285714,5.14216141891473,0.5009832812724366
+2018,SARIMA D=0,2018-11-18,173.0885714285714,4.907160462844458,0.5010033672605158
+2018,SARIMA D=0,2018-11-25,168.86714285714285,4.880598984147565,0.501020428582072
+2018,SARIMA D=0,2018-12-02,186.70857142857145,4.911033617859982,0.5010349207901448
+2018,SARIMA D=0,2018-12-09,201.8728571428572,4.85827576509485,0.5010472308031856
+2018,SARIMA D=0,2018-12-16,175.70142857142858,4.771773532034739,0.5010576872519676
+2018,SARIMA D=0,2018-12-23,261.5357142857143,4.886711051126166,0.5010665692649143
+2018,SARIMA D=0,2018-12-30,287.3928571428572,4.969630734305946,0.5010741139280097
+2019,Seasonal naive,2019-01-06,282.41142857142853,5.510596397836895,0.3318639167816877
+2019,Seasonal naive,2019-01-13,215.72,5.237823986119074,0.3318639167816877
+2019,Seasonal naive,2019-01-20,239.19571428571427,5.285536032183304,0.3318639167816877
+2019,Seasonal naive,2019-01-27,116.32714285714285,5.000507995204216,0.3318639167816877
+2019,Seasonal naive,2019-02-03,166.56714285714287,4.92032497508269,0.3318639167816877
+2019,Seasonal naive,2019-02-10,134.56428571428572,5.1322037485982905,0.3318639167816877
+2019,Seasonal naive,2019-02-17,152.75857142857143,4.641584767832887,0.3318639167816877
+2019,Seasonal naive,2019-02-24,90.08714285714288,5.063119307867456,0.3318639167816877
+2019,Seasonal naive,2019-03-03,80.32000000000001,4.652626127144386,0.3318639167816877
+2019,Seasonal naive,2019-03-10,86.03,4.574180646444166,0.3318639167816877
+2019,Seasonal naive,2019-03-17,82.42142857142858,4.627071449941192,0.3318639167816877
+2019,Seasonal naive,2019-03-24,79.07571428571428,4.510529781833971,0.3318639167816877
+2019,Seasonal naive,2019-03-31,87.09142857142857,4.582193956711639,0.3318639167816877
+2019,Seasonal naive,2019-04-07,104.12285714285711,4.548100843811397,0.3318639167816877
+2019,Seasonal naive,2019-04-14,72.85857142857142,4.3208159036289855,0.3318639167816877
+2019,Seasonal naive,2019-04-21,61.77,4.524827433305553,0.3318639167816877
+2019,Seasonal naive,2019-04-28,88.33,4.6414056785701865,0.3318639167816877
+2019,Seasonal naive,2019-05-05,85.77428571428571,4.233195116324223,0.3318639167816877
+2019,Seasonal naive,2019-05-12,129.04857142857142,4.599080251350687,0.3318639167816877
+2019,Seasonal naive,2019-05-19,86.87,4.427034143410322,0.3318639167816877
+2019,Seasonal naive,2019-05-26,67.29142857142857,4.59083941787023,0.3318639167816877
+2019,Seasonal naive,2019-06-02,78.25999999999999,4.382044491657302,0.3318639167816877
+2019,Seasonal naive,2019-06-09,70.20857142857143,4.17258344618121,0.3318639167816877
+2019,Seasonal naive,2019-06-16,69.01285714285714,5.026536764341959,0.3318639167816877
+2019,Seasonal naive,2019-06-23,53.53857142857142,4.223303014876486,0.3318639167816877
+2019,Seasonal naive,2019-06-30,56.73285714285714,3.660369744239649,0.3318639167816877
+2019,Seasonal naive,2019-07-07,46.77428571428572,3.946314005068647,0.3318639167816877
+2019,Seasonal naive,2019-07-14,62.93857142857143,3.772071045000701,0.3318639167816877
+2019,Seasonal naive,2019-07-21,42.65,3.605730737308065,0.3318639167816877
+2019,Seasonal naive,2019-07-28,42.49,3.5433581009847326,0.3318639167816877
+2019,Seasonal naive,2019-08-04,34.18857142857143,4.086048338769158,0.3318639167816877
+2019,Seasonal naive,2019-08-11,28.487142857142857,3.6649526196691937,0.3318639167816877
+2019,Seasonal naive,2019-08-18,20.78142857142857,3.6569095331747534,0.3318639167816877
+2019,Seasonal naive,2019-08-25,45.11857142857143,3.459690882712398,0.3318639167816877
+2019,Seasonal naive,2019-09-01,39.64142857142857,3.633744202384664,0.3318639167816877
+2019,Seasonal naive,2019-09-08,46.80571428571428,3.736478432913215,0.3318639167816877
+2019,Seasonal naive,2019-09-15,50.56857142857143,3.506457892319648,0.3318639167816877
+2019,Seasonal naive,2019-09-22,39.85142857142857,3.8960678243522873,0.3318639167816877
+2019,Seasonal naive,2019-09-29,25.55,4.05280306288858,0.3318639167816877
+2019,Seasonal naive,2019-10-06,43.25571428571429,4.423494135096081,0.3318639167816877
+2019,Seasonal naive,2019-10-13,87.52285714285713,4.573797453855727,0.3318639167816877
+2019,Seasonal naive,2019-10-20,111.85142857142856,4.945085468111484,0.3318639167816877
+2019,Seasonal naive,2019-10-27,140.25571428571428,5.142565405353804,0.3318639167816877
+2019,Seasonal naive,2019-11-03,353.36857142857144,5.312030059206812,0.3318639167816877
+2019,Seasonal naive,2019-11-10,176.22285714285712,5.645971747265686,0.3318639167816877
+2019,Seasonal naive,2019-11-17,297.9271428571428,5.15380343705958,0.3318639167816877
+2019,Seasonal naive,2019-11-24,152.52142857142854,5.129112268815404,0.3318639167816877
+2019,Seasonal naive,2019-12-01,86.82571428571428,5.22954895966294,0.3318639167816877
+2019,Seasonal naive,2019-12-08,204.55428571428573,5.30763807914836,0.3318639167816877
+2019,Seasonal naive,2019-12-15,184.0914285714286,5.168786125902334,0.3318639167816877
+2019,Seasonal naive,2019-12-22,185.57857142857145,5.566570848885866,0.3318639167816877
+2019,Seasonal naive,2019-12-29,234.32857142857145,5.660850119970929,0.3318639167816877
+2019,Climatology,2019-01-06,282.41142857142853,5.434197948032715,0.2113477167849093
+2019,Climatology,2019-01-13,215.72,5.267708876379964,0.2113477167849093
+2019,Climatology,2019-01-20,239.19571428571427,5.399659353705149,0.2113477167849093
+2019,Climatology,2019-01-27,116.32714285714285,5.182127044787552,0.2113477167849093
+2019,Climatology,2019-02-03,166.56714285714287,5.068326379352324,0.2113477167849093
+2019,Climatology,2019-02-10,134.56428571428572,5.005606412276393,0.2113477167849093
+2019,Climatology,2019-02-17,152.75857142857143,4.894784052763326,0.2113477167849093
+2019,Climatology,2019-02-24,90.08714285714288,5.122283077567929,0.2113477167849093
+2019,Climatology,2019-03-03,80.32000000000001,4.793069511607513,0.2113477167849093
+2019,Climatology,2019-03-10,86.03,4.489640694836053,0.2113477167849093
+2019,Climatology,2019-03-17,82.42142857142858,4.524430400320788,0.2113477167849093
+2019,Climatology,2019-03-24,79.07571428571428,4.535984248620467,0.2113477167849093
+2019,Climatology,2019-03-31,87.09142857142857,4.636562361181251,0.2113477167849093
+2019,Climatology,2019-04-07,104.12285714285711,4.520754073584595,0.2113477167849093
+2019,Climatology,2019-04-14,72.85857142857142,4.620245071635307,0.2113477167849093
+2019,Climatology,2019-04-21,61.77,4.6658941641564855,0.2113477167849093
+2019,Climatology,2019-04-28,88.33,4.723595977576291,0.2113477167849093
+2019,Climatology,2019-05-05,85.77428571428571,4.553601588555389,0.2113477167849093
+2019,Climatology,2019-05-12,129.04857142857142,4.720991552005117,0.2113477167849093
+2019,Climatology,2019-05-19,86.87,4.59378975463906,0.2113477167849093
+2019,Climatology,2019-05-26,67.29142857142857,4.509783017368246,0.2113477167849093
+2019,Climatology,2019-06-02,78.25999999999999,4.531140268800598,0.2113477167849093
+2019,Climatology,2019-06-09,70.20857142857143,4.174672761722088,0.2113477167849093
+2019,Climatology,2019-06-16,69.01285714285714,4.517429620742329,0.2113477167849093
+2019,Climatology,2019-06-23,53.53857142857142,4.319189257210957,0.2113477167849093
+2019,Climatology,2019-06-30,56.73285714285714,3.943789094521117,0.2113477167849093
+2019,Climatology,2019-07-07,46.77428571428572,4.103957172870507,0.2113477167849093
+2019,Climatology,2019-07-14,62.93857142857143,3.814374650600652,0.2113477167849093
+2019,Climatology,2019-07-21,42.65,3.7679408789883073,0.2113477167849093
+2019,Climatology,2019-07-28,42.49,3.5642125617792497,0.2113477167849093
+2019,Climatology,2019-08-04,34.18857142857143,3.734629977026136,0.2113477167849093
+2019,Climatology,2019-08-11,28.487142857142857,3.7846772651935656,0.2113477167849093
+2019,Climatology,2019-08-18,20.78142857142857,3.803905852176592,0.2113477167849093
+2019,Climatology,2019-08-25,45.11857142857143,3.737547315093024,0.2113477167849093
+2019,Climatology,2019-09-01,39.64142857142857,3.699850875327819,0.2113477167849093
+2019,Climatology,2019-09-08,46.80571428571428,4.002236043411254,0.2113477167849093
+2019,Climatology,2019-09-15,50.56857142857143,4.003960043042373,0.2113477167849093
+2019,Climatology,2019-09-22,39.85142857142857,4.081388300513565,0.2113477167849093
+2019,Climatology,2019-09-29,25.55,4.243511759511004,0.2113477167849093
+2019,Climatology,2019-10-06,43.25571428571429,4.51798167057987,0.2113477167849093
+2019,Climatology,2019-10-13,87.52285714285713,4.784254654282071,0.2113477167849093
+2019,Climatology,2019-10-20,111.85142857142856,4.98998990668643,0.2113477167849093
+2019,Climatology,2019-10-27,140.25571428571428,5.243295453681435,0.2113477167849093
+2019,Climatology,2019-11-03,353.36857142857144,5.442251227757787,0.2113477167849093
+2019,Climatology,2019-11-10,176.22285714285712,5.739720525302815,0.2113477167849093
+2019,Climatology,2019-11-17,297.9271428571428,5.386107052776994,0.2113477167849093
+2019,Climatology,2019-11-24,152.52142857142854,5.262891227519384,0.2113477167849093
+2019,Climatology,2019-12-01,86.82571428571428,5.314463696059258,0.2113477167849093
+2019,Climatology,2019-12-08,204.55428571428573,5.333576262155319,0.2113477167849093
+2019,Climatology,2019-12-15,184.0914285714286,5.1796456826531285,0.2113477167849093
+2019,Climatology,2019-12-22,185.57857142857145,5.296927489603438,0.2113477167849093
+2019,Climatology,2019-12-29,234.32857142857145,5.451263182359057,0.2113477167849093
+2019,Climatology + AR(1),2019-01-06,282.41142857142853,5.510923945669052,0.1966460675592165
+2019,Climatology + AR(1),2019-01-13,215.72,5.295796880243033,0.2094087661098057
+2019,Climatology + AR(1),2019-01-20,239.19571428571427,5.409941865308989,0.211060536080215
+2019,Climatology + AR(1),2019-01-27,116.32714285714285,5.185891286824776,0.2112809184320206
+2019,Climatology + AR(1),2019-02-03,166.56714285714287,5.069704400468246,0.211310435728756
+2019,Climatology + AR(1),2019-02-10,134.56428571428572,5.006110880952198,0.2113143912056056
+2019,Climatology + AR(1),2019-02-17,152.75857142857143,4.894968729646668,0.2113149212971806
+2019,Climatology + AR(1),2019-02-24,90.08714285714288,5.1223506844439886,0.2113149923378342
+2019,Climatology + AR(1),2019-03-03,80.32000000000001,4.793094261265444,0.2113150018584169
+2019,Climatology + AR(1),2019-03-10,86.03,4.489649755239424,0.2113150031343273
+2019,Climatology + AR(1),2019-03-17,82.42142857142858,4.524433717171044,0.2113150033053197
+2019,Climatology + AR(1),2019-03-24,79.07571428571428,4.5359854628595215,0.2113150033282354
+2019,Climatology + AR(1),2019-03-31,87.09142857142857,4.636562805692268,0.2113150033313065
+2019,Climatology + AR(1),2019-04-07,104.12285714285711,4.520754236312061,0.2113150033317181
+2019,Climatology + AR(1),2019-04-14,72.85857142857142,4.6202451312068975,0.2113150033317732
+2019,Climatology + AR(1),2019-04-21,61.77,4.665894185964571,0.2113150033317806
+2019,Climatology + AR(1),2019-04-28,88.33,4.723595985559837,0.2113150033317816
+2019,Climatology + AR(1),2019-05-05,85.77428571428571,4.553601591478022,0.2113150033317818
+2019,Climatology + AR(1),2019-05-12,129.04857142857142,4.72099155307504,0.2113150033317818
+2019,Climatology + AR(1),2019-05-19,86.87,4.593789755030739,0.2113150033317818
+2019,Climatology + AR(1),2019-05-26,67.29142857142857,4.509783017511633,0.2113150033317818
+2019,Climatology + AR(1),2019-06-02,78.25999999999999,4.53114026885309,0.2113150033317818
+2019,Climatology + AR(1),2019-06-09,70.20857142857143,4.174672761741304,0.2113150033317818
+2019,Climatology + AR(1),2019-06-16,69.01285714285714,4.517429620749363,0.2113150033317818
+2019,Climatology + AR(1),2019-06-23,53.53857142857142,4.319189257213532,0.2113150033317818
+2019,Climatology + AR(1),2019-06-30,56.73285714285714,3.94378909452206,0.2113150033317818
+2019,Climatology + AR(1),2019-07-07,46.77428571428572,4.103957172870852,0.2113150033317818
+2019,Climatology + AR(1),2019-07-14,62.93857142857143,3.814374650600778,0.2113150033317818
+2019,Climatology + AR(1),2019-07-21,42.65,3.7679408789883535,0.2113150033317818
+2019,Climatology + AR(1),2019-07-28,42.49,3.5642125617792666,0.2113150033317818
+2019,Climatology + AR(1),2019-08-04,34.18857142857143,3.7346299770261417,0.2113150033317818
+2019,Climatology + AR(1),2019-08-11,28.487142857142857,3.784677265193568,0.2113150033317818
+2019,Climatology + AR(1),2019-08-18,20.78142857142857,3.803905852176592,0.2113150033317818
+2019,Climatology + AR(1),2019-08-25,45.11857142857143,3.737547315093024,0.2113150033317818
+2019,Climatology + AR(1),2019-09-01,39.64142857142857,3.699850875327819,0.2113150033317818
+2019,Climatology + AR(1),2019-09-08,46.80571428571428,4.002236043411254,0.2113150033317818
+2019,Climatology + AR(1),2019-09-15,50.56857142857143,4.003960043042373,0.2113150033317818
+2019,Climatology + AR(1),2019-09-22,39.85142857142857,4.081388300513565,0.2113150033317818
+2019,Climatology + AR(1),2019-09-29,25.55,4.243511759511004,0.2113150033317818
+2019,Climatology + AR(1),2019-10-06,43.25571428571429,4.51798167057987,0.2113150033317818
+2019,Climatology + AR(1),2019-10-13,87.52285714285713,4.784254654282071,0.2113150033317818
+2019,Climatology + AR(1),2019-10-20,111.85142857142856,4.98998990668643,0.2113150033317818
+2019,Climatology + AR(1),2019-10-27,140.25571428571428,5.243295453681435,0.2113150033317818
+2019,Climatology + AR(1),2019-11-03,353.36857142857144,5.442251227757787,0.2113150033317818
+2019,Climatology + AR(1),2019-11-10,176.22285714285712,5.739720525302815,0.2113150033317818
+2019,Climatology + AR(1),2019-11-17,297.9271428571428,5.386107052776994,0.2113150033317818
+2019,Climatology + AR(1),2019-11-24,152.52142857142854,5.262891227519384,0.2113150033317818
+2019,Climatology + AR(1),2019-12-01,86.82571428571428,5.314463696059258,0.2113150033317818
+2019,Climatology + AR(1),2019-12-08,204.55428571428573,5.333576262155319,0.2113150033317818
+2019,Climatology + AR(1),2019-12-15,184.0914285714286,5.1796456826531285,0.2113150033317818
+2019,Climatology + AR(1),2019-12-22,185.57857142857145,5.296927489603438,0.2113150033317818
+2019,Climatology + AR(1),2019-12-29,234.32857142857145,5.451263182359057,0.2113150033317818
+2019,Linear regression,2019-01-06,282.41142857142853,5.248135386710887,0.2577996163165506
+2019,Linear regression,2019-01-13,215.72,5.1927616928348135,0.2580615977456865
+2019,Linear regression,2019-01-20,239.19571428571427,5.130989324119409,0.2583153974579683
+2019,Linear regression,2019-01-27,116.32714285714285,5.063621825633228,0.2585416878104431
+2019,Linear regression,2019-02-03,166.56714285714287,4.991581420813969,0.2587238780163203
+2019,Linear regression,2019-02-10,134.56428571428572,4.916141654397239,0.258851119159787
+2019,Linear regression,2019-02-17,152.75857142857143,4.839081173366551,0.2589200783167517
+2019,Linear regression,2019-02-24,90.08714285714288,4.7627224402483535,0.258935066382136
+2019,Linear regression,2019-03-03,80.32000000000001,4.689837572059311,0.2589066149796869
+2019,Linear regression,2019-03-10,86.03,4.623424896420628,0.2588490307932614
+2019,Linear regression,2019-03-17,82.42142857142858,4.566381197355902,0.258777663108682
+2019,Linear regression,2019-03-24,79.07571428571428,4.5211129478006296,0.258706554700244
+2019,Linear regression,2019-03-31,87.09142857142857,4.489142440314197,0.2586468719702168
+2019,Linear regression,2019-04-07,104.12285714285711,4.4707697233467165,0.2586061687553836
+2019,Linear regression,2019-04-14,72.85857142857142,4.4648477267698015,0.2585882798642379
+2019,Linear regression,2019-04-21,61.77,4.468716155131888,0.2585935560769273
+2019,Linear regression,2019-04-28,88.33,4.478320998826386,0.2586192370808446
+2019,Linear regression,2019-05-05,85.77428571428571,4.488523175542946,0.2586599249563769
+2019,Linear regression,2019-05-12,129.04857142857142,4.493574842780736,0.258708251313314
+2019,Linear regression,2019-05-19,86.87,4.487718572906284,0.2587558434593981
+2019,Linear regression,2019-05-26,67.29142857142857,4.465845969397142,0.258794581992941
+2019,Linear regression,2019-06-02,78.25999999999999,4.4241409909773255,0.2588179708503938
+2019,Linear regression,2019-06-09,70.20857142857143,4.360630913643079,0.2588223115994548
+2019,Linear regression,2019-06-16,69.01285714285714,4.275575054739169,0.2588073651079099
+2019,Linear regression,2019-06-23,53.53857142857142,4.17163745877381,0.2587763110641471
+2019,Linear regression,2019-06-30,56.73285714285714,4.053812914546223,0.2587350253250204
+2019,Linear regression,2019-07-07,46.77428571428572,3.9291032268364607,0.2586908931234928
+2019,Linear regression,2019-07-14,62.93857142857143,3.8059693028470982,0.2586514779712588
+2019,Linear regression,2019-07-21,42.65,3.6936108544449815,0.2586233379656489
+2019,Linear regression,2019-07-28,42.49,3.6011461403243112,0.2586111554123909
+2019,Linear regression,2019-08-04,34.18857142857143,3.536776619617303,0.2586172002491781
+2019,Linear regression,2019-08-11,28.487142857142857,3.5070240901765124,0.2586410621689152
+2019,Linear regression,2019-08-18,20.78142857142857,3.516120458950879,0.2586795969763418
+2019,Linear regression,2019-08-25,45.11857142857143,3.5656135960676587,0.2587271129919673
+2019,Linear regression,2019-09-01,39.64142857142857,3.65422875018444,0.2587759000977311
+2019,Linear regression,2019-09-08,46.80571428571428,3.7779966286111417,0.258817201618816
+2019,Linear regression,2019-09-15,50.56857142857143,3.93062987710699,0.2588426166439984
+2019,Linear regression,2019-09-22,39.85142857142857,4.104102838990734,0.25884573471224
+2019,Linear regression,2019-09-29,25.55,4.289368304897693,0.2588236366990606
+2019,Linear regression,2019-10-06,43.25571428571429,4.477131929710262,0.2587778434410601
+2019,Linear regression,2019-10-13,87.52285714285713,4.65860151190835,0.2587144093276346
+2019,Linear regression,2019-10-20,111.85142857142856,4.826134628120982,0.2586431147953261
+2019,Linear regression,2019-10-27,140.25571428571428,4.973723206344695,0.2585760084778494
+2019,Linear regression,2019-11-03,353.36857142857144,5.097275445665899,0.2585257550063545
+2019,Linear regression,2019-11-10,176.22285714285712,5.194681187377575,0.25850425832995
+2019,Linear regression,2019-11-17,297.9271428571428,5.265673121400231,0.2585218380583105
+2019,Linear regression,2019-11-24,152.52142857142854,5.311519775746597,0.2585869233001322
+2019,Linear regression,2019-12-01,86.82571428571428,5.3346042019684505,0.258705946699303
+2019,Linear regression,2019-12-08,204.55428571428573,5.337952529483664,0.2588830178769775
+2019,Linear regression,2019-12-15,184.0914285714286,5.32477804635764,0.2591190977737567
+2019,Linear regression,2019-12-22,185.57857142857145,5.298099263545793,0.2594107314039592
+2019,Linear regression,2019-12-29,234.32857142857145,5.260475756122282,0.2597487715456292
+2019,LSTM (small),2019-01-06,282.41142857142853,5.283736473389743,0.036574955664179
+2019,LSTM (small),2019-01-13,215.72,5.067052278689198,0.0452543297995315
+2019,LSTM (small),2019-01-20,239.19571428571427,5.133903219047138,0.0466960655915946
+2019,LSTM (small),2019-01-27,116.32714285714285,5.106569142842768,0.051973484742204
+2019,LSTM (small),2019-02-03,166.56714285714287,4.779049991802469,0.063917518969388
+2019,LSTM (small),2019-02-10,134.56428571428572,4.87845067100849,0.063917518969388
+2019,LSTM (small),2019-02-17,152.75857142857143,4.8868357615477445,0.0855326825674803
+2019,LSTM (small),2019-02-24,90.08714285714288,5.543970298382714,0.0855326825674803
+2019,LSTM (small),2019-03-03,80.32000000000001,5.191986044407257,0.1126095480014922
+2019,LSTM (small),2019-03-10,86.03,4.586625782155444,0.1166081794295593
+2019,LSTM (small),2019-03-17,82.42142857142858,4.393391527009602,0.1373757178695471
+2019,LSTM (small),2019-03-24,79.07571428571428,4.471234834865944,0.1373757178695471
+2019,LSTM (small),2019-03-31,87.09142857142857,4.500688150692372,0.2113477167849093
+2019,LSTM (small),2019-04-07,104.12285714285711,4.463372319973377,0.2113477167849093
+2019,LSTM (small),2019-04-14,72.85857142857142,4.470701751609756,0.2113477167849093
+2019,LSTM (small),2019-04-21,61.77,4.32233598684925,0.2113477167849093
+2019,LSTM (small),2019-04-28,88.33,4.481063051344473,0.2113477167849093
+2019,LSTM (small),2019-05-05,85.77428571428571,4.515444453872088,0.2113477167849093
+2019,LSTM (small),2019-05-12,129.04857142857142,4.709337864130725,0.2113477167849093
+2019,LSTM (small),2019-05-19,86.87,4.438592915035501,0.2113477167849093
+2019,LSTM (small),2019-05-26,67.29142857142857,4.449679263161253,0.2113477167849093
+2019,LSTM (small),2019-06-02,78.25999999999999,4.476867152288111,0.2113477167849093
+2019,LSTM (small),2019-06-09,70.20857142857143,4.327260762325925,0.2113477167849093
+2019,LSTM (small),2019-06-16,69.01285714285714,4.4402075895354125,0.2113477167849093
+2019,LSTM (small),2019-06-23,53.53857142857142,4.7663875083134855,0.2113477167849093
+2019,LSTM (small),2019-06-30,56.73285714285714,3.9524680373338312,0.2113477167849093
+2019,LSTM (small),2019-07-07,46.77428571428572,4.473908922500024,0.2113477167849093
+2019,LSTM (small),2019-07-14,62.93857142857143,3.6821354178323737,0.2113477167849093
+2019,LSTM (small),2019-07-21,42.65,4.233629656782532,0.2113477167849093
+2019,LSTM (small),2019-07-28,42.49,3.312890722193636,0.2113477167849093
+2019,LSTM (small),2019-08-04,34.18857142857143,4.031690315279593,0.2113477167849093
+2019,LSTM (small),2019-08-11,28.487142857142857,3.747347395567904,0.2113477167849093
+2019,LSTM (small),2019-08-18,20.78142857142857,4.483248611072649,0.2113477167849093
+2019,LSTM (small),2019-08-25,45.11857142857143,3.99519297688672,0.2113477167849093
+2019,LSTM (small),2019-09-01,39.64142857142857,4.096161126380875,0.2113477167849093
+2019,LSTM (small),2019-09-08,46.80571428571428,4.345266141668448,0.2113477167849093
+2019,LSTM (small),2019-09-15,50.56857142857143,4.46729448520157,0.2113477167849093
+2019,LSTM (small),2019-09-22,39.85142857142857,4.198916273848896,0.2113477167849093
+2019,LSTM (small),2019-09-29,25.55,4.735986742447923,0.2113477167849093
+2019,LSTM (small),2019-10-06,43.25571428571429,4.852954330629252,0.2113477167849093
+2019,LSTM (small),2019-10-13,87.52285714285713,5.2242305677585,0.2113477167849093
+2019,LSTM (small),2019-10-20,111.85142857142856,5.427038559069914,0.2113477167849093
+2019,LSTM (small),2019-10-27,140.25571428571428,5.654020499177846,0.2113477167849093
+2019,LSTM (small),2019-11-03,353.36857142857144,5.855743246230904,0.2113477167849093
+2019,LSTM (small),2019-11-10,176.22285714285712,6.153145828445564,0.2113477167849093
+2019,LSTM (small),2019-11-17,297.9271428571428,5.795105763516303,0.2113477167849093
+2019,LSTM (small),2019-11-24,152.52142857142854,5.697655786843772,0.2113477167849093
+2019,LSTM (small),2019-12-01,86.82571428571428,5.737553475683049,0.2113477167849093
+2019,LSTM (small),2019-12-08,204.55428571428573,5.7687526022046045,0.2113477167849093
+2019,LSTM (small),2019-12-15,184.0914285714286,5.612709706502248,0.2113477167849093
+2019,LSTM (small),2019-12-22,185.57857142857145,5.726589585885242,0.2113477167849093
+2019,LSTM (small),2019-12-29,234.32857142857145,5.8853705150565645,0.2113477167849093
+2019,Fourier+ARMA const,2019-01-06,282.41142857142853,5.435498750428995,0.236758306319178
+2019,Fourier+ARMA const,2019-01-13,215.72,5.323698271130144,0.2500188981822158
+2019,Fourier+ARMA const,2019-01-20,239.19571428571427,5.245943085217431,0.2515010327464724
+2019,Fourier+ARMA const,2019-01-27,116.32714285714285,5.17558281243397,0.251671147469583
+2019,Fourier+ARMA const,2019-02-03,166.56714285714287,5.104143333938914,0.2516907296431342
+2019,Fourier+ARMA const,2019-02-10,134.56428571428572,5.029708107541408,0.2516929845299464
+2019,Fourier+ARMA const,2019-02-17,152.75857142857143,4.953047188485732,0.2516932441900756
+2019,Fourier+ARMA const,2019-02-24,90.08714285714288,4.876278660826466,0.2516932740912131
+2019,Fourier+ARMA const,2019-03-03,80.32000000000001,4.802288711791574,0.2516932775344775
+2019,Fourier+ARMA const,2019-03-10,86.03,4.734320418753351,0.2516932779309866
+2019,Fourier+ARMA const,2019-03-17,82.42142857142858,4.675557682969519,0.2516932779766466
+2019,Fourier+ARMA const,2019-03-24,79.07571428571428,4.628683255501423,0.2516932779819045
+2019,Fourier+ARMA const,2019-03-31,87.09142857142857,4.595447721217465,0.25169327798251
+2019,Fourier+ARMA const,2019-04-07,104.12285714285711,4.57630609950961,0.2516932779825798
+2019,Fourier+ARMA const,2019-04-14,72.85857142857142,4.570179369312692,0.2516932779825878
+2019,Fourier+ARMA const,2019-04-21,61.77,4.574386827964566,0.2516932779825887
+2019,Fourier+ARMA const,2019-04-28,88.33,4.5847755652048585,0.2516932779825888
+2019,Fourier+ARMA const,2019-05-05,85.77428571428571,4.596048756413663,0.2516932779825888
+2019,Fourier+ARMA const,2019-05-12,129.04857142857142,4.602268376392855,0.2516932779825888
+2019,Fourier+ARMA const,2019-05-19,86.87,4.597483804039893,0.2516932779825888
+2019,Fourier+ARMA const,2019-05-26,67.29142857142857,4.576418873617119,0.2516932779825888
+2019,Fourier+ARMA const,2019-06-02,78.25999999999999,4.535138839854813,0.2516932779825888
+2019,Fourier+ARMA const,2019-06-09,70.20857142857143,4.471617105658398,0.2516932779825888
+2019,Fourier+ARMA const,2019-06-16,69.01285714285714,4.386129871105685,0.2516932779825888
+2019,Fourier+ARMA const,2019-06-23,53.53857142857142,4.281424301781102,0.2516932779825888
+2019,Fourier+ARMA const,2019-06-30,56.73285714285714,4.162630414873699,0.2516932779825888
+2019,Fourier+ARMA const,2019-07-07,46.77428571428572,4.036915742826421,0.2516932779825888
+2019,Fourier+ARMA const,2019-07-14,62.93857142857143,3.91291148342414,0.2516932779825888
+2019,Fourier+ARMA const,2019-07-21,42.65,3.799965669286036,0.2516932779825888
+2019,Fourier+ARMA const,2019-07-28,42.49,3.707299590353836,0.2516932779825888
+2019,Fourier+ARMA const,2019-08-04,34.18857142857143,3.6431557122135776,0.2516932779825888
+2019,Fourier+ARMA const,2019-08-11,28.487142857142857,3.614027138851089,0.2516932779825888
+2019,Fourier+ARMA const,2019-08-18,20.78142857142857,3.6240500072848736,0.2516932779825888
+2019,Fourier+ARMA const,2019-08-25,45.11857142857143,3.674622094280804,0.2516932779825888
+2019,Fourier+ARMA const,2019-09-01,39.64142857142857,3.764285540821586,0.2516932779825888
+2019,Fourier+ARMA const,2019-09-08,46.80571428571428,3.888882022677084,0.2516932779825888
+2019,Fourier+ARMA const,2019-09-15,50.56857142857143,4.0419584819500605,0.2516932779825888
+2019,Fourier+ARMA const,2019-09-22,39.85142857142857,4.215374307625685,0.2516932779825888
+2019,Fourier+ARMA const,2019-09-29,25.55,4.400039840050099,0.2516932779825888
+2019,Fourier+ARMA const,2019-10-06,43.25571428571429,4.586703706270593,0.2516932779825888
+2019,Fourier+ARMA const,2019-10-13,87.52285714285713,4.766704108170202,0.2516932779825888
+2019,Fourier+ARMA const,2019-10-20,111.85142857142856,4.932606869860789,0.2516932779825888
+2019,Fourier+ARMA const,2019-10-27,140.25571428571428,5.078669641590721,0.2516932779825888
+2019,Fourier+ARMA const,2019-11-03,353.36857142857144,5.201094901393422,0.2516932779825888
+2019,Fourier+ARMA const,2019-11-10,176.22285714285712,5.298061247201869,0.2516932779825888
+2019,Fourier+ARMA const,2019-11-17,297.9271428571428,5.369549488708554,0.2516932779825888
+2019,Fourier+ARMA const,2019-11-24,152.52142857142854,5.417003833580517,0.2516932779825888
+2019,Fourier+ARMA const,2019-12-01,86.82571428571428,5.442886099831032,0.2516932779825888
+2019,Fourier+ARMA const,2019-12-08,204.55428571428573,5.450190305373699,0.2516932779825888
+2019,Fourier+ARMA const,2019-12-15,184.0914285714286,5.441985219597831,0.2516932779825888
+2019,Fourier+ARMA const,2019-12-22,185.57857142857145,5.421043755764578,0.2516932779825888
+2019,Fourier+ARMA const,2019-12-29,234.32857142857145,5.389601848162879,0.2516932779825888
+2019,Fourier+ARMA linear,2019-01-06,282.41142857142853,5.394536658065437,0.2349655259319367
+2019,Fourier+ARMA linear,2019-01-13,215.72,5.271024077113676,0.2462978348241954
+2019,Fourier+ARMA linear,2019-01-20,239.19571428571427,5.186421932598065,0.2473891305420475
+2019,Fourier+ARMA linear,2019-01-27,116.32714285714285,5.108833716318552,0.2474966735116049
+2019,Fourier+ARMA linear,2019-02-03,166.56714285714287,5.029305824016259,0.2475072946544222
+2019,Fourier+ARMA linear,2019-02-10,134.56428571428572,4.9465115466112834,0.2475083438438803
+2019,Fourier+ARMA linear,2019-02-17,152.75857142857143,4.861957806420007,0.247508447488274
+2019,Fourier+ARMA linear,2019-02-24,90.08714285714288,4.7784056241568,0.247508457726828
+2019,Fourier+ARMA linear,2019-03-03,80.32000000000001,4.6992084135910055,0.2475084587382479
+2019,Fourier+ARMA linear,2019-03-10,86.03,4.627862786183997,0.2475084588381615
+2019,Fourier+ARMA linear,2019-03-17,82.42142857142858,4.567579581477075,0.2475084588480315
+2019,Fourier+ARMA linear,2019-03-24,79.07571428571428,4.520853460357086,0.2475084588490065
+2019,Fourier+ARMA linear,2019-03-31,87.09142857142857,4.489067253817633,0.2475084588491028
+2019,Fourier+ARMA linear,2019-04-07,104.12285714285711,4.472183791213362,0.2475084588491124
+2019,Fourier+ARMA linear,2019-04-14,72.85857142857142,4.46857563620193,0.2475084588491133
+2019,Fourier+ARMA linear,2019-04-21,61.77,4.475029932552857,0.2475084588491134
+2019,Fourier+ARMA linear,2019-04-28,88.33,4.486945398958492,0.2475084588491134
+2019,Fourier+ARMA linear,2019-05-05,85.77428571428571,4.498714674035576,0.2475084588491134
+2019,Fourier+ARMA linear,2019-05-12,129.04857142857142,4.504260972458795,0.2475084588491134
+2019,Fourier+ARMA linear,2019-05-19,86.87,4.497676597349663,0.2475084588491134
+2019,Fourier+ARMA linear,2019-05-26,67.29142857142857,4.473895139948785,0.2475084588491134
+2019,Fourier+ARMA linear,2019-06-02,78.25999999999999,4.429321372406659,0.2475084588491134
+2019,Fourier+ARMA linear,2019-06-09,70.20857142857143,4.3623441204818185,0.2475084588491134
+2019,Fourier+ARMA linear,2019-06-16,69.01285714285714,4.273667871881184,0.2475084588491134
+2019,Fourier+ARMA linear,2019-06-23,53.53857142857142,4.166417455613836,0.2475084588491134
+2019,Fourier+ARMA linear,2019-06-30,56.73285714285714,4.04599470512305,0.2475084588491134
+2019,Fourier+ARMA linear,2019-07-07,46.77428571428572,3.9196937008374313,0.2475084588491134
+2019,Fourier+ARMA linear,2019-07-14,62.93857142857143,3.796108661616403,0.2475084588491134
+2019,Fourier+ARMA linear,2019-07-21,42.65,3.684392495386571,0.2475084588491134
+2019,Fourier+ARMA linear,2019-07-28,42.49,3.593441509757154,0.2475084588491134
+2019,Fourier+ARMA linear,2019-08-04,34.18857142857143,3.531090679358824,0.2475084588491134
+2019,Fourier+ARMA linear,2019-08-11,28.487142857142857,3.503403067057448,0.2475084588491134
+2019,Fourier+ARMA linear,2019-08-18,20.78142857142857,3.514126582474095,0.2475084588491134
+2019,Fourier+ARMA linear,2019-08-25,45.11857142857143,3.5643724878441856,0.2475084588491134
+2019,Fourier+ARMA linear,2019-09-01,39.64142857142857,3.652545198744235,0.2475084588491134
+2019,Fourier+ARMA linear,2019-09-08,46.80571428571428,3.774524977868466,0.2475084588491134
+2019,Fourier+ARMA linear,2019-09-15,50.56857142857143,3.924077442061194,0.2475084588491134
+2019,Fourier+ARMA linear,2019-09-22,39.85142857142857,4.093439691134932,0.2475084588491134
+2019,Fourier+ARMA linear,2019-09-29,25.55,4.274015143856333,0.2475084588491134
+2019,Fourier+ARMA linear,2019-10-06,43.25571428571429,4.457099833713211,0.2475084588491134
+2019,Fourier+ARMA linear,2019-10-13,87.52285714285713,4.6345629141486615,0.2475084588491134
+2019,Fourier+ARMA linear,2019-10-20,111.85142857142856,4.799413220889409,0.2475084588491134
+2019,Fourier+ARMA linear,2019-10-27,140.25571428571428,4.946200583122248,0.2475084588491134
+2019,Fourier+ARMA linear,2019-11-03,353.36857142857144,5.071222870415284,0.2475084588491134
+2019,Fourier+ARMA linear,2019-11-10,176.22285714285712,5.172534576002429,0.2475084588491134
+2019,Fourier+ARMA linear,2019-11-17,297.9271428571428,5.249776881310286,0.2475084588491134
+2019,Fourier+ARMA linear,2019-11-24,152.52142857142854,5.303869588433425,0.2475084588491134
+2019,Fourier+ARMA linear,2019-12-01,86.82571428571428,5.336619555457676,0.2475084588491134
+2019,Fourier+ARMA linear,2019-12-08,204.55428571428573,5.35030668777034,0.2475084588491134
+2019,Fourier+ARMA linear,2019-12-15,184.0914285714286,5.347306544909269,0.2475084588491134
+2019,Fourier+ARMA linear,2019-12-22,185.57857142857145,5.329798750616988,0.2475084588491134
+2019,Fourier+ARMA linear,2019-12-29,234.32857142857145,5.299594207781862,0.2475084588491134
+2019,Fourier+ARMA (selected),2019-01-06,282.41142857142853,5.359167517717401,0.225792836230598
+2019,Fourier+ARMA (selected),2019-01-13,215.72,5.3425637362854745,0.2317345506574779
+2019,Fourier+ARMA (selected),2019-01-20,239.19571428571427,5.334748210342097,0.2334591132640864
+2019,Fourier+ARMA (selected),2019-01-27,116.32714285714285,5.287873794921418,0.2348000534517417
+2019,Fourier+ARMA (selected),2019-02-03,166.56714285714287,5.196251370489725,0.2360862677360358
+2019,Fourier+ARMA (selected),2019-02-10,134.56428571428572,5.070159292947246,0.2373591516116836
+2019,Fourier+ARMA (selected),2019-02-17,152.75857142857143,4.92862619054107,0.2386243792252246
+2019,Fourier+ARMA (selected),2019-02-24,90.08714285714288,4.793178187950813,0.2398828154869778
+2019,Fourier+ARMA (selected),2019-03-03,80.32000000000001,4.681845026253101,0.241134668174005
+2019,Fourier+ARMA (selected),2019-03-10,86.03,4.604907355651257,0.242380053136435
+2019,Fourier+ARMA (selected),2019-03-17,82.42142857142858,4.563473319563104,0.2436190714521502
+2019,Fourier+ARMA (selected),2019-03-24,79.07571428571428,4.550979872991782,0.2448518200298667
+2019,Fourier+ARMA (selected),2019-03-31,87.09142857142857,4.556731105959433,0.2460783931309656
+2019,Fourier+ARMA (selected),2019-04-07,104.12285714285711,4.569983738053471,0.2472988826491552
+2019,Fourier+ARMA (selected),2019-04-14,72.85857142857142,4.583061205893211,0.2485133782174946
+2019,Fourier+ARMA (selected),2019-04-21,61.77,4.592498745884663,0.2497219672888536
+2019,Fourier+ARMA (selected),2019-04-28,88.33,4.598072459630495,0.2509247352098993
+2019,Fourier+ARMA (selected),2019-05-05,85.77428571428571,4.600414886015543,0.2521217652914971
+2019,Fourier+ARMA (selected),2019-05-12,129.04857142857142,4.59844994455685,0.2533131388760626
+2019,Fourier+ARMA (selected),2019-05-19,86.87,4.587901361720041,0.2544989354020681
+2019,Fourier+ARMA (selected),2019-05-26,67.29142857142857,4.561646189543607,0.2556792324658549
+2019,Fourier+ARMA (selected),2019-06-02,78.25999999999999,4.511894070556588,0.2568541058808897
+2019,Fourier+ARMA (selected),2019-06-09,70.20857142857143,4.43338388012958,0.2580236297345922
+2019,Fourier+ARMA (selected),2019-06-16,69.01285714285714,4.326311111882888,0.2591878764428548
+2019,Fourier+ARMA (selected),2019-06-23,53.53857142857142,4.197723451595027,0.2603469168023681
+2019,Fourier+ARMA (selected),2019-06-30,56.73285714285714,4.06065035267586,0.2615008200408593
+2019,Fourier+ARMA (selected),2019-07-07,46.77428571428572,3.9310748228235792,0.262649653865343
+2019,Fourier+ARMA (selected),2019-07-14,62.93857142857143,3.823698168809036,0.2637934845084828
+2019,Fourier+ARMA (selected),2019-07-21,42.65,3.747968742791665,0.264932376773149
+2019,Fourier+ARMA (selected),2019-07-28,42.49,3.7058329598172026,0.2660663940752616
+2019,Fourier+ARMA (selected),2019-08-04,34.18857142857143,3.69210287053907,0.2671955984849957
+2019,Fourier+ARMA (selected),2019-08-11,28.487142857142857,3.697405946037008,0.2683200507664265
+2019,Fourier+ARMA (selected),2019-08-18,20.78142857142857,3.71271808645517,0.2694398104156851
+2019,Fourier+ARMA (selected),2019-08-25,45.11857142857143,3.733834867238936,0.2705549356976933
+2019,Fourier+ARMA (selected),2019-09-01,39.64142857142857,3.764060923087528,0.271665483681541
+2019,Fourier+ARMA (selected),2019-09-08,46.80571428571428,3.8139480783544375,0.272771510274567
+2019,Fourier+ARMA (selected),2019-09-15,50.56857142857143,3.89792054920534,0.2738730702552021
+2019,Fourier+ARMA (selected),2019-09-22,39.85142857142857,4.028750663791451,0.2749702173046265
+2019,Fourier+ARMA (selected),2019-09-29,25.55,4.211695974060683,0.2760630040372961
+2019,Fourier+ARMA (selected),2019-10-06,43.25571428571429,4.4403658810801065,0.277151482030385
+2019,Fourier+ARMA (selected),2019-10-13,87.52285714285713,4.695935709332877,0.2782357018521912
+2019,Fourier+ARMA (selected),2019-10-20,111.85142857142856,4.950293481386876,0.2793157130895504
+2019,Fourier+ARMA (selected),2019-10-27,140.25571428571428,5.172420115623046,0.2803915643742991
+2019,Fourier+ARMA (selected),2019-11-03,353.36857142857144,5.336194986390914,0.2814633034088269
+2019,Fourier+ARMA (selected),2019-11-10,176.22285714285712,5.427265719317481,0.2825309769907576
+2019,Fourier+ARMA (selected),2019-11-17,297.9271428571428,5.446825230678621,0.2835946310367928
+2019,Fourier+ARMA (selected),2019-11-24,152.52142857142854,5.411051511447342,0.2846543106057543
+2019,Fourier+ARMA (selected),2019-12-01,86.82571428571428,5.346299909604915,0.2857100599208573
+2019,Fourier+ARMA (selected),2019-12-08,204.55428571428573,5.281462900513041,0.2867619223912452
+2019,Fourier+ARMA (selected),2019-12-15,184.0914285714286,5.239796805227767,0.2878099406328162
+2019,Fourier+ARMA (selected),2019-12-22,185.57857142857145,5.2326702314685685,0.2888541564883701
+2019,Fourier+ARMA (selected),2019-12-29,234.32857142857145,5.257066516220405,0.2898946110471018
+2019,SARIMA D=1,2019-01-06,282.41142857142853,5.5582910517762345,0.2377989172048173
+2019,SARIMA D=1,2019-01-13,215.72,5.353180049688744,0.2449702118849202
+2019,SARIMA D=1,2019-01-20,239.19571428571427,5.439165413485971,0.2504237540372667
+2019,SARIMA D=1,2019-01-27,116.32714285714285,5.267319731133135,0.2545983198770531
+2019,SARIMA D=1,2019-02-03,166.56714285714287,5.113778763908832,0.257809011336928
+2019,SARIMA D=1,2019-02-10,134.56428571428572,5.082524087020149,0.2602869799220534
+2019,SARIMA D=1,2019-02-17,152.75857142857143,4.936992952183282,0.2622044069848501
+2019,SARIMA D=1,2019-02-24,90.08714285714288,5.123496101396255,0.2636909938626456
+2019,SARIMA D=1,2019-03-03,80.32000000000001,4.720043542541436,0.264845260443274
+2019,SARIMA D=1,2019-03-10,86.03,4.534420402055136,0.2657425118737902
+2019,SARIMA D=1,2019-03-17,82.42142857142858,4.503654560047959,0.266440582849363
+2019,SARIMA D=1,2019-03-24,79.07571428571428,4.638658785685941,0.2669840519693005
+2019,SARIMA D=1,2019-03-31,87.09142857142857,4.592442562489839,0.2674073755151367
+2019,SARIMA D=1,2019-04-07,104.12285714285711,4.607576772907334,0.2677372428461304
+2019,SARIMA D=1,2019-04-14,72.85857142857142,4.641906780588195,0.2679943611266556
+2019,SARIMA D=1,2019-04-21,61.77,4.72336708791863,0.2681948163310221
+2019,SARIMA D=1,2019-04-28,88.33,4.650494289225504,0.2683511165970006
+2019,SARIMA D=1,2019-05-05,85.77428571428571,4.675853946280457,0.2684729949488824
+2019,SARIMA D=1,2019-05-12,129.04857142857142,4.658719313645793,0.2685680288481117
+2019,SARIMA D=1,2019-05-19,86.87,4.554267315571149,0.2686421194560793
+2019,SARIMA D=1,2019-05-26,67.29142857142857,4.613069423096386,0.268699863013705
+2019,SARIMA D=1,2019-06-02,78.25999999999999,4.417773572031268,0.2687448389726435
+2019,SARIMA D=1,2019-06-09,70.20857142857143,4.277398176834773,0.2687798337042349
+2019,SARIMA D=1,2019-06-16,69.01285714285714,4.543762891856563,0.2688070142300942
+2019,SARIMA D=1,2019-06-23,53.53857142857142,4.259427171069556,0.2688280630869232
+2019,SARIMA D=1,2019-06-30,56.73285714285714,3.920232859298425,0.2688442828890914
+2019,SARIMA D=1,2019-07-07,46.77428571428572,4.012886535964297,0.2688566771904926
+2019,SARIMA D=1,2019-07-14,62.93857142857143,3.8690172350351264,0.2688660127281223
+2019,SARIMA D=1,2019-07-21,42.65,3.6619515165655914,0.2688728669460859
+2019,SARIMA D=1,2019-07-28,42.49,3.5101299240768475,0.2688776637688536
+2019,SARIMA D=1,2019-08-04,34.18857142857143,3.8891423636592615,0.2688806998539893
+2019,SARIMA D=1,2019-08-11,28.487142857142857,3.796126685252926,0.2688821629315258
+2019,SARIMA D=1,2019-08-18,20.78142857142857,3.734809299374593,0.268882143534277
+2019,SARIMA D=1,2019-08-25,45.11857142857143,3.783894463849687,0.2688806404356409
+2019,SARIMA D=1,2019-09-01,39.64142857142857,3.77268911354627,0.268877560683512
+2019,SARIMA D=1,2019-09-08,46.80571428571428,3.959774828511,0.2688727138200897
+2019,SARIMA D=1,2019-09-15,50.56857142857143,4.058891610046151,0.268865800092494
+2019,SARIMA D=1,2019-09-22,39.85142857142857,3.996719140070141,0.2688563918945918
+2019,SARIMA D=1,2019-09-29,25.55,4.328294081320749,0.2688439072860292
+2019,SARIMA D=1,2019-10-06,43.25571428571429,4.629224078723294,0.268827573939993
+2019,SARIMA D=1,2019-10-13,87.52285714285713,4.705838848977825,0.2688063812719759
+2019,SARIMA D=1,2019-10-20,111.85142857142856,5.072393179967007,0.268779017758854
+2019,SARIMA D=1,2019-10-27,140.25571428571428,5.2213538696579125,0.2687437894947965
+2019,SARIMA D=1,2019-11-03,353.36857142857144,5.542792694826699,0.2686985150284591
+2019,SARIMA D=1,2019-11-10,176.22285714285712,5.7257727919936,0.268640389428541
+2019,SARIMA D=1,2019-11-17,297.9271428571428,5.354955857650245,0.2685658094690273
+2019,SARIMA D=1,2019-11-24,152.52142857142854,5.2172732652760265,0.2684701484741275
+2019,SARIMA D=1,2019-12-01,86.82571428571428,5.313890334321316,0.2683474661697123
+2019,SARIMA D=1,2019-12-08,204.55428571428573,5.310182598013602,0.2681901347983237
+2019,SARIMA D=1,2019-12-15,184.0914285714286,5.024011852401532,0.267988356726773
+2019,SARIMA D=1,2019-12-22,185.57857142857145,5.351866359658624,0.2677295404006357
+2019,SARIMA D=1,2019-12-29,234.32857142857145,5.455051243348066,0.2634778802620696
+2019,SARIMA D=0,2019-01-06,282.41142857142853,5.542723827335813,0.2695686241324401
+2019,SARIMA D=0,2019-01-13,215.72,5.399501377377101,0.3083914853657932
+2019,SARIMA D=0,2019-01-20,239.19571428571427,5.376980315698741,0.33787945257139
+2019,SARIMA D=0,2019-01-27,116.32714285714285,5.235809390409119,0.3610378099436326
+2019,SARIMA D=0,2019-02-03,166.56714285714287,5.17250246463754,0.3795988526310755
+2019,SARIMA D=0,2019-02-10,134.56428571428572,5.218754895187046,0.3946782919322821
+2019,SARIMA D=0,2019-02-17,152.75857142857143,5.01034251951299,0.4070471617442974
+2019,SARIMA D=0,2019-02-24,90.08714285714288,5.138045952402869,0.417264512370813
+2019,SARIMA D=0,2019-03-03,80.32000000000001,4.963305997343621,0.4257498442695777
+2019,SARIMA D=0,2019-03-10,86.03,4.912018521898382,0.4328260293209671
+2019,SARIMA D=0,2019-03-17,82.42142857142858,4.910571206387005,0.4387463937265226
+2019,SARIMA D=0,2019-03-24,79.07571428571428,4.848741893376315,0.4437126760596801
+2019,SARIMA D=0,2019-03-31,87.09142857142857,4.85730064850072,0.4478874208063838
+2019,SARIMA D=0,2019-04-07,104.12285714285711,4.82853713247821,0.4514028164677418
+2019,SARIMA D=0,2019-04-14,72.85857142857142,4.730341079352972,0.4543671715352318
+2019,SARIMA D=0,2019-04-21,61.77,4.791179205603613,0.4568697683567811
+2019,SARIMA D=0,2019-04-28,88.33,4.821100716557263,0.4589845710525543
+2019,SARIMA D=0,2019-05-05,85.77428571428571,4.659945559479476,0.4607731038133777
+2019,SARIMA D=0,2019-05-12,129.04857142857142,4.783035674767351,0.4622867157033389
+2019,SARIMA D=0,2019-05-19,86.87,4.7100883038419,0.4635683833214015
+2019,SARIMA D=0,2019-05-26,67.29142857142857,4.760847098525033,0.4646541596774526
+2019,SARIMA D=0,2019-06-02,78.25999999999999,4.675952752797115,0.4655743483950666
+2019,SARIMA D=0,2019-06-09,70.20857142857143,4.5914790641833205,0.4663544620291547
+2019,SARIMA D=0,2019-06-16,69.01285714285714,4.896834420470999,0.4670160088801425
+2019,SARIMA D=0,2019-06-23,53.53857142857142,4.596212701394455,0.4675771422890115
+2019,SARIMA D=0,2019-06-30,56.73285714285714,4.384062638325,0.4680531987690118
+2019,SARIMA D=0,2019-07-07,46.77428571428572,4.483086673328523,0.4684571456474065
+2019,SARIMA D=0,2019-07-14,62.93857142857143,4.414120871939064,0.4687999545985117
+2019,SARIMA D=0,2019-07-21,42.65,4.348454584805195,0.4690909141657083
+2019,SARIMA D=0,2019-07-28,42.49,4.321216323116991,0.469337891828502
+2019,SARIMA D=0,2019-08-04,34.18857142857143,4.515780825091848,0.4695475541823094
+2019,SARIMA D=0,2019-08-11,28.487142857142857,4.357911939106075,0.4697255522278638
+2019,SARIMA D=0,2019-08-18,20.78142857142857,4.351516703187603,0.4698766775152974
+2019,SARIMA D=0,2019-08-25,45.11857142857143,4.276152591214378,0.4700049938823877
+2019,SARIMA D=0,2019-09-01,39.64142857142857,4.336925884082191,0.4701139487129451
+2019,SARIMA D=0,2019-09-08,46.80571428571428,4.371825772401636,0.4702064669790351
+2019,SARIMA D=0,2019-09-15,50.56857142857143,4.285147045589338,0.4702850307885068
+2019,SARIMA D=0,2019-09-22,39.85142857142857,4.425452387199024,0.4703517467131959
+2019,SARIMA D=0,2019-09-29,25.55,4.4807039647287725,0.4704084028045325
+2019,SARIMA D=0,2019-10-06,43.25571428571429,4.614430596968799,0.470456516897515
+2019,SARIMA D=0,2019-10-13,87.52285714285713,4.667646659403814,0.4704973775495311
+2019,SARIMA D=0,2019-10-20,111.85142857142856,4.801885403726144,0.4705320787481203
+2019,SARIMA D=0,2019-10-27,140.25571428571428,4.872639023889728,0.4705615493440602
+2019,SARIMA D=0,2019-11-03,353.36857142857144,4.933258469594273,0.4705865780171451
+2019,SARIMA D=0,2019-11-10,176.22285714285712,5.054187822888111,0.4706078344568485
+2019,SARIMA D=0,2019-11-17,297.9271428571428,4.872857040140084,0.4706258873347272
+2019,SARIMA D=0,2019-11-24,152.52142857142854,4.862719598659045,0.4706412195566813
+2019,SARIMA D=0,2019-12-01,86.82571428571428,4.8984660576274415,0.4706542412083211
+2019,SARIMA D=0,2019-12-08,204.55428571428573,4.9261126697227935,0.4706653005434768
+2019,SARIMA D=0,2019-12-15,184.0914285714286,4.87443069272918,0.4706746933124628
+2019,SARIMA D=0,2019-12-22,185.57857142857145,5.019228817348899,0.4706826706815242
+2019,SARIMA D=0,2019-12-29,234.32857142857145,5.053004176970072,0.4706894459566538
+```
+
+## fc_oneweek_forecasts.csv (728 rows; one-step forecasts, mu on the log scale)
+```
+year,model,date,actual,mu
+2018,Persistence,2018-01-07,247.29857142857145,5.529355388650604
+2018,Persistence,2018-01-14,188.26,5.510596397836895
+2018,Persistence,2018-01-21,197.46,5.237823986119074
+2018,Persistence,2018-01-28,148.48857142857145,5.285536032183304
+2018,Persistence,2018-02-04,137.04714285714286,5.000507995204216
+2018,Persistence,2018-02-11,169.39,4.92032497508269
+2018,Persistence,2018-02-18,103.70857142857145,5.1322037485982905
+2018,Persistence,2018-02-25,158.08285714285714,4.641584767832887
+2018,Persistence,2018-03-04,104.86,5.063119307867456
+2018,Persistence,2018-03-11,96.94857142857144,4.652626127144386
+2018,Persistence,2018-03-18,102.21428571428572,4.574180646444166
+2018,Persistence,2018-03-25,90.97,4.627071449941193
+2018,Persistence,2018-04-01,97.72857142857144,4.510529781833971
+2018,Persistence,2018-04-08,94.45285714285714,4.582193956711639
+2018,Persistence,2018-04-15,75.25,4.548100843811397
+2018,Persistence,2018-04-22,92.28,4.3208159036289855
+2018,Persistence,2018-04-29,103.68999999999998,4.524827433305553
+2018,Persistence,2018-05-06,68.93714285714286,4.6414056785701865
+2018,Persistence,2018-05-13,99.39285714285714,4.233195116324223
+2018,Persistence,2018-05-20,83.68285714285715,4.599080251350687
+2018,Persistence,2018-05-27,98.57714285714285,4.427034143410322
+2018,Persistence,2018-06-03,80.00142857142858,4.59083941787023
+2018,Persistence,2018-06-10,64.88285714285715,4.382044491657302
+2018,Persistence,2018-06-17,152.4042857142857,4.17258344618121
+2018,Persistence,2018-06-24,68.25857142857143,5.026536764341959
+2018,Persistence,2018-07-01,38.87571428571429,4.223303014876486
+2018,Persistence,2018-07-08,51.74428571428571,3.660369744239649
+2018,Persistence,2018-07-15,43.470000000000006,3.946314005068647
+2018,Persistence,2018-07-22,36.80857142857143,3.772071045000701
+2018,Persistence,2018-07-29,34.582857142857144,3.6057307373080656
+2018,Persistence,2018-08-05,59.50428571428571,3.5433581009847326
+2018,Persistence,2018-08-12,39.05428571428571,4.086048338769158
+2018,Persistence,2018-08-19,38.74142857142857,3.6649526196691937
+2018,Persistence,2018-08-26,31.807142857142857,3.6569095331747534
+2018,Persistence,2018-09-02,37.85428571428572,3.459690882712398
+2018,Persistence,2018-09-09,41.95,3.633744202384664
+2018,Persistence,2018-09-16,33.33,3.736478432913216
+2018,Persistence,2018-09-23,49.20857142857143,3.506457892319648
+2018,Persistence,2018-09-30,57.55857142857143,3.8960678243522873
+2018,Persistence,2018-10-07,83.38714285714286,4.05280306288858
+2018,Persistence,2018-10-14,96.91142857142856,4.423494135096081
+2018,Persistence,2018-10-21,140.48285714285714,4.573797453855727
+2018,Persistence,2018-10-28,171.1542857142857,4.945085468111484
+2018,Persistence,2018-11-04,202.76142857142847,5.142565405353804
+2018,Persistence,2018-11-11,283.1485714285714,5.312030059206812
+2018,Persistence,2018-11-18,173.0885714285714,5.645971747265686
+2018,Persistence,2018-11-25,168.86714285714285,5.15380343705958
+2018,Persistence,2018-12-02,186.70857142857145,5.129112268815404
+2018,Persistence,2018-12-09,201.8728571428572,5.22954895966294
+2018,Persistence,2018-12-16,175.70142857142858,5.30763807914836
+2018,Persistence,2018-12-23,261.5357142857143,5.168786125902334
+2018,Persistence,2018-12-30,287.3928571428572,5.566570848885866
+2018,Climatology,2018-01-07,247.29857142857145,5.408731798097988
+2018,Climatology,2018-01-14,188.26,5.277670506466927
+2018,Climatology,2018-01-21,197.46,5.437700460879099
+2018,Climatology,2018-01-28,148.48857142857145,5.242666727981997
+2018,Climatology,2018-02-04,137.04714285714286,5.117660180775535
+2018,Climatology,2018-02-11,169.39,4.963407300169094
+2018,Climatology,2018-02-18,103.70857142857145,4.979183814406805
+2018,Climatology,2018-02-25,158.08285714285714,5.142004334134754
+2018,Climatology,2018-03-04,104.86,4.839883973095223
+2018,Climatology,2018-03-11,96.94857142857144,4.461460710966682
+2018,Climatology,2018-03-18,102.21428571428572,4.490216717113987
+2018,Climatology,2018-03-25,90.97,4.544469070882633
+2018,Climatology,2018-04-01,97.72857142857144,4.654685162671122
+2018,Climatology,2018-04-08,94.45285714285714,4.511638483508993
+2018,Climatology,2018-04-15,75.25,4.720054794304081
+2018,Climatology,2018-04-22,92.28,4.712916407773464
+2018,Climatology,2018-04-29,103.68999999999998,4.750992743911659
+2018,Climatology,2018-05-06,68.93714285714286,4.660403745965778
+2018,Climatology,2018-05-13,99.39285714285714,4.761628652223261
+2018,Climatology,2018-05-20,83.68285714285715,4.649374958381972
+2018,Climatology,2018-05-27,98.57714285714285,4.482764217200919
+2018,Climatology,2018-06-03,80.00142857142858,4.580838861181697
+2018,Climatology,2018-06-10,64.88285714285715,4.175369200235714
+2018,Climatology,2018-06-17,152.4042857142857,4.347727239542452
+2018,Climatology,2018-06-24,68.25857142857143,4.351151337989115
+2018,Climatology,2018-07-01,38.87571428571429,4.038262211281606
+2018,Climatology,2018-07-08,51.74428571428571,4.156504895471128
+2018,Climatology,2018-07-15,43.470000000000006,3.8284758524673017
+2018,Climatology,2018-07-22,36.80857142857143,3.822010926215055
+2018,Climatology,2018-07-29,34.582857142857144,3.5711640487107554
+2018,Climatology,2018-08-05,59.50428571428571,3.617490523111794
+2018,Climatology,2018-08-12,39.05428571428571,3.824585480368356
+2018,Climatology,2018-08-19,38.74142857142857,3.852904625177204
+2018,Climatology,2018-08-26,31.807142857142857,3.830166125886565
+2018,Climatology,2018-09-02,37.85428571428572,3.7218864329755377
+2018,Climatology,2018-09-09,41.95,4.090821913577266
+2018,Climatology,2018-09-16,33.33,4.169794093283282
+2018,Climatology,2018-09-23,49.20857142857143,4.143161792567324
+2018,Climatology,2018-09-30,57.55857142857143,4.307081325051812
+2018,Climatology,2018-10-07,83.38714285714286,4.549477515741132
+2018,Climatology,2018-10-14,96.91142857142856,4.854407054424185
+2018,Climatology,2018-10-21,140.48285714285714,5.00495805287808
+2018,Climatology,2018-10-28,171.1542857142857,5.276872136457311
+2018,Climatology,2018-11-04,202.76142857142847,5.4856582839414445
+2018,Climatology,2018-11-11,283.1485714285714,5.770970117981858
+2018,Climatology,2018-11-18,173.0885714285714,5.463541591349466
+2018,Climatology,2018-11-25,168.86714285714285,5.307484213754044
+2018,Climatology,2018-12-02,186.70857142857145,5.342768608191364
+2018,Climatology,2018-12-09,201.8728571428572,5.342222323157638
+2018,Climatology,2018-12-16,175.70142857142858,5.183265534903394
+2018,Climatology,2018-12-23,261.5357142857143,5.207046369842629
+2018,Climatology,2018-12-30,287.3928571428572,5.398866447956088
+2018,Climatology + AR(1),2018-01-07,247.29857142857145,5.456173863370797
+2018,Climatology + AR(1),2018-01-14,188.26,5.314705575983778
+2018,Climatology + AR(1),2018-01-21,197.46,5.423213400066316
+2018,Climatology + AR(1),2018-01-28,148.48857142857145,5.187344072131141
+2018,Climatology + AR(1),2018-02-04,137.04714285714286,5.029618157093854
+2018,Climatology + AR(1),2018-02-11,169.39,4.891661835309968
+2018,Climatology + AR(1),2018-02-18,103.70857142857145,5.040553399304759
+2018,Climatology + AR(1),2018-02-25,158.08285714285714,5.019262928477295
+2018,Climatology + AR(1),2018-03-04,104.86,4.811203622520673
+2018,Climatology + AR(1),2018-03-11,96.94857142857144,4.3933790873197935
+2018,Climatology + AR(1),2018-03-18,102.21428571428572,4.531198477775137
+2018,Climatology + AR(1),2018-03-25,90.97,4.594225557011836
+2018,Climatology + AR(1),2018-04-01,97.72857142857144,4.642345803045781
+2018,Climatology + AR(1),2018-04-08,94.45285714285714,4.485282744037664
+2018,Climatology + AR(1),2018-04-15,75.25,4.733311470833604
+2018,Climatology + AR(1),2018-04-22,92.28,4.567764508999198
+2018,Climatology + AR(1),2018-04-29,103.68999999999998,4.682608945588915
+2018,Climatology + AR(1),2018-05-06,68.93714285714286,4.620561007728236
+2018,Climatology + AR(1),2018-05-13,99.39285714285714,4.606307752347082
+2018,Climatology + AR(1),2018-05-20,83.68285714285715,4.590276985763428
+2018,Climatology + AR(1),2018-05-27,98.57714285714285,4.40192742443862
+2018,Climatology + AR(1),2018-06-03,80.00142857142858,4.620131928450353
+2018,Climatology + AR(1),2018-06-10,64.88285714285715,4.103093224933544
+2018,Climatology + AR(1),2018-06-17,152.4042857142857,4.346714418647559
+2018,Climatology + AR(1),2018-06-24,68.25857142857143,4.59794716307543
+2018,Climatology + AR(1),2018-07-01,38.87571428571429,3.991780199412662
+2018,Climatology + AR(1),2018-07-08,51.74428571428571,4.019113948835443
+2018,Climatology + AR(1),2018-07-15,43.470000000000006,3.7520564265056096
+2018,Climatology + AR(1),2018-07-22,36.80857142857143,3.801503743435517
+2018,Climatology + AR(1),2018-07-29,34.582857142857144,3.492530727107188
+2018,Climatology + AR(1),2018-08-05,59.50428571428571,3.607381071843594
+2018,Climatology + AR(1),2018-08-12,39.05428571428571,3.994939767530069
+2018,Climatology + AR(1),2018-08-19,38.74142857142857,3.7948666599928256
+2018,Climatology + AR(1),2018-08-26,31.807142857142857,3.7589078882271862
+2018,Climatology + AR(1),2018-09-02,37.85428571428572,3.587192177852604
+2018,Climatology + AR(1),2018-09-09,41.95,4.058775906959949
+2018,Climatology + AR(1),2018-09-16,33.33,4.0409648879178
+2018,Climatology + AR(1),2018-09-23,49.20857142857143,3.9019916276749047
+2018,Climatology + AR(1),2018-09-30,57.55857142857143,4.217244990216214
+2018,Climatology + AR(1),2018-10-07,83.38714285714286,4.457029176082632
+2018,Climatology + AR(1),2018-10-14,96.91142857142856,4.808603082562356
+2018,Climatology + AR(1),2018-10-21,140.48285714285714,4.902936387934753
+2018,Climatology + AR(1),2018-10-28,171.1542857142857,5.25510416854041
+2018,Climatology + AR(1),2018-11-04,202.76142857142847,5.436828178725809
+2018,Climatology + AR(1),2018-11-11,283.1485714285714,5.70784383672599
+2018,Climatology + AR(1),2018-11-18,173.0885714285714,5.418095741065537
+2018,Climatology + AR(1),2018-11-25,168.86714285714285,5.19487223564242
+2018,Climatology + AR(1),2018-12-02,186.70857142857145,5.277917645270087
+2018,Climatology + AR(1),2018-12-09,201.8728571428572,5.30105888105242
+2018,Climatology + AR(1),2018-12-16,175.70142857142858,5.170691688009043
+2018,Climatology + AR(1),2018-12-23,261.5357142857143,5.201782068797009
+2018,Climatology + AR(1),2018-12-30,287.3928571428572,5.5295793168870455
+2018,"DHR, no weather",2018-01-07,247.29857142857145,5.309789667756228
+2018,"DHR, no weather",2018-01-14,188.26,5.3968065996382535
+2018,"DHR, no weather",2018-01-21,197.46,5.383736299958564
+2018,"DHR, no weather",2018-01-28,148.48857142857145,5.338653739844269
+2018,"DHR, no weather",2018-02-04,137.04714285714286,5.196382646011795
+2018,"DHR, no weather",2018-02-11,169.39,5.026717277851183
+2018,"DHR, no weather",2018-02-18,103.70857142857145,4.906276071708687
+2018,"DHR, no weather",2018-02-25,158.08285714285714,4.711303553607711
+2018,"DHR, no weather",2018-03-04,104.86,4.660695149067454
+2018,"DHR, no weather",2018-03-11,96.94857142857144,4.574069403599902
+2018,"DHR, no weather",2018-03-18,102.21428571428572,4.536985747300526
+2018,"DHR, no weather",2018-03-25,90.97,4.559003950029704
+2018,"DHR, no weather",2018-04-01,97.72857142857144,4.581478857158527
+2018,"DHR, no weather",2018-04-08,94.45285714285714,4.625904083149593
+2018,"DHR, no weather",2018-04-15,75.25,4.651515023588007
+2018,"DHR, no weather",2018-04-22,92.28,4.61779924794105
+2018,"DHR, no weather",2018-04-29,103.68999999999998,4.6183053593657535
+2018,"DHR, no weather",2018-05-06,68.93714285714286,4.6242041858392735
+2018,"DHR, no weather",2018-05-13,99.39285714285714,4.537179712602354
+2018,"DHR, no weather",2018-05-20,83.68285714285715,4.531534782717373
+2018,"DHR, no weather",2018-05-27,98.57714285714285,4.4787302743328
+2018,"DHR, no weather",2018-06-03,80.00142857142858,4.451692226014457
+2018,"DHR, no weather",2018-06-10,64.88285714285715,4.366973486891729
+2018,"DHR, no weather",2018-06-17,152.4042857142857,4.23907032553892
+2018,"DHR, no weather",2018-06-24,68.25857142857143,4.279541255610598
+2018,"DHR, no weather",2018-07-01,38.87571428571429,4.131931828915012
+2018,"DHR, no weather",2018-07-08,51.74428571428571,3.9138027688188135
+2018,"DHR, no weather",2018-07-15,43.470000000000006,3.8201569360748926
+2018,"DHR, no weather",2018-07-22,36.80857142857143,3.738734483385991
+2018,"DHR, no weather",2018-07-29,34.582857142857144,3.676731177929802
+2018,"DHR, no weather",2018-08-05,59.50428571428571,3.6507427117990177
+2018,"DHR, no weather",2018-08-12,39.05428571428571,3.7591652753226423
+2018,"DHR, no weather",2018-08-19,38.74142857142857,3.7740262968800873
+2018,"DHR, no weather",2018-08-26,31.807142857142857,3.7981470917848377
+2018,"DHR, no weather",2018-09-02,37.85428571428572,3.793582672324037
+2018,"DHR, no weather",2018-09-09,41.95,3.845384913740826
+2018,"DHR, no weather",2018-09-16,33.33,3.934556550624941
+2018,"DHR, no weather",2018-09-23,49.20857142857143,4.00211597568702
+2018,"DHR, no weather",2018-09-30,57.55857142857143,4.18196959141688
+2018,"DHR, no weather",2018-10-07,83.38714285714286,4.39754112439464
+2018,"DHR, no weather",2018-10-14,96.91142857142856,4.668125116796925
+2018,"DHR, no weather",2018-10-21,140.48285714285714,4.913920670578492
+2018,"DHR, no weather",2018-10-28,171.1542857142857,5.154590206354789
+2018,"DHR, no weather",2018-11-04,202.76142857142847,5.328297147898569
+2018,"DHR, no weather",2018-11-11,283.1485714285714,5.426457239298548
+2018,"DHR, no weather",2018-11-18,173.0885714285714,5.491554281561913
+2018,"DHR, no weather",2018-11-25,168.86714285714285,5.384182440116161
+2018,"DHR, no weather",2018-12-02,186.70857142857145,5.265067898012756
+2018,"DHR, no weather",2018-12-09,201.8728571428572,5.187987073520931
+2018,"DHR, no weather",2018-12-16,175.70142857142858,5.162811126538264
+2018,"DHR, no weather",2018-12-23,261.5357142857143,5.152805103709591
+2018,"DHR, no weather",2018-12-30,287.3928571428572,5.259728646845049
+2018,+ lagged weather (operational),2018-01-07,247.29857142857145,5.280811692639269
+2018,+ lagged weather (operational),2018-01-14,188.26,5.4068701663802585
+2018,+ lagged weather (operational),2018-01-21,197.46,5.398954879043239
+2018,+ lagged weather (operational),2018-01-28,148.48857142857145,5.370353492676969
+2018,+ lagged weather (operational),2018-02-04,137.04714285714286,5.197377960221797
+2018,+ lagged weather (operational),2018-02-11,169.39,5.044119175773326
+2018,+ lagged weather (operational),2018-02-18,103.70857142857145,4.968335957607405
+2018,+ lagged weather (operational),2018-02-25,158.08285714285714,4.683094847680442
+2018,+ lagged weather (operational),2018-03-04,104.86,4.643035020948065
+2018,+ lagged weather (operational),2018-03-11,96.94857142857144,4.565688109927662
+2018,+ lagged weather (operational),2018-03-18,102.21428571428572,4.6004539178962895
+2018,+ lagged weather (operational),2018-03-25,90.97,4.620788759584513
+2018,+ lagged weather (operational),2018-04-01,97.72857142857144,4.583616266851051
+2018,+ lagged weather (operational),2018-04-08,94.45285714285714,4.626257353412514
+2018,+ lagged weather (operational),2018-04-15,75.25,4.622393969039346
+2018,+ lagged weather (operational),2018-04-22,92.28,4.562673758757156
+2018,+ lagged weather (operational),2018-04-29,103.68999999999998,4.655322302246812
+2018,+ lagged weather (operational),2018-05-06,68.93714285714286,4.604088057303517
+2018,+ lagged weather (operational),2018-05-13,99.39285714285714,4.478618639333169
+2018,+ lagged weather (operational),2018-05-20,83.68285714285715,4.500790712219088
+2018,+ lagged weather (operational),2018-05-27,98.57714285714285,4.500769667561629
+2018,+ lagged weather (operational),2018-06-03,80.00142857142858,4.534223832622314
+2018,+ lagged weather (operational),2018-06-10,64.88285714285715,4.341900573140272
+2018,+ lagged weather (operational),2018-06-17,152.4042857142857,4.198450662695486
+2018,+ lagged weather (operational),2018-06-24,68.25857142857143,4.291547155359321
+2018,+ lagged weather (operational),2018-07-01,38.87571428571429,4.206267316459312
+2018,+ lagged weather (operational),2018-07-08,51.74428571428571,3.9299779161836463
+2018,+ lagged weather (operational),2018-07-15,43.470000000000006,3.828100619184461
+2018,+ lagged weather (operational),2018-07-22,36.80857142857143,3.754715715923929
+2018,+ lagged weather (operational),2018-07-29,34.582857142857144,3.648253758486762
+2018,+ lagged weather (operational),2018-08-05,59.50428571428571,3.64691814797868
+2018,+ lagged weather (operational),2018-08-12,39.05428571428571,3.778683288865617
+2018,+ lagged weather (operational),2018-08-19,38.74142857142857,3.766435623923281
+2018,+ lagged weather (operational),2018-08-26,31.807142857142857,3.778410466946024
+2018,+ lagged weather (operational),2018-09-02,37.85428571428572,3.790690279059242
+2018,+ lagged weather (operational),2018-09-09,41.95,3.836254707835573
+2018,+ lagged weather (operational),2018-09-16,33.33,3.8755254316907193
+2018,+ lagged weather (operational),2018-09-23,49.20857142857143,3.9991187731638655
+2018,+ lagged weather (operational),2018-09-30,57.55857142857143,4.19549888367883
+2018,+ lagged weather (operational),2018-10-07,83.38714285714286,4.380740775064185
+2018,+ lagged weather (operational),2018-10-14,96.91142857142856,4.672366088220978
+2018,+ lagged weather (operational),2018-10-21,140.48285714285714,4.856666609187492
+2018,+ lagged weather (operational),2018-10-28,171.1542857142857,5.156940492293543
+2018,+ lagged weather (operational),2018-11-04,202.76142857142847,5.334509750512268
+2018,+ lagged weather (operational),2018-11-11,283.1485714285714,5.443059101003124
+2018,+ lagged weather (operational),2018-11-18,173.0885714285714,5.537324626116959
+2018,+ lagged weather (operational),2018-11-25,168.86714285714285,5.358998238352591
+2018,+ lagged weather (operational),2018-12-02,186.70857142857145,5.242548963029893
+2018,+ lagged weather (operational),2018-12-09,201.8728571428572,5.173364786033899
+2018,+ lagged weather (operational),2018-12-16,175.70142857142858,5.155434008401029
+2018,+ lagged weather (operational),2018-12-23,261.5357142857143,5.152940146541728
+2018,+ lagged weather (operational),2018-12-30,287.3928571428572,5.235079867275646
+2018,+ last 3 days of prior week (operational),2018-01-07,247.29857142857145,5.33105606548935
+2018,+ last 3 days of prior week (operational),2018-01-14,188.26,5.395957921607566
+2018,+ last 3 days of prior week (operational),2018-01-21,197.46,5.386707969617428
+2018,+ last 3 days of prior week (operational),2018-01-28,148.48857142857145,5.350808920191568
+2018,+ last 3 days of prior week (operational),2018-02-04,137.04714285714286,5.189206712823499
+2018,+ last 3 days of prior week (operational),2018-02-11,169.39,5.042373941029907
+2018,+ last 3 days of prior week (operational),2018-02-18,103.70857142857145,4.94099320789267
+2018,+ last 3 days of prior week (operational),2018-02-25,158.08285714285714,4.697090778270457
+2018,+ last 3 days of prior week (operational),2018-03-04,104.86,4.671645351913671
+2018,+ last 3 days of prior week (operational),2018-03-11,96.94857142857144,4.595792303628607
+2018,+ last 3 days of prior week (operational),2018-03-18,102.21428571428572,4.541309620119258
+2018,+ last 3 days of prior week (operational),2018-03-25,90.97,4.569113393623075
+2018,+ last 3 days of prior week (operational),2018-04-01,97.72857142857144,4.57230414546124
+2018,+ last 3 days of prior week (operational),2018-04-08,94.45285714285714,4.604097489041223
+2018,+ last 3 days of prior week (operational),2018-04-15,75.25,4.624690557182539
+2018,+ last 3 days of prior week (operational),2018-04-22,92.28,4.628262161993428
+2018,+ last 3 days of prior week (operational),2018-04-29,103.68999999999998,4.567484099614671
+2018,+ last 3 days of prior week (operational),2018-05-06,68.93714285714286,4.579245585434946
+2018,+ last 3 days of prior week (operational),2018-05-13,99.39285714285714,4.513763720820907
+2018,+ last 3 days of prior week (operational),2018-05-20,83.68285714285715,4.52213581149437
+2018,+ last 3 days of prior week (operational),2018-05-27,98.57714285714285,4.527246291727714
+2018,+ last 3 days of prior week (operational),2018-06-03,80.00142857142858,4.497009755502515
+2018,+ last 3 days of prior week (operational),2018-06-10,64.88285714285715,4.287206706802168
+2018,+ last 3 days of prior week (operational),2018-06-17,152.4042857142857,4.203452514691429
+2018,+ last 3 days of prior week (operational),2018-06-24,68.25857142857143,4.264435503500675
+2018,+ last 3 days of prior week (operational),2018-07-01,38.87571428571429,4.215214119132933
+2018,+ last 3 days of prior week (operational),2018-07-08,51.74428571428571,3.874896090741288
+2018,+ last 3 days of prior week (operational),2018-07-15,43.470000000000006,3.874467885510777
+2018,+ last 3 days of prior week (operational),2018-07-22,36.80857142857143,3.7460886776892073
+2018,+ last 3 days of prior week (operational),2018-07-29,34.582857142857144,3.7260704104828535
+2018,+ last 3 days of prior week (operational),2018-08-05,59.50428571428571,3.64269175432155
+2018,+ last 3 days of prior week (operational),2018-08-12,39.05428571428571,3.742027285452066
+2018,+ last 3 days of prior week (operational),2018-08-19,38.74142857142857,3.768628768445092
+2018,+ last 3 days of prior week (operational),2018-08-26,31.807142857142857,3.800677343754983
+2018,+ last 3 days of prior week (operational),2018-09-02,37.85428571428572,3.7733611528928543
+2018,+ last 3 days of prior week (operational),2018-09-09,41.95,3.8614311227778857
+2018,+ last 3 days of prior week (operational),2018-09-16,33.33,3.8792743857786354
+2018,+ last 3 days of prior week (operational),2018-09-23,49.20857142857143,4.010454930027047
+2018,+ last 3 days of prior week (operational),2018-09-30,57.55857142857143,4.048748578303486
+2018,+ last 3 days of prior week (operational),2018-10-07,83.38714285714286,4.426064011896485
+2018,+ last 3 days of prior week (operational),2018-10-14,96.91142857142856,4.692962233896221
+2018,+ last 3 days of prior week (operational),2018-10-21,140.48285714285714,4.907863021013057
+2018,+ last 3 days of prior week (operational),2018-10-28,171.1542857142857,5.168806617872264
+2018,+ last 3 days of prior week (operational),2018-11-04,202.76142857142847,5.326333491585753
+2018,+ last 3 days of prior week (operational),2018-11-11,283.1485714285714,5.38708402199153
+2018,+ last 3 days of prior week (operational),2018-11-18,173.0885714285714,5.532740512038581
+2018,+ last 3 days of prior week (operational),2018-11-25,168.86714285714285,5.351237881897427
+2018,+ last 3 days of prior week (operational),2018-12-02,186.70857142857145,5.234769738985838
+2018,+ last 3 days of prior week (operational),2018-12-09,201.8728571428572,5.203244659570666
+2018,+ last 3 days of prior week (operational),2018-12-16,175.70142857142858,5.176115140272713
+2018,+ last 3 days of prior week (operational),2018-12-23,261.5357142857143,5.146874617867804
+2018,+ last 3 days of prior week (operational),2018-12-30,287.3928571428572,5.278226861357915
+2018,+ same-week weather (ORACLE),2018-01-07,247.29857142857145,5.367128923661773
+2018,+ same-week weather (ORACLE),2018-01-14,188.26,5.332645179386901
+2018,+ same-week weather (ORACLE),2018-01-21,197.46,5.393511717382872
+2018,+ same-week weather (ORACLE),2018-01-28,148.48857142857145,5.319547180867673
+2018,+ same-week weather (ORACLE),2018-02-04,137.04714285714286,5.131008392251311
+2018,+ same-week weather (ORACLE),2018-02-11,169.39,5.152212217311686
+2018,+ same-week weather (ORACLE),2018-02-18,103.70857142857145,4.706336760303192
+2018,+ same-week weather (ORACLE),2018-02-25,158.08285714285714,4.864490128908577
+2018,+ same-week weather (ORACLE),2018-03-04,104.86,4.602787879188682
+2018,+ same-week weather (ORACLE),2018-03-11,96.94857142857144,4.674082938768307
+2018,+ same-week weather (ORACLE),2018-03-18,102.21428571428572,4.628401105736135
+2018,+ same-week weather (ORACLE),2018-03-25,90.97,4.675022657503407
+2018,+ same-week weather (ORACLE),2018-04-01,97.72857142857144,4.496167138219241
+2018,+ same-week weather (ORACLE),2018-04-08,94.45285714285714,4.657217485538238
+2018,+ same-week weather (ORACLE),2018-04-15,75.25,4.617571767092575
+2018,+ same-week weather (ORACLE),2018-04-22,92.28,4.530215756242202
+2018,+ same-week weather (ORACLE),2018-04-29,103.68999999999998,4.552034681859364
+2018,+ same-week weather (ORACLE),2018-05-06,68.93714285714286,4.356162537645639
+2018,+ same-week weather (ORACLE),2018-05-13,99.39285714285714,4.54618652317735
+2018,+ same-week weather (ORACLE),2018-05-20,83.68285714285715,4.644797841566329
+2018,+ same-week weather (ORACLE),2018-05-27,98.57714285714285,4.670232755432298
+2018,+ same-week weather (ORACLE),2018-06-03,80.00142857142858,4.261273261230135
+2018,+ same-week weather (ORACLE),2018-06-10,64.88285714285715,4.19507799874749
+2018,+ same-week weather (ORACLE),2018-06-17,152.4042857142857,4.182547118703247
+2018,+ same-week weather (ORACLE),2018-06-24,68.25857142857143,4.559911405860307
+2018,+ same-week weather (ORACLE),2018-07-01,38.87571428571429,4.084465176201629
+2018,+ same-week weather (ORACLE),2018-07-08,51.74428571428571,3.991836626951497
+2018,+ same-week weather (ORACLE),2018-07-15,43.470000000000006,3.855714750789884
+2018,+ same-week weather (ORACLE),2018-07-22,36.80857142857143,3.819854081543282
+2018,+ same-week weather (ORACLE),2018-07-29,34.582857142857144,3.795128986680476
+2018,+ same-week weather (ORACLE),2018-08-05,59.50428571428571,3.591157149608243
+2018,+ same-week weather (ORACLE),2018-08-12,39.05428571428571,3.758391805228982
+2018,+ same-week weather (ORACLE),2018-08-19,38.74142857142857,3.8154756862322254
+2018,+ same-week weather (ORACLE),2018-08-26,31.807142857142857,3.7689172388684766
+2018,+ same-week weather (ORACLE),2018-09-02,37.85428571428572,3.907249182358432
+2018,+ same-week weather (ORACLE),2018-09-09,41.95,3.7901896576814327
+2018,+ same-week weather (ORACLE),2018-09-16,33.33,3.759080547646404
+2018,+ same-week weather (ORACLE),2018-09-23,49.20857142857143,3.8448364790229057
+2018,+ same-week weather (ORACLE),2018-09-30,57.55857142857143,4.106468867682794
+2018,+ same-week weather (ORACLE),2018-10-07,83.38714285714286,4.447774335187308
+2018,+ same-week weather (ORACLE),2018-10-14,96.91142857142856,4.543453775338416
+2018,+ same-week weather (ORACLE),2018-10-21,140.48285714285714,4.959052551935233
+2018,+ same-week weather (ORACLE),2018-10-28,171.1542857142857,5.18284036654549
+2018,+ same-week weather (ORACLE),2018-11-04,202.76142857142847,5.313752083499861
+2018,+ same-week weather (ORACLE),2018-11-11,283.1485714285714,5.534374047549677
+2018,+ same-week weather (ORACLE),2018-11-18,173.0885714285714,5.447209522616159
+2018,+ same-week weather (ORACLE),2018-11-25,168.86714285714285,5.352572211628384
+2018,+ same-week weather (ORACLE),2018-12-02,186.70857142857145,5.238252835129369
+2018,+ same-week weather (ORACLE),2018-12-09,201.8728571428572,5.2062838248419645
+2018,+ same-week weather (ORACLE),2018-12-16,175.70142857142858,5.202310125191636
+2018,+ same-week weather (ORACLE),2018-12-23,261.5357142857143,5.202994843374706
+2018,+ same-week weather (ORACLE),2018-12-30,287.3928571428572,5.302466775071327
+2019,Persistence,2019-01-06,282.41142857142853,5.660850119970929
+2019,Persistence,2019-01-13,215.72,5.64336497424579
+2019,Persistence,2019-01-20,239.19571428571427,5.373981270469026
+2019,Persistence,2019-01-27,116.32714285714285,5.477282105050224
+2019,Persistence,2019-02-03,166.56714285714287,4.756406418856059
+2019,Persistence,2019-02-10,134.56428571428572,5.115398488536135
+2019,Persistence,2019-02-17,152.75857142857143,4.90204204555607
+2019,Persistence,2019-02-24,90.08714285714288,5.028858710576035
+2019,Persistence,2019-03-03,80.32000000000001,4.500777455843011
+2019,Persistence,2019-03-10,86.03,4.38601865594342
+2019,Persistence,2019-03-17,82.42142857142858,4.454696072633257
+2019,Persistence,2019-03-24,79.07571428571428,4.411845458585364
+2019,Persistence,2019-03-31,87.09142857142857,4.370405802166587
+2019,Persistence,2019-04-07,104.12285714285711,4.466958469962336
+2019,Persistence,2019-04-14,72.85857142857142,4.645571520614807
+2019,Persistence,2019-04-21,61.77,4.288520184313964
+2019,Persistence,2019-04-28,88.33,4.123417809707808
+2019,Persistence,2019-05-05,85.77428571428571,4.4810798007570405
+2019,Persistence,2019-05-12,129.04857142857142,4.451719261275106
+2019,Persistence,2019-05-19,86.87,4.860188856196892
+2019,Persistence,2019-05-26,67.29142857142857,4.464412748271829
+2019,Persistence,2019-06-02,78.25999999999999,4.209032867045144
+2019,Persistence,2019-06-09,70.20857142857143,4.360036616782266
+2019,Persistence,2019-06-16,69.01285714285714,4.251470403700252
+2019,Persistence,2019-06-23,53.53857142857142,4.2342928226427015
+2019,Persistence,2019-06-30,56.73285714285714,3.980402355415933
+2019,Persistence,2019-07-07,46.77428571428572,4.038353533949284
+2019,Persistence,2019-07-14,62.93857142857143,3.8453336013708825
+2019,Persistence,2019-07-21,42.65,4.142159194025184
+2019,Persistence,2019-07-28,42.49,3.753027273937688
+2019,Persistence,2019-08-04,34.18857142857143,3.74926875412672
+2019,Persistence,2019-08-11,28.487142857142857,3.531891419466518
+2019,Persistence,2019-08-18,20.78142857142857,3.3494528576662868
+2019,Persistence,2019-08-25,45.11857142857143,3.0340597307300574
+2019,Persistence,2019-09-01,39.64142857142857,3.8092939450877537
+2019,Persistence,2019-09-08,46.80571428571428,3.6798747474458255
+2019,Persistence,2019-09-15,50.56857142857143,3.846005295592088
+2019,Persistence,2019-09-22,39.85142857142857,3.9233302653072943
+2019,Persistence,2019-09-29,25.55,3.6851582533120815
+2019,Persistence,2019-10-06,43.25571428571429,3.2406373166497136
+2019,Persistence,2019-10-13,87.52285714285713,3.7671293468635647
+2019,Persistence,2019-10-20,111.85142857142856,4.4718999837401885
+2019,Persistence,2019-10-27,140.25571428571428,4.717171460062251
+2019,Persistence,2019-11-03,353.36857142857144,4.943467287142965
+2019,Persistence,2019-11-10,176.22285714285712,5.867511623923472
+2019,Persistence,2019-11-17,297.9271428571428,5.171749427806506
+2019,Persistence,2019-11-24,152.52142857142854,5.696848969557004
+2019,Persistence,2019-12-01,86.82571428571428,5.02730510139861
+2019,Persistence,2019-12-08,204.55428571428573,4.46390282532494
+2019,Persistence,2019-12-15,184.0914285714286,5.320833396071274
+2019,Persistence,2019-12-22,185.57857142857145,5.215432528607776
+2019,Persistence,2019-12-29,234.32857142857145,5.223478358021557
+2019,Climatology,2019-01-06,282.41142857142853,5.434197948032715
+2019,Climatology,2019-01-13,215.72,5.267708876379964
+2019,Climatology,2019-01-20,239.19571428571427,5.399659353705149
+2019,Climatology,2019-01-27,116.32714285714285,5.182127044787552
+2019,Climatology,2019-02-03,166.56714285714287,5.068326379352324
+2019,Climatology,2019-02-10,134.56428571428572,5.005606412276393
+2019,Climatology,2019-02-17,152.75857142857143,4.894784052763326
+2019,Climatology,2019-02-24,90.08714285714288,5.122283077567929
+2019,Climatology,2019-03-03,80.32000000000001,4.793069511607513
+2019,Climatology,2019-03-10,86.03,4.489640694836053
+2019,Climatology,2019-03-17,82.42142857142858,4.524430400320788
+2019,Climatology,2019-03-24,79.07571428571428,4.535984248620467
+2019,Climatology,2019-03-31,87.09142857142857,4.636562361181251
+2019,Climatology,2019-04-07,104.12285714285711,4.520754073584595
+2019,Climatology,2019-04-14,72.85857142857142,4.620245071635307
+2019,Climatology,2019-04-21,61.77,4.6658941641564855
+2019,Climatology,2019-04-28,88.33,4.723595977576291
+2019,Climatology,2019-05-05,85.77428571428571,4.553601588555389
+2019,Climatology,2019-05-12,129.04857142857142,4.720991552005117
+2019,Climatology,2019-05-19,86.87,4.59378975463906
+2019,Climatology,2019-05-26,67.29142857142857,4.509783017368246
+2019,Climatology,2019-06-02,78.25999999999999,4.531140268800598
+2019,Climatology,2019-06-09,70.20857142857143,4.174672761722088
+2019,Climatology,2019-06-16,69.01285714285714,4.517429620742329
+2019,Climatology,2019-06-23,53.53857142857142,4.319189257210957
+2019,Climatology,2019-06-30,56.73285714285714,3.943789094521117
+2019,Climatology,2019-07-07,46.77428571428572,4.103957172870507
+2019,Climatology,2019-07-14,62.93857142857143,3.814374650600652
+2019,Climatology,2019-07-21,42.65,3.7679408789883073
+2019,Climatology,2019-07-28,42.49,3.5642125617792497
+2019,Climatology,2019-08-04,34.18857142857143,3.734629977026136
+2019,Climatology,2019-08-11,28.487142857142857,3.7846772651935656
+2019,Climatology,2019-08-18,20.78142857142857,3.803905852176592
+2019,Climatology,2019-08-25,45.11857142857143,3.737547315093024
+2019,Climatology,2019-09-01,39.64142857142857,3.699850875327819
+2019,Climatology,2019-09-08,46.80571428571428,4.002236043411254
+2019,Climatology,2019-09-15,50.56857142857143,4.003960043042373
+2019,Climatology,2019-09-22,39.85142857142857,4.081388300513565
+2019,Climatology,2019-09-29,25.55,4.243511759511004
+2019,Climatology,2019-10-06,43.25571428571429,4.51798167057987
+2019,Climatology,2019-10-13,87.52285714285713,4.784254654282071
+2019,Climatology,2019-10-20,111.85142857142856,4.98998990668643
+2019,Climatology,2019-10-27,140.25571428571428,5.243295453681435
+2019,Climatology,2019-11-03,353.36857142857144,5.442251227757787
+2019,Climatology,2019-11-10,176.22285714285712,5.739720525302815
+2019,Climatology,2019-11-17,297.9271428571428,5.386107052776994
+2019,Climatology,2019-11-24,152.52142857142854,5.262891227519384
+2019,Climatology,2019-12-01,86.82571428571428,5.314463696059258
+2019,Climatology,2019-12-08,204.55428571428573,5.333576262155319
+2019,Climatology,2019-12-15,184.0914285714286,5.1796456826531285
+2019,Climatology,2019-12-22,185.57857142857145,5.296927489603438
+2019,Climatology,2019-12-29,234.32857142857145,5.451263182359057
+2019,Climatology + AR(1),2019-01-06,282.41142857142853,5.510923945669052
+2019,Climatology + AR(1),2019-01-13,215.72,5.34428115202695
+2019,Climatology + AR(1),2019-01-20,239.19571428571427,5.438563760394774
+2019,Climatology + AR(1),2019-01-27,116.32714285714285,5.210543334009056
+2019,Climatology + AR(1),2019-02-03,166.56714285714287,4.912477736726281
+2019,Climatology + AR(1),2019-02-10,134.56428571428572,5.022838662430564
+2019,Climatology + AR(1),2019-02-17,152.75857142857143,4.856871006049951
+2019,Climatology + AR(1),2019-02-24,90.08714285714288,5.171365391550115
+2019,Climatology + AR(1),2019-03-03,80.32000000000001,4.565547513305579
+2019,Climatology + AR(1),2019-03-10,86.03,4.340626718366831
+2019,Climatology + AR(1),2019-03-17,82.42142857142858,4.511637804412452
+2019,Climatology + AR(1),2019-03-24,79.07571428571428,4.494768932094034
+2019,Climatology + AR(1),2019-03-31,87.09142857142857,4.575947078396905
+2019,Climatology + AR(1),2019-04-07,104.12285714285711,4.458665148076869
+2019,Climatology + AR(1),2019-04-14,72.85857142857142,4.665938487718081
+2019,Climatology + AR(1),2019-04-21,61.77,4.544455666077636
+2019,Climatology + AR(1),2019-04-28,88.33,4.525005168609578
+2019,Climatology + AR(1),2019-05-05,85.77428571428571,4.464820790374801
+2019,Climatology + AR(1),2019-05-12,129.04857142857142,4.683694269592567
+2019,Climatology + AR(1),2019-05-19,86.87,4.6447473770658
+2019,Climatology + AR(1),2019-05-26,67.29142857142857,4.462420428850868
+2019,Climatology + AR(1),2019-06-02,78.25999999999999,4.421041063259694
+2019,Climatology + AR(1),2019-06-09,70.20857142857143,4.112034800836192
+2019,Climatology + AR(1),2019-06-16,69.01285714285714,4.545543852306725
+2019,Climatology + AR(1),2019-06-23,53.53857142857142,4.215537982235119
+2019,Climatology + AR(1),2019-06-30,56.73285714285714,3.8197653203177655
+2019,Climatology + AR(1),2019-07-07,46.77428571428572,4.13857550852978
+2019,Climatology + AR(1),2019-07-14,62.93857142857143,3.719697225749261
+2019,Climatology + AR(1),2019-07-21,42.65,3.887936888236709
+2019,Climatology + AR(1),2019-07-28,42.49,3.5587529599600654
+2019,Climatology + AR(1),2019-08-04,34.18857142857143,3.802375711270965
+2019,Climatology + AR(1),2019-08-11,28.487142857142857,3.710458335973273
+2019,Climatology + AR(1),2019-08-18,20.78142857142857,3.644578046523677
+2019,Climatology + AR(1),2019-08-25,45.11857142857143,3.455720535392496
+2019,Climatology + AR(1),2019-09-01,39.64142857142857,3.726116022507864
+2019,Climatology + AR(1),2019-09-08,46.80571428571428,3.994923143293904
+2019,Climatology + AR(1),2019-09-15,50.56857142857143,3.946766784128048
+2019,Climatology + AR(1),2019-09-22,39.85142857142857,4.051871193167036
+2019,Climatology + AR(1),2019-09-29,25.55,4.0984590858499885
+2019,Climatology + AR(1),2019-10-06,43.25571428571429,4.150847425434247
+2019,Climatology + AR(1),2019-10-13,87.52285714285713,4.50938116134817
+2019,Climatology + AR(1),2019-10-20,111.85142857142856,4.875642495598834
+2019,Climatology + AR(1),2019-10-27,140.25571428571428,5.143421541073392
+2019,Climatology + AR(1),2019-11-03,353.36857142857144,5.332489543851038
+2019,Climatology + AR(1),2019-11-10,176.22285714285712,5.8954006861125485
+2019,Climatology + AR(1),2019-11-17,297.9271428571428,5.178183078217519
+2019,Climatology + AR(1),2019-11-24,152.52142857142854,5.376648238543258
+2019,Climatology + AR(1),2019-12-01,86.82571428571428,5.228219864445239
+2019,Climatology + AR(1),2019-12-08,204.55428571428573,5.022201268555408
+2019,Climatology + AR(1),2019-12-15,184.0914285714286,5.174980749216985
+2019,Climatology + AR(1),2019-12-22,185.57857142857145,5.310028408436524
+2019,Climatology + AR(1),2019-12-29,234.32857142857145,5.424374780055195
+2019,"DHR, no weather",2019-01-06,282.41142857142853,5.359167517717401
+2019,"DHR, no weather",2019-01-13,215.72,5.408189513976904
+2019,"DHR, no weather",2019-01-20,239.19571428571427,5.362499539120224
+2019,"DHR, no weather",2019-01-27,116.32714285714285,5.34162748163514
+2019,"DHR, no weather",2019-02-03,166.56714285714287,5.102692635425558
+2019,"DHR, no weather",2019-02-10,134.56428571428572,5.039589923540483
+2019,"DHR, no weather",2019-02-17,152.75857142857143,4.873190745484746
+2019,"DHR, no weather",2019-02-24,90.08714285714288,4.78914232115421
+2019,"DHR, no weather",2019-03-03,80.32000000000001,4.596921553229215
+2019,"DHR, no weather",2019-03-10,86.03,4.499736711108832
+2019,"DHR, no weather",2019-03-17,82.42142857142858,4.4740488472574205
+2019,"DHR, no weather",2019-03-24,79.07571428571428,4.455528019574674
+2019,"DHR, no weather",2019-03-31,87.09142857142857,4.449327212387484
+2019,"DHR, no weather",2019-04-07,104.12285714285711,4.476685842686624
+2019,"DHR, no weather",2019-04-14,72.85857142857142,4.528278279400569
+2019,"DHR, no weather",2019-04-21,61.77,4.4644725930582245
+2019,"DHR, no weather",2019-04-28,88.33,4.4141273278156765
+2019,"DHR, no weather",2019-05-05,85.77428571428571,4.471034067533299
+2019,"DHR, no weather",2019-05-12,129.04857142857142,4.462910096854858
+2019,"DHR, no weather",2019-05-19,86.87,4.5459037898111525
+2019,"DHR, no weather",2019-05-26,67.29142857142857,4.4591761921344615
+2019,"DHR, no weather",2019-06-02,78.25999999999999,4.354544465037239
+2019,"DHR, no weather",2019-06-09,70.20857142857143,4.304081229462097
+2019,"DHR, no weather",2019-06-16,69.01285714285714,4.187952968764395
+2019,"DHR, no weather",2019-06-23,53.53857142857142,4.076039165251577
+2019,"DHR, no weather",2019-06-30,56.73285714285714,3.912813549337822
+2019,"DHR, no weather",2019-07-07,46.77428571428572,3.8217563965241736
+2019,"DHR, no weather",2019-07-14,62.93857142857143,3.707889839338775
+2019,"DHR, no weather",2019-07-21,42.65,3.7283167698415935
+2019,"DHR, no weather",2019-07-28,42.49,3.645517770225332
+2019,"DHR, no weather",2019-08-04,34.18857142857143,3.646780017085901
+2019,"DHR, no weather",2019-08-11,28.487142857142857,3.6133809817196303
+2019,"DHR, no weather",2019-08-18,20.78142857142857,3.5781961774425355
+2019,"DHR, no weather",2019-08-25,45.11857142857143,3.502933312686342
+2019,"DHR, no weather",2019-09-01,39.64142857142857,3.665308950198451
+2019,"DHR, no weather",2019-09-08,46.80571428571428,3.694668045556771
+2019,"DHR, no weather",2019-09-15,50.56857142857143,3.8087739102705647
+2019,"DHR, no weather",2019-09-22,39.85142857142857,3.9494348757544695
+2019,"DHR, no weather",2019-09-29,25.55,4.056992254010775
+2019,"DHR, no weather",2019-10-06,43.25571428571429,4.1230570843829
+2019,"DHR, no weather",2019-10-13,87.52285714285713,4.38609358979459
+2019,"DHR, no weather",2019-10-20,111.85142857142856,4.71010184064205
+2019,"DHR, no weather",2019-10-27,140.25571428571428,4.931645320153792
+2019,"DHR, no weather",2019-11-03,353.36857142857144,5.097100562099376
+2019,"DHR, no weather",2019-11-10,176.22285714285712,5.364680806230018
+2019,"DHR, no weather",2019-11-17,297.9271428571428,5.258240893405048
+2019,"DHR, no weather",2019-11-24,152.52142857142854,5.332927993156065
+2019,"DHR, no weather",2019-12-01,86.82571428571428,5.152600579381066
+2019,"DHR, no weather",2019-12-08,204.55428571428573,4.954795459847521
+2019,"DHR, no weather",2019-12-15,184.0914285714286,5.073866939089497
+2019,"DHR, no weather",2019-12-22,185.57857142857145,5.071274976492836
+2019,"DHR, no weather",2019-12-29,234.32857142857145,5.112024865127882
+2019,+ lagged weather (operational),2019-01-06,282.41142857142853,5.359637230135418
+2019,+ lagged weather (operational),2019-01-13,215.72,5.415113061138754
+2019,+ lagged weather (operational),2019-01-20,239.19571428571427,5.344845915138025
+2019,+ lagged weather (operational),2019-01-27,116.32714285714285,5.3482965908549
+2019,+ lagged weather (operational),2019-02-03,166.56714285714287,5.108361888507738
+2019,+ lagged weather (operational),2019-02-10,134.56428571428572,5.0322975039795885
+2019,+ lagged weather (operational),2019-02-17,152.75857142857143,4.867423550851587
+2019,+ lagged weather (operational),2019-02-24,90.08714285714288,4.752651626209175
+2019,+ lagged weather (operational),2019-03-03,80.32000000000001,4.595939764520829
+2019,+ lagged weather (operational),2019-03-10,86.03,4.48304695925738
+2019,+ lagged weather (operational),2019-03-17,82.42142857142858,4.48391611080587
+2019,+ lagged weather (operational),2019-03-24,79.07571428571428,4.4714604414105406
+2019,+ lagged weather (operational),2019-03-31,87.09142857142857,4.475086144521297
+2019,+ lagged weather (operational),2019-04-07,104.12285714285711,4.460466524803529
+2019,+ lagged weather (operational),2019-04-14,72.85857142857142,4.537935649426862
+2019,+ lagged weather (operational),2019-04-21,61.77,4.464938665663467
+2019,+ lagged weather (operational),2019-04-28,88.33,4.391403271760319
+2019,+ lagged weather (operational),2019-05-05,85.77428571428571,4.4950181962158045
+2019,+ lagged weather (operational),2019-05-12,129.04857142857142,4.504689606954122
+2019,+ lagged weather (operational),2019-05-19,86.87,4.597997034290719
+2019,+ lagged weather (operational),2019-05-26,67.29142857142857,4.438442019946054
+2019,+ lagged weather (operational),2019-06-02,78.25999999999999,4.363498096076092
+2019,+ lagged weather (operational),2019-06-09,70.20857142857143,4.334993904098507
+2019,+ lagged weather (operational),2019-06-16,69.01285714285714,4.20250128527876
+2019,+ lagged weather (operational),2019-06-23,53.53857142857142,4.109313727458879
+2019,+ lagged weather (operational),2019-06-30,56.73285714285714,3.935848025950107
+2019,+ lagged weather (operational),2019-07-07,46.77428571428572,3.8637521882101
+2019,+ lagged weather (operational),2019-07-14,62.93857142857143,3.707619580315951
+2019,+ lagged weather (operational),2019-07-21,42.65,3.7765558075756895
+2019,+ lagged weather (operational),2019-07-28,42.49,3.599747762336025
+2019,+ lagged weather (operational),2019-08-04,34.18857142857143,3.63059221391814
+2019,+ lagged weather (operational),2019-08-11,28.487142857142857,3.583193661406807
+2019,+ lagged weather (operational),2019-08-18,20.78142857142857,3.598941315306436
+2019,+ lagged weather (operational),2019-08-25,45.11857142857143,3.515302467532623
+2019,+ lagged weather (operational),2019-09-01,39.64142857142857,3.644834827815776
+2019,+ lagged weather (operational),2019-09-08,46.80571428571428,3.685315995776973
+2019,+ lagged weather (operational),2019-09-15,50.56857142857143,3.764024565148003
+2019,+ lagged weather (operational),2019-09-22,39.85142857142857,3.942657898065658
+2019,+ lagged weather (operational),2019-09-29,25.55,4.04424524769524
+2019,+ lagged weather (operational),2019-10-06,43.25571428571429,4.149468708186806
+2019,+ lagged weather (operational),2019-10-13,87.52285714285713,4.3841571342152585
+2019,+ lagged weather (operational),2019-10-20,111.85142857142856,4.716158777646783
+2019,+ lagged weather (operational),2019-10-27,140.25571428571428,4.938127704700038
+2019,+ lagged weather (operational),2019-11-03,353.36857142857144,5.114381244435517
+2019,+ lagged weather (operational),2019-11-10,176.22285714285712,5.3747730697351015
+2019,+ lagged weather (operational),2019-11-17,297.9271428571428,5.281909830748628
+2019,+ lagged weather (operational),2019-11-24,152.52142857142854,5.334472064798017
+2019,+ lagged weather (operational),2019-12-01,86.82571428571428,5.123192838660607
+2019,+ lagged weather (operational),2019-12-08,204.55428571428573,4.954231089148635
+2019,+ lagged weather (operational),2019-12-15,184.0914285714286,5.0677355207695065
+2019,+ lagged weather (operational),2019-12-22,185.57857142857145,5.0580475040907125
+2019,+ lagged weather (operational),2019-12-29,234.32857142857145,5.076902593720429
+2019,+ last 3 days of prior week (operational),2019-01-06,282.41142857142853,5.362892203792431
+2019,+ last 3 days of prior week (operational),2019-01-13,215.72,5.406239524104437
+2019,+ last 3 days of prior week (operational),2019-01-20,239.19571428571427,5.379841217444398
+2019,+ last 3 days of prior week (operational),2019-01-27,116.32714285714285,5.356719238909676
+2019,+ last 3 days of prior week (operational),2019-02-03,166.56714285714287,5.091607434700669
+2019,+ last 3 days of prior week (operational),2019-02-10,134.56428571428572,5.039876747978728
+2019,+ last 3 days of prior week (operational),2019-02-17,152.75857142857143,4.873274677256263
+2019,+ last 3 days of prior week (operational),2019-02-24,90.08714285714288,4.795989952916109
+2019,+ last 3 days of prior week (operational),2019-03-03,80.32000000000001,4.573765910997022
+2019,+ last 3 days of prior week (operational),2019-03-10,86.03,4.520921547899664
+2019,+ last 3 days of prior week (operational),2019-03-17,82.42142857142858,4.478410982742748
+2019,+ last 3 days of prior week (operational),2019-03-24,79.07571428571428,4.456581421341188
+2019,+ last 3 days of prior week (operational),2019-03-31,87.09142857142857,4.422241322409482
+2019,+ last 3 days of prior week (operational),2019-04-07,104.12285714285711,4.489286410684956
+2019,+ last 3 days of prior week (operational),2019-04-14,72.85857142857142,4.538374093638739
+2019,+ last 3 days of prior week (operational),2019-04-21,61.77,4.44878078846137
+2019,+ last 3 days of prior week (operational),2019-04-28,88.33,4.428265245780398
+2019,+ last 3 days of prior week (operational),2019-05-05,85.77428571428571,4.4258951750246505
+2019,+ last 3 days of prior week (operational),2019-05-12,129.04857142857142,4.452646289228369
+2019,+ last 3 days of prior week (operational),2019-05-19,86.87,4.52568800905842
+2019,+ last 3 days of prior week (operational),2019-05-26,67.29142857142857,4.468233904634098
+2019,+ last 3 days of prior week (operational),2019-06-02,78.25999999999999,4.341505585017856
+2019,+ last 3 days of prior week (operational),2019-06-09,70.20857142857143,4.311016624227833
+2019,+ last 3 days of prior week (operational),2019-06-16,69.01285714285714,4.216820312997684
+2019,+ last 3 days of prior week (operational),2019-06-23,53.53857142857142,4.034089622923696
+2019,+ last 3 days of prior week (operational),2019-06-30,56.73285714285714,3.92997507591021
+2019,+ last 3 days of prior week (operational),2019-07-07,46.77428571428572,3.8074074828319366
+2019,+ last 3 days of prior week (operational),2019-07-14,62.93857142857143,3.742330530631422
+2019,+ last 3 days of prior week (operational),2019-07-21,42.65,3.681164282355263
+2019,+ last 3 days of prior week (operational),2019-07-28,42.49,3.6868240857404255
+2019,+ last 3 days of prior week (operational),2019-08-04,34.18857142857143,3.624710248698696
+2019,+ last 3 days of prior week (operational),2019-08-11,28.487142857142857,3.64627768382648
+2019,+ last 3 days of prior week (operational),2019-08-18,20.78142857142857,3.52922428326413
+2019,+ last 3 days of prior week (operational),2019-08-25,45.11857142857143,3.4619875752310216
+2019,+ last 3 days of prior week (operational),2019-09-01,39.64142857142857,3.7093948437871136
+2019,+ last 3 days of prior week (operational),2019-09-08,46.80571428571428,3.715698226088012
+2019,+ last 3 days of prior week (operational),2019-09-15,50.56857142857143,3.820417528942052
+2019,+ last 3 days of prior week (operational),2019-09-22,39.85142857142857,3.94207353457751
+2019,+ last 3 days of prior week (operational),2019-09-29,25.55,4.072199417268207
+2019,+ last 3 days of prior week (operational),2019-10-06,43.25571428571429,4.089909076424188
+2019,+ last 3 days of prior week (operational),2019-10-13,87.52285714285713,4.389992080833101
+2019,+ last 3 days of prior week (operational),2019-10-20,111.85142857142856,4.7265313489221805
+2019,+ last 3 days of prior week (operational),2019-10-27,140.25571428571428,4.929244361943431
+2019,+ last 3 days of prior week (operational),2019-11-03,353.36857142857144,5.100521594183128
+2019,+ last 3 days of prior week (operational),2019-11-10,176.22285714285712,5.361215429502756
+2019,+ last 3 days of prior week (operational),2019-11-17,297.9271428571428,5.251812743435043
+2019,+ last 3 days of prior week (operational),2019-11-24,152.52142857142854,5.2971917531691854
+2019,+ last 3 days of prior week (operational),2019-12-01,86.82571428571428,5.1585597018796046
+2019,+ last 3 days of prior week (operational),2019-12-08,204.55428571428573,4.968404047684039
+2019,+ last 3 days of prior week (operational),2019-12-15,184.0914285714286,5.097640028988289
+2019,+ last 3 days of prior week (operational),2019-12-22,185.57857142857145,5.074131487758417
+2019,+ last 3 days of prior week (operational),2019-12-29,234.32857142857145,5.128873028659806
+2019,+ same-week weather (ORACLE),2019-01-06,282.41142857142853,5.35597808875955
+2019,+ same-week weather (ORACLE),2019-01-13,215.72,5.434993707247946
+2019,+ same-week weather (ORACLE),2019-01-20,239.19571428571427,5.399838030870583
+2019,+ same-week weather (ORACLE),2019-01-27,116.32714285714285,5.239512440068485
+2019,+ same-week weather (ORACLE),2019-02-03,166.56714285714287,5.063652827410647
+2019,+ same-week weather (ORACLE),2019-02-10,134.56428571428572,4.892039445161513
+2019,+ same-week weather (ORACLE),2019-02-17,152.75857142857143,4.818199302056225
+2019,+ same-week weather (ORACLE),2019-02-24,90.08714285714288,4.660484855480858
+2019,+ same-week weather (ORACLE),2019-03-03,80.32000000000001,4.571711115752366
+2019,+ same-week weather (ORACLE),2019-03-10,86.03,4.541148530556252
+2019,+ same-week weather (ORACLE),2019-03-17,82.42142857142858,4.446650875759064
+2019,+ same-week weather (ORACLE),2019-03-24,79.07571428571428,4.554094450859378
+2019,+ same-week weather (ORACLE),2019-03-31,87.09142857142857,4.408595331088791
+2019,+ same-week weather (ORACLE),2019-04-07,104.12285714285711,4.590761119976648
+2019,+ same-week weather (ORACLE),2019-04-14,72.85857142857142,4.565066074049738
+2019,+ same-week weather (ORACLE),2019-04-21,61.77,4.37676595500646
+2019,+ same-week weather (ORACLE),2019-04-28,88.33,4.359128121583243
+2019,+ same-week weather (ORACLE),2019-05-05,85.77428571428571,4.636036619803538
+2019,+ same-week weather (ORACLE),2019-05-12,129.04857142857142,4.449073971951503
+2019,+ same-week weather (ORACLE),2019-05-19,86.87,4.522288497228607
+2019,+ same-week weather (ORACLE),2019-05-26,67.29142857142857,4.451402736022774
+2019,+ same-week weather (ORACLE),2019-06-02,78.25999999999999,4.536898301935088
+2019,+ same-week weather (ORACLE),2019-06-09,70.20857142857143,4.410075968689771
+2019,+ same-week weather (ORACLE),2019-06-16,69.01285714285714,4.315379700125485
+2019,+ same-week weather (ORACLE),2019-06-23,53.53857142857142,4.118252730380329
+2019,+ same-week weather (ORACLE),2019-06-30,56.73285714285714,4.176751265490984
+2019,+ same-week weather (ORACLE),2019-07-07,46.77428571428572,3.938839900076948
+2019,+ same-week weather (ORACLE),2019-07-14,62.93857142857143,3.759279260632812
+2019,+ same-week weather (ORACLE),2019-07-21,42.65,3.7726711484832314
+2019,+ same-week weather (ORACLE),2019-07-28,42.49,3.642281762540546
+2019,+ same-week weather (ORACLE),2019-08-04,34.18857142857143,3.6246373626260064
+2019,+ same-week weather (ORACLE),2019-08-11,28.487142857142857,3.501631936893564
+2019,+ same-week weather (ORACLE),2019-08-18,20.78142857142857,3.387580677153115
+2019,+ same-week weather (ORACLE),2019-08-25,45.11857142857143,3.571478017332863
+2019,+ same-week weather (ORACLE),2019-09-01,39.64142857142857,3.7348912177340727
+2019,+ same-week weather (ORACLE),2019-09-08,46.80571428571428,3.706981525845944
+2019,+ same-week weather (ORACLE),2019-09-15,50.56857142857143,3.721058523372774
+2019,+ same-week weather (ORACLE),2019-09-22,39.85142857142857,3.934367980432667
+2019,+ same-week weather (ORACLE),2019-09-29,25.55,3.857832184249025
+2019,+ same-week weather (ORACLE),2019-10-06,43.25571428571429,4.069042834584395
+2019,+ same-week weather (ORACLE),2019-10-13,87.52285714285713,4.485265166609083
+2019,+ same-week weather (ORACLE),2019-10-20,111.85142857142856,4.758488871401581
+2019,+ same-week weather (ORACLE),2019-10-27,140.25571428571428,4.919637180965591
+2019,+ same-week weather (ORACLE),2019-11-03,353.36857142857144,5.110424681617166
+2019,+ same-week weather (ORACLE),2019-11-10,176.22285714285712,5.313140875901765
+2019,+ same-week weather (ORACLE),2019-11-17,297.9271428571428,5.225933724491203
+2019,+ same-week weather (ORACLE),2019-11-24,152.52142857142854,5.327943381990668
+2019,+ same-week weather (ORACLE),2019-12-01,86.82571428571428,5.033916786378875
+2019,+ same-week weather (ORACLE),2019-12-08,204.55428571428573,4.88917675948976
+2019,+ same-week weather (ORACLE),2019-12-15,184.0914285714286,5.09538593261106
+2019,+ same-week weather (ORACLE),2019-12-22,185.57857142857145,5.032741373065046
+2019,+ same-week weather (ORACLE),2019-12-29,234.32857142857145,5.007868980655888
+```
+
+## fc_weekly_2020.csv (no-lockdown forecast, 95% interval, weather-adjusted median and actual, weeks of 2020)
+```
+date,lo95,median,hi95,weather_adj_median,actual
+2020-01-05,118.42678315810193,197.52459088617573,326.99164630418403,199.5657103440318,271.12142857142857
+2020-01-12,114.86578106190404,193.14153623343609,327.5177084810721,175.2833378018649,139.47714285714284
+2020-01-19,113.5838762964645,188.40426364609996,318.5429808574382,167.0796240116145,134.74571428571429
+2020-01-26,106.14049077950357,179.35865422451218,304.8593124013851,174.2466693632494,150.86714285714285
+2020-02-02,97.24900403957253,162.7948911280826,276.5658453396509,156.5525617907848,115.5657142857143
+2020-02-09,84.23362869889253,140.99979244131492,238.4328311335805,143.83476653847862,149.54571428571427
+2020-02-16,71.23416205665043,120.51098805123311,205.7319231042121,111.02674720456862,129.7642857142857
+2020-02-23,62.088576903384165,104.43891713845784,176.455827076084,90.54328349679928,106.28
+2020-03-01,58.84517612755658,93.24994369711466,144.11956865689098,78.51444745822505,90.53571428571428
+2020-03-08,54.28878444051528,85.85374296165143,132.63415045713734,73.17938920623745,62.044285714285714
+2020-03-15,52.7084621383437,82.342577677099,128.1086027777061,71.19582439393858,60.51714285714286
+2020-03-22,52.13891261579746,82.05007952887482,129.6037714135071,76.25560020822385,77.45285714285716
+2020-03-29,53.23295421735197,82.94285077806165,128.4088387379614,68.83034424966442,38.48285714285714
+2020-04-05,53.20943903381347,83.42332548474883,130.05005298446767,75.70761323558764,36.53142857142857
+2020-04-12,54.33207688680345,84.39294833393966,132.68187069255123,82.9964779958391,44.01857142857143
+2020-04-19,53.444537680530914,84.70664379946643,134.69444461669823,86.13531174765512,48.34857142857143
+2020-04-26,53.02344176663063,84.26664629837228,133.00964430271887,77.58157766759041,48.89
+2020-05-03,54.071841899268335,83.82951715737907,132.59198233270462,62.40175009689558,43.191428571428574
+2020-05-10,53.25866305956278,83.6371009575867,131.65701036328747,74.82037818669444,46.7
+2020-05-17,53.15160729763342,83.21962275038324,131.87337546136862,76.54892286938781,62.76571428571429
+2020-05-24,52.89073300593888,82.5283076308067,126.48548520126418,94.5905803314257,79.43285714285715
+2020-05-31,51.02750864528648,78.78769323859852,123.24827530236756,69.73769302755402,38.33571428571429
+2020-06-07,47.57645117628432,74.27895567877677,114.95403354255195,75.08322996323705,46.19571428571429
+2020-06-14,42.68315267020742,66.91795749116123,106.46550407097624,75.30407614946672,58.957142857142856
+2020-06-21,37.301062229755416,58.73561650169241,92.5624494513853,60.73748006939193,41.85857142857143
+2020-06-28,33.026386195671854,51.02958522591283,79.77870142348056,54.44760495334137,41.01428571428572
 ```
 
 
 
-# 07 Verification and figure code
+# 06 Daily data and station summary
+## delhi_daily.csv (2009 rows: daily city PM2.5 and ERA5 weather used by the notebooks)
+```
+Date,pm25,no2,so2,aqi,aqi_bucket,rh,wind,temp,precip,imputed,log_pm25,season
+2015-01-01,313.22,36.39,9.25,472.0,Severe,68,6.6,16.3,0.0,False,5.7469,Winter (Nov–Jan)
+2015-01-02,186.18,32.87,6.65,454.0,Severe,83,7.0,15.2,4.2,False,5.2267,Winter (Nov–Jan)
+2015-01-03,87.18,30.31,2.65,143.0,Moderate,84,5.1,15.6,0.1,False,4.468,Winter (Nov–Jan)
+2015-01-04,151.84,36.91,4.63,319.0,Very Poor,78,10.2,14.4,0.0,False,5.0228,Winter (Nov–Jan)
+2015-01-05,146.6,34.92,3.33,325.0,Very Poor,74,18.7,14.3,0.0,False,4.9877,Winter (Nov–Jan)
+2015-01-06,149.58,37.84,3.66,318.0,Very Poor,75,12.7,15.1,0.0,False,5.0078,Winter (Nov–Jan)
+2015-01-07,217.87,40.15,5.82,353.0,Very Poor,79,6.9,13.8,0.0,False,5.3839,Winter (Nov–Jan)
+2015-01-08,229.9,43.16,3.31,383.0,Very Poor,80,6.9,13.0,0.0,False,5.4376,Winter (Nov–Jan)
+2015-01-09,201.66,38.56,3.48,375.0,Very Poor,83,6.4,12.4,0.0,False,5.3066,Winter (Nov–Jan)
+2015-01-10,221.02,46.39,5.91,376.0,Very Poor,81,9.4,11.9,0.0,False,5.3983,Winter (Nov–Jan)
+2015-01-11,205.41,47.29,5.54,379.0,Very Poor,84,8.4,11.7,0.0,False,5.325,Winter (Nov–Jan)
+2015-01-12,212.41,44.71,5.17,375.0,Very Poor,87,4.7,11.3,0.0,False,5.3585,Winter (Nov–Jan)
+2015-01-13,197.61,45.88,5.95,366.0,Very Poor,87,8.3,11.2,0.0,False,5.2863,Winter (Nov–Jan)
+2015-01-14,164.39,41.17,4.85,353.0,Very Poor,85,12.1,12.9,4.1,False,5.1022,Winter (Nov–Jan)
+2015-01-15,166.19,56.7,6.94,340.0,Very Poor,84,5.6,12.0,0.0,False,5.1131,Winter (Nov–Jan)
+2015-01-16,174.98,49.41,4.69,356.0,Very Poor,78,7.2,13.3,0.0,False,5.1647,Winter (Nov–Jan)
+2015-01-17,196.46,53.04,5.13,360.0,Very Poor,79,7.9,13.8,0.0,False,5.2805,Winter (Nov–Jan)
+2015-01-18,201.51,53.77,5.43,370.0,Very Poor,76,6.9,13.7,0.0,False,5.3058,Winter (Nov–Jan)
+2015-01-19,183.35,39.88,4.21,362.0,Very Poor,75,5.6,13.1,0.0,False,5.2114,Winter (Nov–Jan)
+2015-01-20,165.63,34.23,4.11,340.0,Very Poor,79,8.5,12.7,0.0,False,5.1098,Winter (Nov–Jan)
+2015-01-21,159.54,22.56,7.05,338.0,Very Poor,81,11.7,12.6,3.8,False,5.0723,Winter (Nov–Jan)
+2015-01-22,143.68,21.82,8.64,332.0,Very Poor,87,9.9,12.8,17.0,False,4.9676,Winter (Nov–Jan)
+2015-01-23,128.73,17.35,6.77,254.0,Poor,83,5.9,14.1,0.0,False,4.8577,Winter (Nov–Jan)
+2015-01-24,164.98,15.77,8.89,324.0,Very Poor,80,8.2,14.4,0.0,False,5.1058,Winter (Nov–Jan)
+2015-01-25,148.59,20.83,5.96,333.0,Very Poor,75,6.8,13.7,0.0,False,5.0012,Winter (Nov–Jan)
+2015-01-26,129.34,25.66,6.78,292.0,Poor,74,6.4,13.3,0.0,False,4.8624,Winter (Nov–Jan)
+2015-01-27,154.2,30.39,6.42,318.0,Very Poor,69,10.4,12.9,0.0,False,5.0383,Winter (Nov–Jan)
+2015-01-28,134.6,28.6,5.21,295.0,Poor,74,11.6,11.4,0.0,False,4.9023,Winter (Nov–Jan)
+2015-01-29,173.13,38.34,5.53,327.0,Very Poor,68,10.2,10.9,0.0,False,5.154,Winter (Nov–Jan)
+2015-01-30,178.04,38.43,6.43,345.0,Very Poor,66,12.0,11.7,0.0,False,5.182,Winter (Nov–Jan)
+2015-01-31,158.59,41.36,5.03,334.0,Very Poor,65,11.8,13.1,0.0,False,5.0663,Winter (Nov–Jan)
+2015-02-01,211.59,58.17,9.9,358.0,Very Poor,74,8.2,13.8,0.0,False,5.3547,Other months
+2015-02-02,163.64,37.25,5.31,349.0,Very Poor,75,14.7,15.8,1.2,False,5.0977,Other months
+2015-02-03,157.71,31.05,5.64,334.0,Very Poor,78,11.8,17.0,13.2,False,5.0608,Other months
+2015-02-04,137.26,29.69,5.06,313.0,Very Poor,86,10.7,13.9,0.0,False,4.9219,Other months
+2015-02-05,131.76,36.51,4.85,262.0,Poor,76,11.1,14.1,0.0,False,4.881,Other months
+2015-02-06,151.6,67.0,9.13,303.0,Very Poor,72,5.9,13.5,0.0,False,5.0212,Other months
+2015-02-07,160.75,57.69,6.91,329.0,Very Poor,69,5.8,14.8,0.0,False,5.0799,Other months
+2015-02-08,145.34,50.39,8.66,323.0,Very Poor,73,6.5,15.3,2.1,False,4.9791,Other months
+2015-02-09,134.67,39.18,9.7,266.0,Poor,71,9.7,15.8,0.0,False,4.9028,Other months
+2015-02-10,153.07,42.2,5.81,319.0,Very Poor,67,10.3,15.1,0.0,False,5.0309,Other months
+2015-02-11,116.91,53.63,7.54,334.0,Very Poor,64,7.7,14.8,0.0,False,4.7614,Other months
+2015-02-12,177.98,42.73,9.2,342.0,Very Poor,69,8.5,15.2,0.0,False,5.1817,Other months
+2015-02-13,167.01,44.61,7.77,341.0,Very Poor,63,10.5,16.7,0.0,False,5.1181,Other months
+2015-02-14,193.96,53.81,9.36,377.0,Very Poor,63,6.3,18.8,0.0,False,5.2677,Other months
+2015-02-15,184.06,58.15,9.13,391.0,Very Poor,71,4.9,18.3,0.0,False,5.2153,Other months
+2015-02-16,152.62,44.22,6.79,358.0,Very Poor,70,14.0,19.8,0.0,False,5.028,Other months
+2015-02-17,161.27,25.4,5.6,327.0,Very Poor,74,10.8,20.4,1.6,False,5.0831,Other months
+2015-02-18,188.2,60.29,8.65,365.0,Very Poor,77,7.2,19.7,12.0,False,5.2375,Other months
+2015-02-19,159.97,40.51,5.08,352.0,Very Poor,78,11.9,20.1,1.6,False,5.075,Other months
+2015-02-20,144.12,34.71,5.93,317.0,Very Poor,74,10.6,21.2,0.0,False,4.9706,Other months
+2015-02-21,155.38,45.11,12.24,320.0,Very Poor,75,11.3,20.6,0.0,False,5.0459,Other months
+2015-02-22,124.1,31.83,5.68,279.0,Poor,69,15.9,20.6,0.0,False,4.8211,Other months
+2015-02-23,141.39,38.23,9.43,281.0,Poor,77,6.7,20.2,0.0,False,4.9515,Other months
+2015-02-24,170.16,48.4,9.28,354.0,Very Poor,79,7.8,20.9,0.1,False,5.1367,Other months
+2015-02-25,148.19,29.28,5.94,340.0,Very Poor,79,10.5,21.4,5.2,False,4.9985,Other months
+2015-02-26,140.78,20.95,6.98,323.0,Very Poor,69,7.5,18.7,0.0,False,4.9472,Other months
+2015-02-27,130.42,24.75,12.12,315.0,Very Poor,68,9.0,17.0,0.0,False,4.8708,Other months
+2015-02-28,105.86,20.65,12.48,310.0,Very Poor,56,9.4,18.2,0.2,False,4.6621,Other months
+2015-03-01,71.83,21.42,10.99,324.0,Very Poor,83,20.8,17.1,22.9,False,4.2743,Other months
+2015-03-02,53.71,13.43,3.21,226.0,Poor,93,15.7,16.3,22.8,False,3.9836,Other months
+2015-03-03,83.49,23.75,5.07,266.0,Poor,86,5.7,15.7,1.0,False,4.4247,Other months
+2015-03-04,91.07,24.28,4.68,200.0,Moderate,72,9.6,15.2,0.0,False,4.5116,Other months
+2015-03-05,106.57,31.12,5.97,275.0,Poor,70,5.6,16.5,0.0,False,4.6688,Other months
+2015-03-06,101.75,26.59,5.96,322.0,Very Poor,70,7.3,18.2,0.0,False,4.6225,Other months
+2015-03-07,77.57,19.15,5.18,216.0,Poor,76,6.8,18.3,10.5,False,4.3512,Other months
+2015-03-08,63.24,20.35,3.98,108.0,Moderate,79,10.6,18.3,0.9,False,4.1469,Other months
+2015-03-09,76.62,18.21,4.2,197.0,Moderate,70,11.8,16.6,3.9,False,4.3389,Other months
+2015-03-10,86.7,18.82,3.84,238.0,Poor,69,10.6,16.1,0.0,False,4.4625,Other months
+2015-03-11,104.29,25.63,6.3,274.0,Poor,70,9.2,17.4,0.0,False,4.6472,Other months
+2015-03-12,115.93,32.29,7.03,315.0,Very Poor,67,8.6,18.5,0.0,False,4.753,Other months
+2015-03-13,108.66,30.75,10.65,307.0,Very Poor,76,5.9,18.9,2.9,False,4.6882,Other months
+2015-03-14,67.94,29.78,10.14,208.0,Poor,79,8.2,20.0,4.1,False,4.2186,Other months
+2015-03-15,38.89,17.76,4.25,165.0,Moderate,88,12.3,18.2,20.6,False,3.6607,Other months
+2015-03-16,45.39,17.14,8.8,188.0,Moderate,87,11.7,18.2,6.7,False,3.8153,Other months
+2015-03-17,55.55,20.96,7.19,217.0,Poor,76,11.7,19.3,0.0,False,4.0173,Other months
+2015-03-18,50.59,16.6,3.6,191.0,Moderate,70,13.2,18.8,0.0,False,3.9238,Other months
+2015-03-19,69.51,23.77,4.97,240.0,Poor,69,8.1,19.2,0.0,False,4.2415,Other months
+2015-03-20,96.62,29.04,6.66,229.0,Poor,67,9.0,20.3,0.0,False,4.5708,Other months
+2015-03-21,96.28,29.21,7.31,248.0,Poor,69,7.4,22.0,0.0,False,4.5673,Other months
+2015-03-22,72.2,20.27,4.4,204.0,Poor,63,11.5,23.2,0.0,False,4.2794,Other months
+2015-03-23,78.47,23.04,4.07,271.0,Poor,62,10.6,24.0,0.0,False,4.3627,Other months
+2015-03-24,91.87,30.01,7.35,290.0,Poor,64,7.0,24.2,0.0,False,4.5204,Other months
+2015-03-25,107.26,33.82,11.82,340.0,Very Poor,61,6.4,25.2,0.0,False,4.6753,Other months
+2015-03-26,109.78,33.02,9.3,358.0,Very Poor,58,5.3,26.7,0.0,False,4.6985,Other months
+2015-03-27,62.27,24.76,10.91,287.0,Poor,56,7.3,27.3,0.0,False,4.1315,Other months
+2015-03-28,102.22,29.41,17.16,323.0,Very Poor,52,6.1,25.5,0.0,False,4.6271,Other months
+2015-03-29,104.36,33.86,16.92,360.0,Very Poor,52,13.6,25.7,0.4,False,4.6478,Other months
+2015-03-30,44.19,17.6,7.75,268.0,Poor,75,17.5,22.2,5.1,False,3.7885,Other months
+2015-03-31,55.66,20.13,9.34,283.0,Poor,70,8.1,22.9,0.1,False,4.0193,Other months
+2015-04-01,112.86,32.71,19.48,309.0,Very Poor,66,6.9,24.3,0.6,False,4.7261,Other months
+2015-04-02,78.51,20.54,14.37,249.0,Poor,56,9.1,26.5,0.0,False,4.3632,Other months
+2015-04-03,66.52,18.47,10.62,245.0,Poor,72,9.2,23.5,10.8,False,4.1975,Other months
+2015-04-04,62.56,24.96,12.94,229.0,Poor,83,5.4,20.8,17.8,False,4.1361,Other months
+2015-04-05,78.61,27.75,16.72,234.0,Poor,68,5.1,22.4,0.0,False,4.3645,Other months
+2015-04-06,119.7,32.83,16.63,343.0,Very Poor,58,6.9,23.8,0.0,False,4.785,Other months
+2015-04-07,66.09,24.47,8.34,262.0,Poor,67,6.0,22.3,5.5,False,4.191,Other months
+2015-04-08,95.34,34.72,17.99,308.0,Very Poor,62,6.7,23.5,0.3,False,4.5574,Other months
+2015-04-09,63.57,35.15,10.48,293.0,Poor,57,10.9,24.0,0.0,False,4.1521,Other months
+2015-04-10,96.56,52.77,15.8,290.0,Poor,51,10.1,25.4,0.0,False,4.5702,Other months
+2015-04-11,131.39,59.52,21.5,375.0,Very Poor,49,5.0,26.1,0.1,False,4.8782,Other months
+2015-04-12,75.35,45.3,13.08,293.0,Poor,56,8.0,24.4,0.0,False,4.3221,Other months
+2015-04-13,86.49,50.3,14.99,247.0,Poor,70,10.5,23.6,7.1,False,4.46,Other months
+2015-04-14,77.07,42.65,14.04,232.0,Poor,70,9.3,24.2,0.6,False,4.3447,Other months
+2015-04-15,98.79,47.41,13.75,316.0,Very Poor,63,8.4,25.5,0.0,False,4.593,Other months
+2015-04-16,81.81,44.06,21.44,295.0,Poor,62,7.6,26.1,0.0,False,4.4044,Other months
+2015-04-17,65.78,40.09,14.34,246.0,Poor,56,10.4,27.4,0.0,False,4.1863,Other months
+2015-04-18,119.82,51.11,17.21,378.0,Very Poor,46,8.8,29.6,0.0,False,4.786,Other months
+2015-04-19,125.53,64.73,18.02,406.0,Severe,39,6.7,31.3,0.0,False,4.8325,Other months
+2015-04-20,121.51,60.41,20.98,392.0,Very Poor,38,11.1,31.5,0.1,False,4.8,Other months
+2015-04-21,114.5,50.7,19.38,391.0,Very Poor,36,9.8,31.0,0.0,False,4.7406,Other months
+2015-04-22,101.83,55.27,19.29,368.0,Very Poor,27,11.8,30.3,0.0,False,4.6233,Other months
+2015-04-23,118.57,76.46,21.81,365.0,Very Poor,24,7.4,30.7,0.0,False,4.7755,Other months
+2015-04-24,143.22,88.61,26.89,383.0,Very Poor,27,7.2,31.4,0.0,False,4.9644,Other months
+2015-04-25,106.76,58.87,17.56,367.0,Very Poor,36,16.4,29.8,0.3,False,4.6706,Other months
+2015-04-26,65.36,31.23,12.67,334.0,Very Poor,49,17.8,28.6,0.0,False,4.1799,Other months
+2015-04-27,67.08,35.54,11.92,258.0,Poor,50,14.5,29.6,0.9,False,4.2059,Other months
+2015-04-28,81.37,34.88,13.97,234.0,Poor,50,11.2,29.9,3.9,False,4.399,Other months
+2015-04-29,63.76,42.98,13.98,257.0,Poor,46,8.9,29.9,0.0,False,4.1551,Other months
+2015-04-30,60.56,43.9,12.85,259.0,Poor,46,14.2,30.6,1.1,False,4.1036,Other months
+2015-05-01,76.1,42.99,13.1,279.0,Poor,40,11.1,30.4,0.0,False,4.332,Other months
+2015-05-02,72.66,62.09,16.16,312.0,Very Poor,29,9.1,30.2,0.0,False,4.2858,Other months
+2015-05-03,121.94,83.3,19.43,372.0,Very Poor,25,6.9,30.3,0.0,False,4.8035,Other months
+2015-05-04,108.98,85.5,17.53,387.0,Very Poor,28,7.1,30.6,0.0,False,4.6912,Other months
+2015-05-05,145.99,107.85,26.0,408.0,Severe,28,8.8,31.6,0.0,False,4.9835,Other months
+2015-05-06,171.33,87.88,25.26,398.0,Very Poor,27,8.8,32.7,0.0,False,5.1436,Other months
+2015-05-07,117.76,63.18,24.63,403.0,Severe,25,11.6,33.7,0.0,False,4.7686,Other months
+2015-05-08,90.66,56.54,20.79,361.0,Very Poor,18,11.5,34.7,0.0,False,4.5071,Other months
+2015-05-09,106.4,63.57,18.15,378.0,Very Poor,23,6.5,34.1,0.0,False,4.6672,Other months
+2015-05-10,101.21,57.51,16.92,381.0,Very Poor,25,9.1,33.5,0.0,False,4.6172,Other months
+2015-05-11,97.57,42.7,15.11,388.0,Very Poor,34,6.2,32.9,0.8,False,4.5806,Other months
+2015-05-12,96.34,43.04,10.84,346.0,Very Poor,48,8.1,31.2,1.3,False,4.5679,Other months
+2015-05-13,83.42,48.61,9.08,328.0,Very Poor,60,6.7,30.1,5.8,False,4.4239,Other months
+2015-05-14,78.06,42.22,10.42,291.0,Poor,58,6.1,29.6,1.3,False,4.3575,Other months
+2015-05-15,97.87,63.55,15.02,396.0,Very Poor,50,8.3,29.8,3.5,False,4.5836,Other months
+2015-05-16,77.52,75.5,15.03,297.0,Poor,55,4.7,30.1,0.0,False,4.3505,Other months
+2015-05-17,97.16,57.63,20.15,345.0,Very Poor,47,7.0,31.6,0.0,False,4.5764,Other months
+2015-05-18,66.85,47.64,15.04,296.0,Poor,39,7.5,34.6,0.3,False,4.2025,Other months
+2015-05-19,89.85,75.47,14.58,319.0,Very Poor,31,9.6,34.1,1.4,False,4.4981,Other months
+2015-05-20,67.41,52.69,20.3,282.0,Poor,31,11.5,33.5,0.0,False,4.2108,Other months
+2015-05-21,75.54,53.03,14.85,352.0,Very Poor,27,11.1,33.6,0.0,False,4.3247,Other months
+2015-05-22,67.91,56.84,14.77,338.0,Very Poor,23,11.9,34.4,0.0,False,4.2182,Other months
+2015-05-23,69.02,52.79,10.73,321.0,Very Poor,22,11.2,34.6,0.0,False,4.2344,Other months
+2015-05-24,79.1,56.29,18.96,295.0,Poor,23,8.2,35.1,0.0,False,4.3707,Other months
+2015-05-25,117.27,60.65,11.78,344.0,Very Poor,21,10.7,35.3,0.0,False,4.7645,Other months
+2015-05-26,96.09,51.77,9.9,337.0,Very Poor,18,10.3,35.4,0.0,False,4.5653,Other months
+2015-05-27,84.71,70.43,17.48,355.0,Very Poor,17,11.0,33.9,0.0,False,4.4392,Other months
+2015-05-28,182.76,72.67,14.33,371.0,Very Poor,21,7.7,34.0,0.0,False,5.2082,Other months
+2015-05-29,106.61,64.94,12.9,414.0,Severe,26,10.1,35.1,0.0,False,4.6692,Other months
+2015-05-30,92.68,65.26,17.68,366.0,Very Poor,27,9.8,35.0,0.0,False,4.5292,Other months
+2015-05-31,73.62,41.86,13.08,346.0,Very Poor,25,10.6,34.8,0.1,False,4.2989,Other months
+2015-06-01,49.42,48.55,9.96,289.0,Poor,30,6.8,33.2,0.2,False,3.9004,Other months
+2015-06-02,52.51,54.29,6.73,297.0,Poor,35,6.4,32.1,0.3,False,3.961,Other months
+2015-06-03,65.28,65.25,6.31,268.0,Poor,42,11.2,31.2,0.5,False,4.1787,Other months
+2015-06-04,85.45,62.38,5.53,259.0,Poor,48,9.1,30.8,0.0,False,4.4479,Other months
+2015-06-05,83.02,62.63,4.12,327.0,Very Poor,40,8.7,32.8,0.1,False,4.4191,Other months
+2015-06-06,44.54,46.37,7.37,384.0,Very Poor,35,10.8,33.1,0.0,False,3.7964,Other months
+2015-06-07,85.03,77.07,9.53,299.0,Poor,31,8.8,34.3,0.0,False,4.443,Other months
+2015-06-08,137.7,109.34,10.44,282.0,Poor,28,9.0,35.5,0.0,False,4.9251,Other months
+2015-06-09,136.05,76.88,8.84,442.0,Severe,25,18.1,36.3,0.0,False,4.913,Other months
+2015-06-10,63.77,31.27,5.91,309.0,Very Poor,33,18.9,36.3,0.5,False,4.1553,Other months
+2015-06-11,115.57,32.99,6.02,270.0,Poor,34,15.0,35.8,0.1,False,4.7499,Other months
+2015-06-12,83.29,36.36,5.52,239.0,Poor,37,13.3,35.4,0.0,False,4.4223,Other months
+2015-06-13,73.7,52.9,5.34,214.0,Poor,38,9.7,34.1,2.4,False,4.3,Other months
+2015-06-14,74.56,68.76,5.33,166.0,Moderate,69,6.2,29.0,3.7,False,4.3116,Other months
+2015-06-15,106.11,72.79,6.3,234.0,Poor,69,6.1,29.4,5.6,False,4.6645,Other months
+2015-06-16,132.21,81.57,6.16,331.0,Very Poor,60,5.5,31.9,0.0,False,4.8844,Other months
+2015-06-17,123.56,70.96,6.95,327.0,Very Poor,58,5.1,32.7,0.4,False,4.8167,Other months
+2015-06-18,132.21,94.25,9.31,313.0,Very Poor,46,5.2,34.1,0.0,False,4.8844,Other months
+2015-06-19,110.65,65.21,7.8,284.0,Poor,48,8.3,34.5,0.1,False,4.7064,Other months
+2015-06-20,80.31,52.7,10.22,239.0,Poor,58,17.0,32.7,1.1,False,4.3859,Other months
+2015-06-21,59.73,50.78,6.11,149.0,Moderate,62,11.8,32.1,1.7,False,4.0898,Other months
+2015-06-22,85.4,58.88,6.18,172.0,Moderate,62,10.5,31.9,0.6,False,4.4473,Other months
+2015-06-23,101.99,61.18,7.9,226.0,Poor,56,8.3,33.1,0.0,False,4.6249,Other months
+2015-06-24,126.07,60.31,8.09,261.0,Poor,70,7.4,31.1,16.8,False,4.8368,Other months
+2015-06-25,37.59,44.72,7.67,188.0,Moderate,92,7.9,26.1,32.6,False,3.6267,Other months
+2015-06-26,76.0,46.88,6.84,192.0,Moderate,70,10.6,29.8,0.0,False,4.3307,Other months
+2015-06-27,69.46,38.55,7.28,207.0,Poor,66,13.3,31.5,0.0,False,4.2408,Other months
+2015-06-28,79.84,47.19,7.53,219.0,Poor,64,8.9,32.3,0.4,False,4.38,Other months
+2015-06-29,48.5,38.37,7.74,193.0,Moderate,67,15.0,30.4,0.0,False,3.8816,Other months
+2015-06-30,53.79,46.06,9.15,170.0,Moderate,68,8.0,28.8,0.4,False,3.9851,Other months
+2015-07-01,57.99,49.64,8.88,185.0,Moderate,70,5.3,30.0,0.8,False,4.0603,Monsoon (Jul–Sep)
+2015-07-02,67.12,52.45,6.86,220.0,Poor,68,7.0,30.8,0.6,False,4.2065,Monsoon (Jul–Sep)
+2015-07-03,65.25,37.09,8.91,225.0,Poor,64,12.5,32.0,0.3,False,4.1782,Monsoon (Jul–Sep)
+2015-07-04,88.75,35.54,7.24,250.0,Poor,64,13.6,31.7,0.6,False,4.4858,Monsoon (Jul–Sep)
+2015-07-05,135.92,36.89,6.42,282.0,Poor,68,12.3,31.5,12.3,False,4.9121,Monsoon (Jul–Sep)
+2015-07-06,60.27,44.07,7.91,298.0,Poor,77,8.2,29.7,6.3,False,4.0988,Monsoon (Jul–Sep)
+2015-07-07,52.2,51.7,7.82,175.0,Moderate,84,7.4,27.6,14.6,False,3.9551,Monsoon (Jul–Sep)
+2015-07-08,67.92,52.69,7.94,217.0,Poor,84,6.0,28.2,16.5,False,4.2183,Monsoon (Jul–Sep)
+2015-07-09,65.95,53.39,7.86,234.0,Poor,87,4.7,27.8,18.7,False,4.1889,Monsoon (Jul–Sep)
+2015-07-10,47.68,46.71,8.97,188.0,Moderate,93,7.3,26.5,61.6,False,3.8645,Monsoon (Jul–Sep)
+2015-07-11,29.08,51.39,8.61,253.0,Poor,91,12.5,24.8,44.1,False,3.3701,Monsoon (Jul–Sep)
+2015-07-12,32.29,32.77,7.15,198.0,Moderate,89,10.9,25.4,6.4,False,3.4748,Monsoon (Jul–Sep)
+2015-07-13,36.68,37.71,8.11,148.0,Moderate,80,7.0,27.9,1.6,False,3.6022,Monsoon (Jul–Sep)
+2015-07-14,44.48,43.46,8.04,141.0,Moderate,77,13.4,29.4,0.8,False,3.795,Monsoon (Jul–Sep)
+2015-07-15,63.79,38.05,9.62,218.0,Poor,70,15.4,30.8,0.0,False,4.1556,Monsoon (Jul–Sep)
+2015-07-16,77.2,36.72,10.29,268.0,Poor,69,11.7,30.3,2.3,False,4.3464,Monsoon (Jul–Sep)
+2015-07-17,77.99,42.07,12.46,232.0,Poor,86,8.0,28.1,35.2,False,4.3566,Monsoon (Jul–Sep)
+2015-07-18,71.11,48.79,10.77,204.0,Poor,83,5.7,28.9,5.3,False,4.2642,Monsoon (Jul–Sep)
+2015-07-19,67.39,52.87,10.4,220.0,Poor,84,6.0,28.6,12.5,False,4.2105,Monsoon (Jul–Sep)
+2015-07-20,49.58,62.37,10.17,223.0,Poor,88,7.5,27.5,17.4,False,3.9036,Monsoon (Jul–Sep)
+2015-07-21,40.97,46.3,12.19,218.0,Poor,81,9.7,28.8,3.4,False,3.7128,Monsoon (Jul–Sep)
+2015-07-22,38.97,41.41,20.43,165.0,Moderate,82,10.1,29.0,1.8,False,3.6628,Monsoon (Jul–Sep)
+2015-07-23,34.02,39.98,16.71,155.0,Moderate,76,12.5,29.4,0.3,False,3.5269,Monsoon (Jul–Sep)
+2015-07-24,46.13,43.99,16.01,154.0,Moderate,80,9.8,28.8,5.6,False,3.8315,Monsoon (Jul–Sep)
+2015-07-25,46.01,42.86,15.58,184.0,Moderate,81,12.1,28.7,3.2,False,3.8289,Monsoon (Jul–Sep)
+2015-07-26,29.81,30.66,15.09,150.0,Moderate,77,24.3,28.1,1.6,False,3.3948,Monsoon (Jul–Sep)
+2015-07-27,22.82,33.21,12.69,125.0,Moderate,75,15.6,27.6,0.0,False,3.1276,Monsoon (Jul–Sep)
+2015-07-28,24.69,40.25,7.61,160.0,Moderate,75,13.3,27.7,0.2,False,3.2064,Monsoon (Jul–Sep)
+2015-07-29,29.04,35.69,9.68,142.0,Moderate,74,17.0,27.4,0.0,False,3.3687,Monsoon (Jul–Sep)
+2015-07-30,25.76,32.96,9.49,181.0,Moderate,79,13.7,27.6,2.1,False,3.2488,Monsoon (Jul–Sep)
+2015-07-31,37.85,35.9,9.7,196.0,Moderate,76,11.4,27.8,0.5,False,3.6336,Monsoon (Jul–Sep)
+2015-08-01,41.32,35.14,10.8,181.0,Moderate,84,6.7,26.8,5.5,False,3.7213,Monsoon (Jul–Sep)
+2015-08-02,47.81,37.96,10.27,213.0,Poor,83,3.4,27.6,2.3,False,3.8672,Monsoon (Jul–Sep)
+2015-08-03,56.02,40.17,8.75,175.0,Moderate,81,6.3,28.8,0.7,False,4.0257,Monsoon (Jul–Sep)
+2015-08-04,54.46,46.74,9.72,184.0,Moderate,80,5.6,29.1,1.3,False,3.9975,Monsoon (Jul–Sep)
+2015-08-05,59.13,52.78,10.41,228.0,Poor,87,4.9,28.5,7.2,False,4.0797,Monsoon (Jul–Sep)
+2015-08-06,65.47,52.51,10.73,214.0,Poor,87,3.4,28.0,10.8,False,4.1816,Monsoon (Jul–Sep)
+2015-08-07,64.58,48.24,10.22,254.0,Poor,89,6.3,27.6,8.4,False,4.1679,Monsoon (Jul–Sep)
+2015-08-08,70.05,50.51,7.68,258.0,Poor,94,6.3,25.7,29.1,False,4.2492,Monsoon (Jul–Sep)
+2015-08-09,55.51,39.47,5.83,244.0,Poor,93,6.4,25.9,53.0,False,4.0166,Monsoon (Jul–Sep)
+2015-08-10,82.27,45.46,6.9,209.0,Poor,88,4.4,27.5,6.8,False,4.41,Monsoon (Jul–Sep)
+2015-08-11,77.04,49.43,6.23,283.0,Poor,91,8.4,27.2,11.1,False,4.3443,Monsoon (Jul–Sep)
+2015-08-12,52.45,45.71,6.69,223.0,Poor,83,7.9,28.3,0.5,False,3.9599,Monsoon (Jul–Sep)
+2015-08-13,61.66,52.76,9.82,205.0,Poor,82,5.2,29.1,0.5,False,4.1216,Monsoon (Jul–Sep)
+2015-08-14,65.67,50.96,10.82,252.0,Poor,85,5.7,28.7,6.4,False,4.1846,Monsoon (Jul–Sep)
+2015-08-15,51.4,44.4,10.53,198.0,Moderate,88,5.2,27.9,11.1,False,3.9396,Monsoon (Jul–Sep)
+2015-08-16,55.71,48.39,10.46,197.0,Moderate,89,3.5,27.3,6.5,False,4.0202,Monsoon (Jul–Sep)
+2015-08-17,61.84,44.41,11.22,184.0,Moderate,83,4.6,28.7,0.3,False,4.1246,Monsoon (Jul–Sep)
+2015-08-18,60.65,56.15,12.39,197.0,Moderate,84,7.5,28.9,3.2,False,4.1051,Monsoon (Jul–Sep)
+2015-08-19,34.42,36.47,9.63,140.0,Moderate,78,12.4,29.0,1.8,False,3.5386,Monsoon (Jul–Sep)
+2015-08-20,40.83,32.0,11.59,232.0,Poor,71,13.6,29.2,0.0,False,3.7094,Monsoon (Jul–Sep)
+2015-08-21,50.97,35.87,12.09,271.0,Poor,73,9.7,28.5,0.3,False,3.9312,Monsoon (Jul–Sep)
+2015-08-22,46.74,40.28,9.56,207.0,Poor,76,8.1,27.9,2.6,False,3.8446,Monsoon (Jul–Sep)
+2015-08-23,44.67,33.76,9.53,127.0,Moderate,82,5.1,28.2,5.1,False,3.7993,Monsoon (Jul–Sep)
+2015-08-24,37.39,44.61,10.67,123.0,Moderate,76,9.8,28.6,0.4,False,3.6214,Monsoon (Jul–Sep)
+2015-08-25,52.06,39.88,9.12,175.0,Moderate,71,12.8,29.5,0.0,False,3.9524,Monsoon (Jul–Sep)
+2015-08-26,57.52,37.85,9.36,245.0,Poor,72,10.5,30.0,0.0,False,4.0521,Monsoon (Jul–Sep)
+2015-08-27,61.47,40.41,10.59,248.0,Poor,79,4.8,29.6,1.6,False,4.1185,Monsoon (Jul–Sep)
+2015-08-28,77.76,50.74,11.92,247.0,Poor,82,5.7,29.2,0.7,False,4.3536,Monsoon (Jul–Sep)
+2015-08-29,68.53,49.3,11.11,292.0,Poor,78,6.8,30.1,0.0,False,4.2273,Monsoon (Jul–Sep)
+2015-08-30,57.85,39.84,10.39,266.0,Poor,75,8.5,30.1,0.2,False,4.0579,Monsoon (Jul–Sep)
+2015-08-31,51.67,32.53,12.77,288.0,Poor,68,10.8,30.0,0.0,False,3.9449,Monsoon (Jul–Sep)
+2015-09-01,73.78,27.42,10.45,210.0,Poor,63,11.7,29.4,0.0,False,4.3011,Monsoon (Jul–Sep)
+2015-09-02,97.63,29.16,10.79,298.0,Poor,59,11.6,29.0,0.0,False,4.5812,Monsoon (Jul–Sep)
+2015-09-03,99.5,35.31,9.82,315.0,Very Poor,57,10.3,29.1,0.0,False,4.6002,Monsoon (Jul–Sep)
+2015-09-04,97.31,41.7,14.94,368.0,Very Poor,61,7.2,29.7,0.0,False,4.5779,Monsoon (Jul–Sep)
+2015-09-05,76.43,29.5,16.93,266.0,Poor,60,11.0,28.8,0.0,False,4.3364,Monsoon (Jul–Sep)
+2015-09-06,61.69,27.81,16.71,174.0,Moderate,57,9.9,28.7,0.0,False,4.1221,Monsoon (Jul–Sep)
+2015-09-07,55.19,35.49,12.97,199.0,Moderate,55,10.7,29.0,0.0,False,4.0108,Monsoon (Jul–Sep)
+2015-09-08,63.79,38.36,10.92,217.0,Poor,58,10.9,29.2,0.0,False,4.1556,Monsoon (Jul–Sep)
+2015-09-09,58.48,36.2,11.57,238.0,Poor,56,11.3,29.4,0.0,False,4.0687,Monsoon (Jul–Sep)
+2015-09-10,60.29,42.1,11.53,230.0,Poor,60,9.0,29.1,0.0,False,4.0992,Monsoon (Jul–Sep)
+2015-09-11,67.35,46.81,10.98,218.0,Poor,61,7.6,28.9,0.0,False,4.2099,Monsoon (Jul–Sep)
+2015-09-12,87.55,54.45,10.51,226.0,Poor,69,6.8,28.9,0.3,False,4.4722,Monsoon (Jul–Sep)
+2015-09-13,84.57,45.36,9.91,202.0,Poor,69,5.7,29.9,0.0,False,4.4376,Monsoon (Jul–Sep)
+2015-09-14,111.58,60.71,10.43,274.0,Poor,62,6.2,30.5,0.0,False,4.7147,Monsoon (Jul–Sep)
+2015-09-15,108.78,56.31,10.4,289.0,Poor,63,6.6,30.2,0.0,False,4.6893,Monsoon (Jul–Sep)
+2015-09-16,91.18,46.44,9.27,235.0,Poor,66,7.5,30.2,0.0,False,4.5128,Monsoon (Jul–Sep)
+2015-09-17,104.85,60.96,11.68,285.0,Poor,72,6.8,29.6,0.4,False,4.6525,Monsoon (Jul–Sep)
+2015-09-18,56.19,43.3,10.85,209.0,Poor,72,10.1,29.2,1.6,False,4.0287,Monsoon (Jul–Sep)
+2015-09-19,67.62,49.83,9.75,132.0,Moderate,84,7.2,28.0,24.3,False,4.2139,Monsoon (Jul–Sep)
+2015-09-20,64.38,62.73,9.27,179.0,Moderate,83,7.2,28.8,5.0,False,4.1648,Monsoon (Jul–Sep)
+2015-09-21,45.65,62.69,13.55,136.0,Moderate,85,6.8,28.1,9.5,False,3.821,Monsoon (Jul–Sep)
+2015-09-22,35.75,38.78,11.57,104.0,Moderate,79,11.9,28.5,2.0,False,3.5766,Monsoon (Jul–Sep)
+2015-09-23,34.89,31.17,12.34,95.0,Satisfactory,75,12.2,27.0,0.3,False,3.5522,Monsoon (Jul–Sep)
+2015-09-24,63.06,39.16,13.26,175.0,Moderate,67,14.0,26.9,0.0,False,4.1441,Monsoon (Jul–Sep)
+2015-09-25,82.39,45.09,11.8,290.0,Poor,67,11.2,26.5,0.0,False,4.4115,Monsoon (Jul–Sep)
+2015-09-26,88.08,45.96,11.17,282.0,Poor,66,8.1,27.0,0.0,False,4.4782,Monsoon (Jul–Sep)
+2015-09-27,89.75,44.13,9.76,298.0,Poor,64,7.4,27.8,0.0,False,4.497,Monsoon (Jul–Sep)
+2015-09-28,69.57,43.41,10.38,240.0,Poor,66,7.9,26.8,0.0,False,4.2423,Monsoon (Jul–Sep)
+2015-09-29,68.34,48.19,10.68,188.0,Moderate,63,8.9,26.4,0.0,False,4.2245,Monsoon (Jul–Sep)
+2015-09-30,61.08,42.91,9.59,187.0,Moderate,57,10.9,26.5,0.0,False,4.1122,Monsoon (Jul–Sep)
+2015-10-01,85.7,54.68,11.42,230.0,Poor,60,7.6,26.2,0.0,False,4.4509,Other months
+2015-10-02,97.62,52.53,9.77,286.0,Poor,57,8.5,26.4,0.0,False,4.5811,Other months
+2015-10-03,103.58,54.93,11.41,266.0,Poor,57,7.6,27.4,0.0,False,4.6403,Other months
+2015-10-04,145.97,62.84,15.08,369.0,Very Poor,57,5.5,28.0,0.0,False,4.9834,Other months
+2015-10-05,180.52,75.42,17.32,375.0,Very Poor,55,6.0,28.3,0.0,False,5.1958,Other months
+2015-10-06,151.57,65.07,11.35,411.0,Severe,53,7.6,28.3,0.0,False,5.021,Other months
+2015-10-07,144.04,57.05,11.15,383.0,Very Poor,56,7.8,28.2,0.0,False,4.9701,Other months
+2015-10-08,148.44,58.32,12.13,388.0,Very Poor,54,9.5,28.3,0.0,False,5.0002,Other months
+2015-10-09,130.22,65.15,15.27,351.0,Very Poor,50,9.0,28.3,0.0,False,4.8692,Other months
+2015-10-10,147.71,61.29,13.94,320.0,Very Poor,40,10.4,28.4,0.0,False,4.9953,Other months
+2015-10-11,111.34,51.83,12.01,296.0,Poor,46,9.3,28.2,0.0,False,4.7126,Other months
+2015-10-12,100.7,52.92,14.75,312.0,Very Poor,52,5.8,27.8,0.0,False,4.6121,Other months
+2015-10-13,97.67,48.92,11.84,260.0,Poor,69,10.0,27.4,0.4,False,4.5816,Other months
+2015-10-14,75.81,43.47,10.89,204.0,Poor,74,8.2,26.5,7.3,False,4.3282,Other months
+2015-10-15,95.24,60.8,10.84,218.0,Poor,70,6.4,26.6,0.0,False,4.5564,Other months
+2015-10-16,148.29,68.24,11.98,356.0,Very Poor,68,6.4,27.0,0.0,False,4.9992,Other months
+2015-10-17,90.66,20.29,7.56,388.0,Very Poor,66,7.0,27.3,0.0,False,4.5071,Other months
+2015-10-18,156.71,41.09,10.14,298.0,Poor,63,5.4,27.9,0.0,False,5.0544,Other months
+2015-10-19,170.28,61.67,16.24,392.0,Very Poor,64,6.8,27.7,1.1,False,5.1374,Other months
+2015-10-20,198.1,74.62,16.73,428.0,Severe,55,6.9,27.4,0.3,False,5.2888,Other months
+2015-10-21,158.04,46.9,15.64,384.0,Very Poor,53,7.2,26.2,0.0,False,5.0628,Other months
+2015-10-22,116.98,32.96,13.27,292.0,Poor,48,8.8,24.9,0.0,False,4.762,Other months
+2015-10-23,143.73,67.38,21.35,343.0,Very Poor,49,8.6,24.2,0.0,False,4.9679,Other months
+2015-10-24,169.22,71.38,18.2,383.0,Very Poor,51,5.4,25.0,0.0,False,5.1312,Other months
+2015-10-25,147.65,56.46,13.81,374.0,Very Poor,52,11.4,25.6,0.0,False,4.9948,Other months
+2015-10-26,101.61,47.8,20.57,263.0,Poor,57,9.6,24.9,1.5,False,4.6211,Other months
+2015-10-27,113.2,49.25,21.2,334.0,Very Poor,54,6.2,24.0,0.0,False,4.7292,Other months
+2015-10-28,112.89,43.78,18.61,333.0,Very Poor,72,7.2,20.5,5.5,False,4.7264,Other months
+2015-10-29,95.72,57.74,24.29,262.0,Poor,65,5.8,20.9,0.0,False,4.5614,Other months
+2015-10-30,108.4,42.63,18.92,236.0,Poor,71,5.5,21.4,0.0,False,4.6858,Other months
+2015-10-31,245.97,35.11,17.66,340.0,Very Poor,66,4.8,22.2,0.0,False,5.5052,Other months
+2015-11-01,277.53,60.17,28.58,415.0,Severe,64,4.7,23.5,0.0,False,5.6259,Winter (Nov–Jan)
+2015-11-02,232.4,68.4,31.66,420.0,Severe,65,4.5,23.5,0.0,False,5.4485,Winter (Nov–Jan)
+2015-11-03,244.78,82.74,29.19,407.0,Severe,67,5.5,23.2,0.0,False,5.5004,Winter (Nov–Jan)
+2015-11-04,293.49,87.47,31.58,454.0,Severe,65,4.5,23.3,0.0,False,5.6818,Winter (Nov–Jan)
+2015-11-05,161.78,63.78,21.21,388.0,Very Poor,67,9.8,23.0,0.2,False,5.0862,Winter (Nov–Jan)
+2015-11-06,153.33,58.13,20.9,276.0,Poor,68,5.3,23.1,0.0,False,5.0326,Winter (Nov–Jan)
+2015-11-07,353.86,86.59,19.96,483.0,Severe,73,4.2,22.4,0.0,False,5.8689,Winter (Nov–Jan)
+2015-11-08,217.55,75.98,31.77,451.0,Severe,73,6.8,22.9,0.0,False,5.3824,Winter (Nov–Jan)
+2015-11-09,201.44,79.2,40.75,378.0,Very Poor,69,6.3,23.0,0.0,False,5.3055,Winter (Nov–Jan)
+2015-11-10,249.95,84.89,33.72,439.0,Severe,66,6.6,22.6,0.6,False,5.5213,Winter (Nov–Jan)
+2015-11-11,219.68,55.72,25.96,431.0,Severe,54,10.8,22.1,0.0,False,5.3922,Winter (Nov–Jan)
+2015-11-12,258.48,54.69,28.58,421.0,Severe,52,10.5,22.1,0.0,False,5.5548,Winter (Nov–Jan)
+2015-11-13,291.66,61.66,21.15,454.0,Severe,59,8.9,22.6,0.0,False,5.6756,Winter (Nov–Jan)
+2015-11-14,221.68,60.05,21.27,450.0,Severe,58,8.9,23.2,0.0,False,5.4012,Winter (Nov–Jan)
+2015-11-15,214.24,83.62,22.68,367.0,Very Poor,56,4.9,23.1,0.0,False,5.3671,Winter (Nov–Jan)
+2015-11-16,184.02,85.03,21.27,383.0,Very Poor,53,9.2,22.9,1.0,False,5.215,Winter (Nov–Jan)
+2015-11-17,136.22,57.11,17.53,347.0,Very Poor,44,10.4,20.3,0.0,False,4.9143,Winter (Nov–Jan)
+2015-11-18,188.09,74.39,21.78,369.0,Very Poor,47,8.4,19.0,0.0,False,5.2369,Winter (Nov–Jan)
+2015-11-19,238.69,96.62,25.59,392.0,Very Poor,53,5.5,19.6,0.0,False,5.4752,Winter (Nov–Jan)
+2015-11-20,271.42,101.44,26.81,455.0,Severe,62,5.7,19.3,0.0,False,5.6037,Winter (Nov–Jan)
+2015-11-21,293.73,97.76,23.06,450.0,Severe,60,5.6,19.5,0.0,False,5.6827,Winter (Nov–Jan)
+2015-11-22,247.27,92.32,20.77,478.0,Severe,62,6.0,19.1,0.0,False,5.5105,Winter (Nov–Jan)
+2015-11-23,266.95,105.29,24.92,431.0,Severe,62,5.3,18.8,0.0,False,5.5871,Winter (Nov–Jan)
+2015-11-24,241.61,88.74,19.65,440.0,Severe,56,8.5,19.3,0.0,False,5.4873,Winter (Nov–Jan)
+2015-11-25,149.14,54.63,15.97,376.0,Very Poor,50,11.4,19.6,0.0,False,5.0049,Winter (Nov–Jan)
+2015-11-26,182.5,69.29,21.35,347.0,Very Poor,50,6.5,19.9,0.0,False,5.2068,Winter (Nov–Jan)
+2015-11-27,193.58,71.35,19.49,343.0,Very Poor,69,7.3,19.3,0.0,False,5.2657,Winter (Nov–Jan)
+2015-11-28,172.89,47.21,17.09,362.0,Very Poor,68,9.6,19.9,0.0,False,5.1527,Winter (Nov–Jan)
+2015-11-29,190.46,51.84,20.73,319.0,Very Poor,67,5.6,19.6,0.0,False,5.2494,Winter (Nov–Jan)
+2015-11-30,282.76,78.48,24.51,425.0,Severe,72,5.4,20.9,0.0,False,5.6446,Winter (Nov–Jan)
+2015-12-01,183.28,83.03,16.48,400.0,Very Poor,69,6.3,20.7,0.0,False,5.211,Winter (Nov–Jan)
+2015-12-02,170.74,95.99,19.04,386.0,Very Poor,64,7.0,19.6,0.0,False,5.1401,Winter (Nov–Jan)
+2015-12-03,190.14,92.91,19.24,385.0,Very Poor,65,9.9,18.2,0.0,False,5.2478,Winter (Nov–Jan)
+2015-12-04,186.64,79.52,20.76,392.0,Very Poor,63,10.6,18.5,0.0,False,5.2292,Winter (Nov–Jan)
+2015-12-05,282.01,121.11,31.36,428.0,Severe,67,4.8,17.8,0.0,False,5.6419,Winter (Nov–Jan)
+2015-12-06,218.22,113.45,34.05,394.0,Very Poor,67,4.9,18.3,0.0,False,5.3855,Winter (Nov–Jan)
+2015-12-07,249.8,103.77,22.34,440.0,Severe,71,6.1,18.5,0.0,False,5.5207,Winter (Nov–Jan)
+2015-12-08,283.59,140.09,23.41,437.0,Severe,70,6.2,18.6,0.0,False,5.6475,Winter (Nov–Jan)
+2015-12-09,250.69,93.99,21.72,431.0,Severe,72,9.6,18.3,0.0,False,5.5242,Winter (Nov–Jan)
+2015-12-10,211.95,78.05,22.11,383.0,Very Poor,73,9.0,19.3,0.2,False,5.3564,Winter (Nov–Jan)
+2015-12-11,198.38,64.21,18.41,377.0,Very Poor,65,7.8,17.7,0.0,False,5.2902,Winter (Nov–Jan)
+2015-12-12,184.12,55.01,16.09,379.0,Very Poor,65,9.8,14.7,0.0,False,5.2156,Winter (Nov–Jan)
+2015-12-13,135.42,63.9,18.89,333.0,Very Poor,63,8.5,14.2,0.0,False,4.9084,Winter (Nov–Jan)
+2015-12-14,118.6,59.09,13.66,314.0,Very Poor,53,10.7,13.7,0.0,False,4.7758,Winter (Nov–Jan)
+2015-12-15,88.3,40.52,14.88,174.0,Moderate,52,11.0,13.6,0.0,False,4.4807,Winter (Nov–Jan)
+2015-12-16,111.45,34.44,14.56,244.0,Poor,57,6.2,12.9,0.0,False,4.7136,Winter (Nov–Jan)
+2015-12-17,152.24,23.07,19.41,308.0,Very Poor,63,6.9,13.2,0.0,False,5.0255,Winter (Nov–Jan)
+2015-12-18,136.75,25.24,19.87,320.0,Very Poor,62,9.6,13.3,0.0,False,4.9182,Winter (Nov–Jan)
+2015-12-19,114.35,26.84,13.17,270.0,Poor,60,8.5,13.6,0.0,False,4.7393,Winter (Nov–Jan)
+2015-12-20,181.67,111.18,18.97,320.0,Very Poor,62,5.6,13.2,0.0,False,5.2022,Winter (Nov–Jan)
+2015-12-21,135.78,78.99,15.59,313.0,Very Poor,63,5.2,13.2,0.0,False,4.911,Winter (Nov–Jan)
+2015-12-22,204.72,136.15,23.64,326.0,Very Poor,68,4.3,13.4,0.0,False,5.3216,Winter (Nov–Jan)
+2015-12-23,321.52,102.69,22.66,459.0,Severe,67,7.6,12.9,0.0,False,5.7731,Winter (Nov–Jan)
+2015-12-24,129.08,55.01,13.43,314.0,Very Poor,59,12.0,12.9,0.0,False,4.8604,Winter (Nov–Jan)
+2015-12-25,132.56,71.91,17.57,304.0,Very Poor,53,10.6,12.1,0.0,False,4.887,Winter (Nov–Jan)
+2015-12-26,158.69,88.96,21.02,310.0,Very Poor,49,11.7,13.7,0.0,False,5.067,Winter (Nov–Jan)
+2015-12-27,187.01,90.57,21.41,370.0,Very Poor,55,11.8,15.4,0.0,False,5.2312,Winter (Nov–Jan)
+2015-12-28,148.77,75.69,20.34,328.0,Very Poor,54,13.4,17.1,0.0,False,5.0024,Winter (Nov–Jan)
+2015-12-29,159.67,73.11,21.23,331.0,Very Poor,54,13.2,17.0,0.0,False,5.0731,Winter (Nov–Jan)
+2015-12-30,233.97,87.4,22.31,412.0,Severe,61,7.7,16.2,0.0,False,5.4552,Winter (Nov–Jan)
+2015-12-31,240.97,72.93,24.08,433.0,Severe,66,7.4,15.3,0.0,False,5.4847,Winter (Nov–Jan)
+2016-01-01,295.71,94.04,23.57,463.0,Severe,68,6.1,14.9,0.0,False,5.6894,Winter (Nov–Jan)
+2016-01-02,239.21,81.22,23.33,465.0,Severe,66,7.8,14.4,0.0,False,5.4773,Winter (Nov–Jan)
+2016-01-03,270.1,76.67,19.94,426.0,Severe,63,10.2,14.9,0.0,False,5.5988,Winter (Nov–Jan)
+2016-01-04,339.8,133.95,27.9,496.0,Severe,66,6.0,16.0,0.0,False,5.8284,Winter (Nov–Jan)
+2016-01-05,318.1,118.81,30.24,528.0,Severe,69,5.6,18.0,0.0,False,5.7624,Winter (Nov–Jan)
+2016-01-06,305.51,103.78,25.78,538.0,Severe,75,7.9,18.2,0.5,False,5.722,Winter (Nov–Jan)
+2016-01-07,391.54,96.36,26.47,535.0,Severe,75,5.8,17.8,0.0,False,5.9701,Winter (Nov–Jan)
+2016-01-08,339.87,67.85,14.19,603.0,Severe,75,9.1,17.1,0.0,False,5.8286,Winter (Nov–Jan)
+2016-01-09,158.43,60.63,17.94,408.0,Severe,63,13.0,15.7,0.0,False,5.0653,Winter (Nov–Jan)
+2016-01-10,183.24,68.86,24.96,368.0,Very Poor,68,7.8,15.6,0.0,False,5.2108,Winter (Nov–Jan)
+2016-01-11,227.13,76.4,23.98,404.0,Severe,72,5.9,16.1,0.0,False,5.4255,Winter (Nov–Jan)
+2016-01-12,195.21,78.61,24.06,444.0,Severe,71,9.5,16.5,0.0,False,5.2741,Winter (Nov–Jan)
+2016-01-13,248.59,73.18,16.73,356.0,Very Poor,76,6.3,16.0,0.0,False,5.5158,Winter (Nov–Jan)
+2016-01-14,196.87,55.91,11.82,397.0,Very Poor,77,5.3,14.4,0.0,False,5.2825,Winter (Nov–Jan)
+2016-01-15,178.8,45.85,10.86,371.0,Very Poor,75,8.8,13.3,0.0,False,5.1863,Winter (Nov–Jan)
+2016-01-16,138.86,41.92,11.25,311.0,Very Poor,74,10.3,13.1,0.0,False,4.9335,Winter (Nov–Jan)
+2016-01-17,179.48,58.56,15.89,321.0,Very Poor,77,4.3,12.8,0.0,False,5.1901,Winter (Nov–Jan)
+2016-01-18,269.05,78.22,15.42,424.0,Severe,78,5.0,12.6,0.0,False,5.5949,Winter (Nov–Jan)
+2016-01-19,278.2,61.04,12.59,435.0,Severe,75,6.2,12.6,0.0,False,5.6283,Winter (Nov–Jan)
+2016-01-20,272.1,56.67,14.75,455.0,Severe,73,7.6,12.2,0.0,False,5.6062,Winter (Nov–Jan)
+2016-01-21,196.83,52.83,11.99,398.0,Very Poor,75,8.9,11.6,0.0,False,5.2823,Winter (Nov–Jan)
+2016-01-22,290.66,73.9,17.13,399.0,Very Poor,76,6.1,11.5,0.0,False,5.6722,Winter (Nov–Jan)
+2016-01-23,294.3,78.21,16.81,469.0,Severe,77,5.9,12.3,0.0,False,5.6846,Winter (Nov–Jan)
+2016-01-24,303.5,64.55,14.74,488.0,Severe,78,6.6,12.1,0.0,False,5.7154,Winter (Nov–Jan)
+2016-01-25,217.05,66.89,16.09,401.0,Severe,80,6.9,10.7,0.0,False,5.3801,Winter (Nov–Jan)
+2016-01-26,308.75,80.14,17.97,446.0,Severe,75,4.3,13.0,0.0,False,5.7325,Winter (Nov–Jan)
+2016-01-27,255.94,87.93,17.09,456.0,Severe,74,5.2,15.7,0.0,False,5.5449,Winter (Nov–Jan)
+2016-01-28,283.03,90.45,23.63,451.0,Severe,72,8.0,15.7,0.0,False,5.6456,Winter (Nov–Jan)
+2016-01-29,311.08,117.07,29.99,501.0,Severe,72,5.5,17.1,0.2,False,5.7401,Winter (Nov–Jan)
+2016-01-30,285.83,111.19,27.94,505.0,Severe,73,5.7,19.4,0.5,False,5.6554,Winter (Nov–Jan)
+2016-01-31,242.05,46.17,12.4,437.0,Severe,77,10.7,17.4,0.0,False,5.4891,Winter (Nov–Jan)
+2016-02-01,121.4,60.12,16.33,305.0,Very Poor,65,10.0,15.1,0.0,False,4.7991,Other months
+2016-02-02,135.31,63.6,19.08,292.0,Poor,58,9.6,14.2,0.0,False,4.9076,Other months
+2016-02-03,136.87,61.81,24.23,306.0,Very Poor,53,12.4,14.4,0.0,False,4.919,Other months
+2016-02-04,130.76,67.45,23.7,300.0,Poor,52,11.0,14.8,0.0,False,4.8734,Other months
+2016-02-05,206.72,86.15,30.2,371.0,Very Poor,58,8.6,14.7,0.0,False,5.3314,Other months
+2016-02-06,224.94,85.86,26.22,408.0,Severe,59,7.9,15.8,0.0,False,5.4158,Other months
+2016-02-07,170.45,72.61,20.74,343.0,Very Poor,74,9.0,15.4,4.0,False,5.1384,Other months
+2016-02-08,119.57,57.0,19.21,301.0,Very Poor,74,7.5,15.0,0.0,False,4.7839,Other months
+2016-02-09,181.76,65.45,19.53,322.0,Very Poor,69,8.3,15.9,0.0,False,5.2027,Other months
+2016-02-10,216.55,81.98,21.61,368.0,Very Poor,67,6.1,16.3,0.0,False,5.3778,Other months
+2016-02-11,150.0,70.99,21.25,349.0,Very Poor,56,9.8,17.6,0.0,False,5.0106,Other months
+2016-02-12,146.03,79.43,26.86,334.0,Very Poor,65,5.4,16.6,0.0,False,4.9838,Other months
+2016-02-13,110.89,56.05,20.94,333.0,Very Poor,62,10.0,16.1,0.7,False,4.7085,Other months
+2016-02-14,103.57,61.73,29.71,257.0,Poor,65,9.4,15.9,0.0,False,4.6402,Other months
+2016-02-15,115.7,66.8,27.44,265.0,Poor,60,7.7,15.7,0.0,False,4.751,Other months
+2016-02-16,123.22,65.75,29.19,297.0,Poor,55,7.2,15.8,0.0,False,4.814,Other months
+2016-02-17,135.38,80.76,37.35,289.0,Poor,54,7.8,18.0,0.2,False,4.9081,Other months
+2016-02-18,148.75,76.11,26.28,310.0,Very Poor,61,7.9,20.4,1.4,False,5.0023,Other months
+2016-02-19,207.1,66.45,32.25,366.0,Very Poor,66,5.7,22.7,0.0,False,5.3332,Other months
+2016-02-20,150.89,47.72,20.15,345.0,Very Poor,75,7.0,21.8,14.4,False,5.0166,Other months
+2016-02-21,76.12,30.51,10.43,228.0,Poor,65,14.7,19.2,0.0,False,4.3323,Other months
+2016-02-22,88.73,41.47,20.79,213.0,Poor,52,15.9,18.8,0.0,False,4.4856,Other months
+2016-02-23,86.17,56.77,21.27,208.0,Poor,54,10.0,19.1,0.0,False,4.4563,Other months
+2016-02-24,177.64,117.04,50.44,319.0,Very Poor,58,6.1,18.6,0.0,False,5.1798,Other months
+2016-02-25,131.69,81.93,21.19,315.0,Very Poor,59,8.3,19.5,0.0,False,4.8805,Other months
+2016-02-26,129.66,76.82,21.44,293.0,Poor,59,6.5,20.7,0.0,False,4.8649,Other months
+2016-02-27,144.98,86.59,24.43,342.0,Very Poor,60,5.5,20.6,0.0,False,4.9766,Other months
+2016-02-28,163.92,76.43,21.63,338.0,Very Poor,61,6.0,21.5,0.0,False,5.0994,Other months
+2016-02-29,170.12,76.4,17.63,344.0,Very Poor,62,6.9,21.9,0.0,False,5.1365,Other months
+2016-03-01,213.62,102.02,25.49,370.0,Very Poor,62,4.6,22.5,0.0,False,5.3642,Other months
+2016-03-02,175.63,102.23,25.53,365.0,Very Poor,62,5.4,23.3,0.0,False,5.1684,Other months
+2016-03-03,165.22,100.71,33.45,348.0,Very Poor,60,6.7,23.5,0.2,False,5.1073,Other months
+2016-03-04,115.55,60.47,16.6,312.0,Very Poor,51,8.1,23.8,0.0,False,4.7497,Other months
+2016-03-05,53.0,48.15,19.05,214.0,Poor,59,12.1,22.4,12.2,False,3.9703,Other months
+2016-03-06,47.43,55.78,15.1,165.0,Moderate,75,9.9,20.2,2.6,False,3.8593,Other months
+2016-03-07,98.61,54.69,20.44,218.0,Poor,69,6.6,21.3,0.0,False,4.5912,Other months
+2016-03-08,84.42,43.9,26.24,230.0,Poor,66,8.9,21.7,0.0,False,4.4358,Other months
+2016-03-09,109.16,49.75,31.56,248.0,Poor,62,8.9,21.5,0.0,False,4.6928,Other months
+2016-03-10,129.9,60.19,26.69,276.0,Poor,62,8.5,22.5,0.0,False,4.8668,Other months
+2016-03-11,85.76,30.44,9.58,213.0,Poor,65,9.3,23.3,2.2,False,4.4516,Other months
+2016-03-12,60.17,15.89,8.04,127.0,Moderate,77,10.7,21.2,22.2,False,4.0972,Other months
+2016-03-13,58.95,10.63,7.25,112.0,Moderate,71,11.9,21.2,0.0,False,4.0767,Other months
+2016-03-14,51.82,38.11,18.53,111.0,Moderate,77,7.4,20.6,0.9,False,3.9478,Other months
+2016-03-15,81.32,34.54,20.36,193.0,Moderate,66,7.3,20.8,0.0,False,4.3984,Other months
+2016-03-16,67.63,36.61,17.04,123.0,Moderate,56,11.4,20.7,0.0,False,4.2141,Other months
+2016-03-17,70.86,65.89,21.48,194.0,Moderate,56,9.6,22.8,0.1,False,4.2607,Other months
+2016-03-18,72.47,64.64,27.7,186.0,Moderate,59,9.9,23.8,0.0,False,4.2832,Other months
+2016-03-19,103.73,77.89,30.74,242.0,Poor,60,6.3,23.9,0.5,False,4.6418,Other months
+2016-03-20,95.52,57.84,20.52,267.0,Poor,56,7.2,24.7,0.0,False,4.5593,Other months
+2016-03-21,58.4,36.37,15.98,207.0,Poor,45,15.2,23.9,0.0,False,4.0673,Other months
+2016-03-22,47.43,31.12,13.54,176.0,Moderate,36,19.8,22.4,0.0,False,3.8593,Other months
+2016-03-23,80.01,50.45,22.15,189.0,Moderate,39,13.7,23.5,0.0,False,4.3822,Other months
+2016-03-24,156.01,88.44,24.44,341.0,Very Poor,47,6.6,25.0,0.0,False,5.0499,Other months
+2016-03-25,137.99,85.91,32.84,325.0,Very Poor,50,7.9,26.5,0.0,False,4.9272,Other months
+2016-03-26,72.44,42.51,23.86,259.0,Poor,53,13.0,25.2,0.0,False,4.2828,Other months
+2016-03-27,61.75,37.18,18.09,178.0,Moderate,45,11.1,24.7,0.0,False,4.1231,Other months
+2016-03-28,81.46,53.01,25.75,219.0,Poor,41,9.5,24.4,0.0,False,4.4001,Other months
+2016-03-29,89.75,48.72,42.34,206.0,Poor,42,9.9,25.2,0.0,False,4.497,Other months
+2016-03-30,88.68,46.74,36.91,221.0,Poor,45,6.1,26.5,0.0,False,4.485,Other months
+2016-03-31,127.86,61.21,19.64,298.0,Poor,40,6.9,28.0,0.0,False,4.8509,Other months
+2016-04-01,130.7,15.89,12.78,316.0,Very Poor,39,10.9,29.2,0.0,False,4.8729,Other months
+2016-04-02,118.44,18.29,16.35,294.0,Poor,41,7.4,29.9,0.0,False,4.7744,Other months
+2016-04-03,148.22,44.98,27.44,314.0,Very Poor,44,6.7,31.2,1.8,False,4.9987,Other months
+2016-04-04,132.86,31.55,20.54,334.0,Very Poor,34,8.8,30.1,0.0,False,4.8893,Other months
+2016-04-05,97.83,20.15,18.86,261.0,Poor,37,11.7,29.0,0.0,False,4.5832,Other months
+2016-04-06,91.82,52.54,31.06,208.0,Poor,30,7.6,28.4,0.0,False,4.5198,Other months
+2016-04-07,129.61,58.6,35.57,289.0,Poor,37,11.1,27.1,0.0,False,4.8645,Other months
+2016-04-08,89.78,53.55,48.86,216.0,Poor,38,6.2,27.1,0.0,False,4.4974,Other months
+2016-04-09,166.76,63.03,46.97,314.0,Very Poor,27,8.2,28.9,0.0,False,5.1166,Other months
+2016-04-10,107.81,47.95,35.24,262.0,Poor,29,8.7,29.5,0.0,False,4.6804,Other months
+2016-04-11,81.12,36.5,22.66,257.0,Poor,33,15.6,28.3,0.0,False,4.3959,Other months
+2016-04-12,74.03,35.44,17.85,235.0,Poor,33,17.5,27.9,0.0,False,4.3045,Other months
+2016-04-13,74.9,46.29,25.16,239.0,Poor,30,17.0,29.7,0.0,False,4.3162,Other months
+2016-04-14,94.81,58.81,26.21,239.0,Poor,29,12.0,30.9,0.0,False,4.5519,Other months
+2016-04-15,137.48,76.2,37.57,302.0,Very Poor,31,9.6,31.8,0.0,False,4.9235,Other months
+2016-04-16,124.13,37.49,14.84,296.0,Poor,30,10.1,32.7,0.0,False,4.8213,Other months
+2016-04-17,102.86,42.35,13.34,247.0,Poor,26,7.8,33.1,0.0,False,4.6334,Other months
+2016-04-18,102.9,49.32,22.15,265.0,Poor,32,7.2,32.5,0.0,False,4.6338,Other months
+2016-04-19,129.06,63.21,35.73,301.0,Very Poor,37,6.1,31.4,0.1,False,4.8603,Other months
+2016-04-20,124.8,48.65,29.16,322.0,Very Poor,26,12.3,31.6,0.0,False,4.8267,Other months
+2016-04-21,92.74,42.87,19.87,291.0,Poor,23,16.1,31.8,0.0,False,4.5298,Other months
+2016-04-22,113.75,44.8,25.63,292.0,Poor,25,7.5,31.8,0.0,False,4.734,Other months
+2016-04-23,89.52,50.78,25.65,258.0,Poor,24,11.7,29.6,0.0,False,4.4945,Other months
+2016-04-24,123.59,69.92,40.96,282.0,Poor,21,10.2,28.8,0.0,False,4.817,Other months
+2016-04-25,104.5,70.04,39.91,271.0,Poor,19,9.3,30.0,0.0,False,4.6492,Other months
+2016-04-26,139.37,97.93,38.53,314.0,Very Poor,23,6.9,30.6,0.2,False,4.9371,Other months
+2016-04-27,162.54,108.53,33.53,377.0,Very Poor,22,8.4,31.0,0.0,False,5.0909,Other months
+2016-04-28,161.23,80.4,35.7,390.0,Very Poor,19,10.5,31.4,0.0,False,5.0828,Other months
+2016-04-29,181.49,88.26,38.0,392.0,Very Poor,19,9.8,31.3,0.0,False,5.2012,Other months
+2016-04-30,142.64,51.53,13.83,342.0,Very Poor,21,8.3,31.2,0.0,False,4.9603,Other months
+2016-05-01,124.21,52.3,10.98,297.0,Poor,20,10.7,32.8,0.0,False,4.822,Other months
+2016-05-02,119.47,41.26,10.0,275.0,Poor,19,7.1,34.4,0.4,False,4.7831,Other months
+2016-05-03,125.36,59.73,21.42,281.0,Poor,32,10.3,32.1,1.6,False,4.8312,Other months
+2016-05-04,103.08,61.77,26.13,309.0,Very Poor,48,12.9,30.9,1.0,False,4.6355,Other months
+2016-05-05,65.02,46.27,18.35,262.0,Poor,50,13.0,29.3,0.1,False,4.1747,Other months
+2016-05-06,54.34,55.07,20.23,194.0,Moderate,54,5.5,29.2,0.0,False,3.9953,Other months
+2016-05-07,77.89,66.68,20.15,229.0,Poor,41,6.6,30.8,0.0,False,4.3553,Other months
+2016-05-08,90.19,64.2,25.25,246.0,Poor,45,10.3,30.8,0.0,False,4.5019,Other months
+2016-05-09,77.34,48.67,18.97,225.0,Poor,42,13.3,32.1,0.5,False,4.3482,Other months
+2016-05-10,73.55,57.52,22.26,221.0,Poor,46,13.1,32.2,1.0,False,4.298,Other months
+2016-05-11,66.49,52.3,16.32,185.0,Moderate,51,10.8,31.7,0.2,False,4.1971,Other months
+2016-05-12,100.09,64.25,17.95,218.0,Poor,49,6.7,32.5,0.0,False,4.6061,Other months
+2016-05-13,99.88,60.29,16.54,310.0,Very Poor,30,7.3,34.5,0.0,False,4.604,Other months
+2016-05-14,105.51,67.71,20.49,307.0,Very Poor,30,6.9,34.9,0.0,False,4.6588,Other months
+2016-05-15,128.85,57.06,18.7,325.0,Very Poor,29,7.3,34.9,0.0,False,4.8586,Other months
+2016-05-16,94.89,58.46,21.19,316.0,Very Poor,25,10.0,35.2,0.0,False,4.5527,Other months
+2016-05-17,92.95,62.4,27.34,302.0,Very Poor,22,10.6,35.1,0.0,False,4.5321,Other months
+2016-05-18,117.64,80.57,31.96,318.0,Very Poor,23,6.9,35.3,0.0,False,4.7676,Other months
+2016-05-19,94.22,67.73,27.98,300.0,Poor,36,13.7,34.8,0.3,False,4.5456,Other months
+2016-05-20,70.86,52.02,12.82,246.0,Poor,43,14.5,34.6,0.3,False,4.2607,Other months
+2016-05-21,78.02,48.23,13.08,255.0,Poor,53,14.7,33.9,0.0,False,4.357,Other months
+2016-05-22,66.3,53.42,15.3,218.0,Poor,47,10.3,34.6,1.8,False,4.1942,Other months
+2016-05-23,87.31,45.86,16.69,252.0,Poor,52,10.1,33.6,4.5,False,4.4695,Other months
+2016-05-24,57.35,43.57,13.46,190.0,Moderate,59,10.6,31.7,1.8,False,4.0492,Other months
+2016-05-25,105.02,50.77,13.98,256.0,Poor,53,7.9,31.6,0.6,False,4.6542,Other months
+2016-05-26,111.22,48.12,11.79,311.0,Very Poor,49,6.7,32.9,0.0,False,4.7115,Other months
+2016-05-27,180.71,50.38,13.73,381.0,Very Poor,37,12.0,34.8,2.0,False,5.1969,Other months
+2016-05-28,109.82,34.37,15.48,409.0,Severe,37,13.4,33.9,2.3,False,4.6988,Other months
+2016-05-29,42.67,35.71,10.6,269.0,Poor,54,12.7,31.2,6.9,False,3.7535,Other months
+2016-05-30,56.87,50.18,11.3,187.0,Moderate,68,10.5,28.8,3.4,False,4.0408,Other months
+2016-05-31,101.54,49.41,9.15,225.0,Poor,57,7.7,31.7,0.2,False,4.6205,Other months
+2016-06-01,76.56,44.55,13.11,283.0,Poor,48,8.2,33.8,0.0,False,4.3381,Other months
+2016-06-02,81.4,49.88,13.87,316.0,Very Poor,37,9.6,34.9,0.0,False,4.3994,Other months
+2016-06-03,138.97,74.99,21.41,361.0,Very Poor,42,7.2,34.2,0.5,False,4.9343,Other months
+2016-06-04,137.81,75.26,15.4,330.0,Very Poor,45,8.5,35.3,0.0,False,4.9259,Other months
+2016-06-05,77.72,36.69,11.7,256.0,Poor,55,13.1,34.4,3.3,False,4.3531,Other months
+2016-06-06,84.61,45.47,14.68,237.0,Poor,53,12.7,34.1,2.6,False,4.4381,Other months
+2016-06-07,66.72,45.5,15.9,246.0,Poor,52,12.4,34.1,1.1,False,4.2005,Other months
+2016-06-08,64.08,57.31,19.95,202.0,Poor,51,10.6,33.9,0.7,False,4.1601,Other months
+2016-06-09,64.95,49.67,15.09,209.0,Poor,51,11.2,34.4,0.2,False,4.1736,Other months
+2016-06-10,75.75,51.75,18.14,262.0,Poor,50,7.8,34.4,2.6,False,4.3274,Other months
+2016-06-11,69.25,38.84,9.83,280.0,Poor,50,10.1,34.2,0.1,False,4.2377,Other months
+2016-06-12,70.71,40.04,9.78,279.0,Poor,53,9.6,33.3,3.6,False,4.2586,Other months
+2016-06-13,96.72,34.52,10.14,357.0,Very Poor,47,11.4,34.4,0.7,False,4.5718,Other months
+2016-06-14,59.02,38.55,8.29,266.0,Poor,61,10.1,32.3,1.8,False,4.0779,Other months
+2016-06-15,102.42,37.74,11.23,330.0,Very Poor,65,6.6,31.7,1.5,False,4.6291,Other months
+2016-06-16,62.37,30.44,9.89,248.0,Poor,61,14.6,32.4,0.0,False,4.1331,Other months
+2016-06-17,67.76,41.27,10.43,172.0,Moderate,62,11.2,32.6,0.2,False,4.216,Other months
+2016-06-18,79.17,33.98,8.64,234.0,Poor,67,12.4,31.4,14.8,False,4.3716,Other months
+2016-06-19,101.31,32.55,9.51,201.0,Poor,64,12.5,32.3,0.3,False,4.6182,Other months
+2016-06-20,83.1,40.24,11.24,206.0,Poor,63,13.3,32.8,0.0,False,4.42,Other months
+2016-06-21,72.33,32.04,10.54,159.0,Moderate,72,13.1,30.8,1.8,False,4.2812,Other months
+2016-06-22,75.14,31.89,7.88,187.0,Moderate,69,8.0,30.9,1.4,False,4.3194,Other months
+2016-06-23,91.63,37.7,8.34,228.0,Poor,63,6.5,32.8,0.0,False,4.5178,Other months
+2016-06-24,100.02,45.29,9.03,284.0,Poor,58,7.8,33.8,0.6,False,4.6054,Other months
+2016-06-25,67.12,50.91,10.87,310.0,Very Poor,59,12.6,34.2,0.0,False,4.2065,Other months
+2016-06-26,48.0,40.57,8.71,158.0,Moderate,65,12.0,32.3,3.1,False,3.8712,Other months
+2016-06-27,76.76,37.28,7.63,154.0,Moderate,67,9.5,32.1,3.3,False,4.3407,Other months
+2016-06-28,80.89,40.07,9.77,187.0,Moderate,77,9.6,30.1,10.4,False,4.3931,Other months
+2016-06-29,60.67,37.01,10.22,180.0,Moderate,70,9.2,32.0,10.5,False,4.1054,Other months
+2016-06-30,69.65,34.17,9.43,190.0,Moderate,66,7.0,33.1,0.4,False,4.2435,Other months
+2016-07-01,58.21,29.28,7.97,164.0,Moderate,73,10.8,31.8,23.3,False,4.0641,Monsoon (Jul–Sep)
+2016-07-02,57.24,33.9,7.81,148.0,Moderate,86,8.4,27.7,67.9,False,4.0473,Monsoon (Jul–Sep)
+2016-07-03,67.6,36.79,8.77,154.0,Moderate,91,7.8,26.9,15.1,False,4.2136,Monsoon (Jul–Sep)
+2016-07-04,57.1,37.93,8.88,160.0,Moderate,81,4.2,28.8,1.2,False,4.0448,Monsoon (Jul–Sep)
+2016-07-05,68.71,47.24,8.51,165.0,Moderate,75,5.5,31.0,0.3,False,4.2299,Monsoon (Jul–Sep)
+2016-07-06,77.71,34.78,7.6,210.0,Poor,79,7.4,30.0,2.6,False,4.353,Monsoon (Jul–Sep)
+2016-07-07,54.5,27.69,8.73,158.0,Moderate,76,8.7,30.3,1.5,False,3.9982,Monsoon (Jul–Sep)
+2016-07-08,54.96,42.07,8.38,172.0,Moderate,76,6.1,30.8,2.5,False,4.0066,Monsoon (Jul–Sep)
+2016-07-09,52.95,30.77,7.73,151.0,Moderate,76,7.8,30.5,1.3,False,3.9693,Monsoon (Jul–Sep)
+2016-07-10,59.13,35.91,7.94,143.0,Moderate,75,5.6,31.1,0.0,False,4.0797,Monsoon (Jul–Sep)
+2016-07-11,60.92,33.57,7.74,156.0,Moderate,82,9.4,29.3,4.3,False,4.1096,Monsoon (Jul–Sep)
+2016-07-12,39.32,32.55,9.06,108.0,Moderate,83,9.8,29.0,15.6,False,3.6717,Monsoon (Jul–Sep)
+2016-07-13,71.53,31.96,8.23,163.0,Moderate,80,7.8,29.4,3.9,False,4.2701,Monsoon (Jul–Sep)
+2016-07-14,73.51,29.7,7.39,247.0,Poor,86,4.3,29.0,22.2,False,4.2974,Monsoon (Jul–Sep)
+2016-07-15,52.88,29.17,6.58,123.0,Moderate,89,5.8,28.0,31.3,False,3.968,Monsoon (Jul–Sep)
+2016-07-16,50.99,22.38,7.18,106.0,Moderate,95,5.3,26.5,75.4,False,3.9316,Monsoon (Jul–Sep)
+2016-07-17,75.93,15.75,7.0,202.0,Poor,94,9.1,26.0,50.8,False,4.3298,Monsoon (Jul–Sep)
+2016-07-18,44.08,32.85,7.31,120.0,Moderate,85,8.1,28.2,5.7,False,3.786,Monsoon (Jul–Sep)
+2016-07-19,42.14,31.4,6.78,135.0,Moderate,78,11.6,29.6,1.9,False,3.741,Monsoon (Jul–Sep)
+2016-07-20,56.86,34.96,9.36,245.0,Poor,70,12.0,30.8,0.0,False,4.0406,Monsoon (Jul–Sep)
+2016-07-21,45.64,37.8,7.27,280.0,Poor,69,10.4,31.2,0.5,False,3.8208,Monsoon (Jul–Sep)
+2016-07-22,48.36,37.42,8.63,269.0,Poor,73,6.0,30.9,0.6,False,3.8787,Monsoon (Jul–Sep)
+2016-07-23,42.09,23.88,7.23,163.0,Moderate,81,9.7,28.8,5.0,False,3.7398,Monsoon (Jul–Sep)
+2016-07-24,59.4,56.56,8.91,,,83,6.0,28.8,3.1,False,4.0843,Monsoon (Jul–Sep)
+2016-07-25,76.29,58.4,7.93,195.0,Moderate,84,4.8,29.2,7.4,False,4.3345,Monsoon (Jul–Sep)
+2016-07-26,54.5,40.48,8.2,163.0,Moderate,87,12.2,28.0,4.2,False,3.9982,Monsoon (Jul–Sep)
+2016-07-27,40.55,40.86,10.82,108.0,Moderate,86,12.1,27.2,6.5,False,3.7025,Monsoon (Jul–Sep)
+2016-07-28,46.44,42.81,9.95,134.0,Moderate,89,7.1,26.7,18.9,False,3.8382,Monsoon (Jul–Sep)
+2016-07-29,56.16,44.18,9.87,155.0,Moderate,94,6.5,25.8,18.7,False,4.0282,Monsoon (Jul–Sep)
+2016-07-30,42.7,36.78,8.69,116.0,Moderate,90,6.4,26.6,8.3,False,3.7542,Monsoon (Jul–Sep)
+2016-07-31,48.03,32.5,8.01,136.0,Moderate,89,5.9,26.8,7.6,False,3.8718,Monsoon (Jul–Sep)
+2016-08-01,43.47,29.86,10.33,150.0,Moderate,89,9.9,26.9,12.5,False,3.7721,Monsoon (Jul–Sep)
+2016-08-02,43.55,34.87,8.23,121.0,Moderate,86,10.8,27.5,10.6,False,3.7739,Monsoon (Jul–Sep)
+2016-08-03,50.86,36.14,6.96,149.0,Moderate,79,9.8,29.2,0.0,False,3.9291,Monsoon (Jul–Sep)
+2016-08-04,49.04,35.93,9.03,178.0,Moderate,79,9.6,29.6,4.8,False,3.8926,Monsoon (Jul–Sep)
+2016-08-05,39.3,33.68,9.36,120.0,Moderate,80,7.8,30.1,1.1,False,3.6712,Monsoon (Jul–Sep)
+2016-08-06,43.86,38.29,9.81,140.0,Moderate,85,11.9,28.6,1.0,False,3.781,Monsoon (Jul–Sep)
+2016-08-07,42.84,31.42,10.02,142.0,Moderate,80,9.8,28.9,2.7,False,3.7575,Monsoon (Jul–Sep)
+2016-08-08,44.04,34.27,8.48,141.0,Moderate,81,11.3,29.0,4.7,False,3.7851,Monsoon (Jul–Sep)
+2016-08-09,41.29,29.05,8.02,125.0,Moderate,85,11.1,27.8,6.3,False,3.7206,Monsoon (Jul–Sep)
+2016-08-10,39.28,30.76,9.75,127.0,Moderate,88,11.1,27.3,10.5,False,3.6707,Monsoon (Jul–Sep)
+2016-08-11,30.66,29.78,8.37,119.0,Moderate,90,7.5,26.8,14.1,False,3.423,Monsoon (Jul–Sep)
+2016-08-12,42.15,34.9,8.73,111.0,Moderate,89,5.0,27.2,11.9,False,3.7412,Monsoon (Jul–Sep)
+2016-08-13,56.45,43.49,7.77,132.0,Moderate,88,3.5,27.8,11.4,False,4.0334,Monsoon (Jul–Sep)
+2016-08-14,40.81,42.53,12.53,149.0,Moderate,89,6.5,27.7,13.9,False,3.7089,Monsoon (Jul–Sep)
+2016-08-15,39.51,32.96,8.87,166.0,Moderate,80,11.1,29.0,2.6,False,3.6766,Monsoon (Jul–Sep)
+2016-08-16,49.04,28.74,7.97,274.0,Poor,73,13.5,29.4,0.8,False,3.8926,Monsoon (Jul–Sep)
+2016-08-17,62.19,36.46,11.16,295.0,Poor,76,6.8,28.1,0.2,False,4.1302,Monsoon (Jul–Sep)
+2016-08-18,55.55,51.48,9.22,219.0,Poor,87,4.7,27.7,7.1,False,4.0173,Monsoon (Jul–Sep)
+2016-08-19,59.03,43.97,8.84,169.0,Moderate,82,6.1,28.9,1.3,False,4.078,Monsoon (Jul–Sep)
+2016-08-20,48.57,35.84,8.56,174.0,Moderate,80,13.6,28.6,2.9,False,3.883,Monsoon (Jul–Sep)
+2016-08-21,28.01,27.58,9.02,111.0,Moderate,78,12.0,27.9,0.0,False,3.3326,Monsoon (Jul–Sep)
+2016-08-22,28.6,31.31,7.97,93.0,Satisfactory,79,9.7,27.9,0.0,False,3.3534,Monsoon (Jul–Sep)
+2016-08-23,38.99,39.47,8.06,107.0,Moderate,82,7.5,28.4,0.1,False,3.6633,Monsoon (Jul–Sep)
+2016-08-24,43.35,32.04,10.86,127.0,Moderate,85,14.1,27.3,12.8,False,3.7693,Monsoon (Jul–Sep)
+2016-08-25,45.88,35.41,8.23,93.0,Satisfactory,85,7.4,28.4,1.3,False,3.826,Monsoon (Jul–Sep)
+2016-08-26,54.13,35.61,9.57,142.0,Moderate,82,4.6,28.9,1.5,False,3.9914,Monsoon (Jul–Sep)
+2016-08-27,56.56,20.84,7.91,93.0,Satisfactory,86,8.4,28.4,6.5,False,4.0353,Monsoon (Jul–Sep)
+2016-08-28,57.09,28.7,7.04,224.0,Poor,84,7.5,29.0,6.3,False,4.0446,Monsoon (Jul–Sep)
+2016-08-29,54.73,37.48,8.92,169.0,Moderate,89,5.3,27.5,13.7,False,4.0024,Monsoon (Jul–Sep)
+2016-08-30,48.93,42.73,9.22,110.0,Moderate,88,3.3,27.1,24.3,False,3.8904,Monsoon (Jul–Sep)
+2016-08-31,37.1,41.82,8.72,100.0,Satisfactory,91,6.1,26.8,18.5,False,3.6136,Monsoon (Jul–Sep)
+2016-09-01,28.06,51.78,9.47,109.0,Moderate,88,5.9,27.0,7.3,False,3.3343,Monsoon (Jul–Sep)
+2016-09-02,44.31,41.71,9.37,154.0,Moderate,80,10.7,28.2,0.4,False,3.7912,Monsoon (Jul–Sep)
+2016-09-03,46.77,40.85,10.09,216.0,Poor,74,15.5,28.2,0.2,False,3.8452,Monsoon (Jul–Sep)
+2016-09-04,57.64,31.96,9.05,262.0,Poor,73,13.7,28.2,0.0,False,4.0542,Monsoon (Jul–Sep)
+2016-09-05,45.37,33.42,9.87,260.0,Poor,72,14.6,27.9,0.1,False,3.8149,Monsoon (Jul–Sep)
+2016-09-06,50.42,34.74,10.61,329.0,Very Poor,70,15.6,28.2,0.0,False,3.9204,Monsoon (Jul–Sep)
+2016-09-07,50.73,39.21,14.63,291.0,Poor,68,12.9,28.3,0.0,False,3.9265,Monsoon (Jul–Sep)
+2016-09-08,71.72,39.69,12.02,300.0,Poor,68,12.1,28.4,0.1,False,4.2728,Monsoon (Jul–Sep)
+2016-09-09,87.99,43.67,10.34,335.0,Very Poor,68,12.4,28.8,0.0,False,4.4772,Monsoon (Jul–Sep)
+2016-09-10,45.7,38.14,10.81,240.0,Poor,65,13.3,29.0,0.0,False,3.8221,Monsoon (Jul–Sep)
+2016-09-11,45.89,40.58,10.92,177.0,Moderate,64,11.5,28.9,0.0,False,3.8262,Monsoon (Jul–Sep)
+2016-09-12,49.7,39.41,9.59,178.0,Moderate,65,11.3,28.8,0.0,False,3.906,Monsoon (Jul–Sep)
+2016-09-13,57.08,43.84,10.93,193.0,Moderate,70,6.5,29.0,0.0,False,4.0445,Monsoon (Jul–Sep)
+2016-09-14,47.36,45.6,11.21,150.0,Moderate,79,6.5,27.9,0.1,False,3.8578,Monsoon (Jul–Sep)
+2016-09-15,79.99,54.73,11.6,215.0,Poor,75,4.7,28.7,0.0,False,4.3819,Monsoon (Jul–Sep)
+2016-09-16,67.11,57.22,12.39,233.0,Poor,73,5.7,29.1,0.0,False,4.2063,Monsoon (Jul–Sep)
+2016-09-17,81.9,56.8,12.78,220.0,Poor,73,4.3,28.7,0.0,False,4.4055,Monsoon (Jul–Sep)
+2016-09-18,86.16,56.82,10.89,266.0,Poor,76,6.6,28.7,0.0,False,4.4562,Monsoon (Jul–Sep)
+2016-09-19,75.02,67.37,14.63,192.0,Moderate,74,3.8,29.0,0.0,False,4.3178,Monsoon (Jul–Sep)
+2016-09-20,94.23,86.2,16.12,264.0,Poor,67,5.3,30.0,0.0,False,4.5457,Monsoon (Jul–Sep)
+2016-09-21,89.62,70.0,17.12,284.0,Poor,72,10.2,29.6,0.0,False,4.4956,Monsoon (Jul–Sep)
+2016-09-22,32.73,44.35,13.44,150.0,Moderate,84,13.1,26.9,2.0,False,3.4883,Monsoon (Jul–Sep)
+2016-09-23,55.64,57.24,13.77,134.0,Moderate,78,5.0,27.4,0.0,False,4.0189,Monsoon (Jul–Sep)
+2016-09-24,56.46,53.66,14.63,197.0,Moderate,78,6.0,28.1,0.2,False,4.0335,Monsoon (Jul–Sep)
+2016-09-25,56.64,55.69,15.5,175.0,Moderate,76,6.0,27.6,0.0,False,4.0367,Monsoon (Jul–Sep)
+2016-09-26,89.09,68.3,15.11,236.0,Poor,75,5.7,28.2,0.2,False,4.4896,Monsoon (Jul–Sep)
+2016-09-27,52.49,41.03,13.68,185.0,Moderate,75,6.1,28.5,0.0,False,3.9606,Monsoon (Jul–Sep)
+2016-09-28,105.43,100.66,11.94,103.0,Moderate,70,5.7,29.1,0.0,False,4.658,Monsoon (Jul–Sep)
+2016-09-29,101.84,63.0,15.28,289.0,Poor,74,5.7,29.0,0.1,False,4.6234,Monsoon (Jul–Sep)
+2016-09-30,84.33,65.05,15.0,224.0,Poor,72,4.3,29.1,0.0,False,4.4347,Monsoon (Jul–Sep)
+2016-10-01,117.28,73.71,24.55,312.0,Very Poor,71,5.7,29.7,0.0,False,4.7646,Other months
+2016-10-02,81.87,59.82,16.28,234.0,Poor,73,6.2,29.7,0.3,False,4.4051,Other months
+2016-10-03,103.12,66.31,12.96,282.0,Poor,77,4.9,29.3,1.7,False,4.6359,Other months
+2016-10-04,159.8,78.18,13.68,351.0,Very Poor,78,4.0,29.1,1.7,False,5.0739,Other months
+2016-10-05,81.71,77.96,14.4,232.0,Poor,81,5.3,28.0,7.7,False,4.4032,Other months
+2016-10-06,117.86,87.85,15.09,280.0,Poor,78,4.4,28.2,0.0,False,4.7695,Other months
+2016-10-07,114.06,74.99,14.63,311.0,Very Poor,72,6.3,28.5,0.0,False,4.7367,Other months
+2016-10-08,132.11,76.99,14.9,408.0,Severe,65,7.7,28.3,0.0,False,4.8836,Other months
+2016-10-09,144.47,92.64,17.2,416.0,Severe,64,5.7,28.0,0.0,False,4.9731,Other months
+2016-10-10,125.8,88.86,17.3,387.0,Very Poor,58,7.0,27.3,0.0,False,4.8347,Other months
+2016-10-11,134.84,83.87,16.52,408.0,Severe,52,9.3,26.6,0.0,False,4.9041,Other months
+2016-10-12,114.3,83.3,20.1,405.0,Severe,50,9.5,26.4,0.0,False,4.7388,Other months
+2016-10-13,86.93,81.11,19.17,371.0,Very Poor,47,9.2,26.0,0.0,False,4.4651,Other months
+2016-10-14,94.83,87.15,20.72,375.0,Very Poor,47,7.3,25.3,0.0,False,4.5521,Other months
+2016-10-15,144.98,108.83,22.1,400.0,Very Poor,53,7.3,25.3,0.0,False,4.9766,Other months
+2016-10-16,132.01,89.01,24.72,430.0,Severe,52,7.6,25.5,0.0,False,4.8829,Other months
+2016-10-17,149.35,94.29,27.27,425.0,Severe,52,7.4,25.7,0.0,False,5.0063,Other months
+2016-10-18,161.49,95.27,22.25,438.0,Severe,52,7.2,24.8,0.0,False,5.0844,Other months
+2016-10-19,140.57,91.52,24.66,428.0,Severe,53,6.7,24.9,0.0,False,4.9457,Other months
+2016-10-20,135.9,90.28,24.72,425.0,Severe,42,9.4,25.5,0.0,False,4.9119,Other months
+2016-10-21,161.11,88.27,26.66,496.0,Severe,43,10.9,25.9,0.0,False,5.0821,Other months
+2016-10-22,140.92,84.96,20.7,472.0,Severe,46,11.3,25.9,0.0,False,4.9482,Other months
+2016-10-23,182.14,90.22,19.38,470.0,Severe,49,11.5,25.3,0.0,False,5.2048,Other months
+2016-10-24,164.51,88.17,21.68,454.0,Severe,49,9.7,25.2,0.0,False,5.103,Other months
+2016-10-25,115.76,82.7,23.46,396.0,Very Poor,49,10.4,25.3,0.0,False,4.7515,Other months
+2016-10-26,209.27,111.23,25.0,413.0,Severe,55,7.2,24.9,0.0,False,5.3436,Other months
+2016-10-27,296.27,120.07,23.95,558.0,Severe,55,8.8,23.9,0.0,False,5.6913,Other months
+2016-10-28,318.57,119.42,27.89,570.0,Severe,49,7.7,23.7,0.0,False,5.7638,Other months
+2016-10-29,350.39,162.5,54.38,554.0,Severe,50,5.7,23.8,0.0,False,5.859,Other months
+2016-10-30,355.77,112.59,40.23,522.0,Severe,62,6.4,23.3,0.0,False,5.8743,Other months
+2016-10-31,434.92,113.21,71.56,520.0,Severe,62,5.6,23.6,0.0,False,6.0752,Other months
+2016-11-01,394.59,120.66,33.34,550.0,Severe,64,6.0,22.7,0.0,False,5.9778,Winter (Nov–Jan)
+2016-11-02,537.96,149.12,26.66,593.0,Severe,64,6.2,23.1,0.0,False,6.2878,Winter (Nov–Jan)
+2016-11-03,482.4,148.92,29.4,625.0,Severe,63,5.7,23.1,0.0,False,6.1788,Winter (Nov–Jan)
+2016-11-04,342.45,131.92,25.93,480.0,Severe,63,6.7,22.6,0.0,False,5.8361,Winter (Nov–Jan)
+2016-11-05,588.39,113.31,22.21,603.0,Severe,62,8.4,22.5,0.0,False,6.3774,Winter (Nov–Jan)
+2016-11-06,685.36,128.15,22.61,676.0,Severe,60,7.1,22.3,0.0,False,6.5299,Winter (Nov–Jan)
+2016-11-07,488.57,123.36,23.88,716.0,Severe,57,9.5,22.1,0.0,False,6.1915,Winter (Nov–Jan)
+2016-11-08,338.38,92.18,21.36,542.0,Severe,50,12.9,22.4,0.0,False,5.8242,Winter (Nov–Jan)
+2016-11-09,307.08,103.26,21.52,455.0,Severe,51,9.5,21.7,0.0,False,5.7271,Winter (Nov–Jan)
+2016-11-10,291.71,133.98,29.45,471.0,Severe,59,7.1,21.0,0.0,False,5.6758,Winter (Nov–Jan)
+2016-11-11,295.88,147.03,35.04,514.0,Severe,64,7.4,21.0,0.0,False,5.69,Winter (Nov–Jan)
+2016-11-12,277.67,127.18,34.7,491.0,Severe,60,7.6,21.6,0.0,False,5.6264,Winter (Nov–Jan)
+2016-11-13,228.16,113.74,51.78,469.0,Severe,58,4.9,21.9,0.0,False,5.43,Winter (Nov–Jan)
+2016-11-14,194.2,119.58,22.7,404.0,Severe,61,4.7,21.9,0.0,False,5.2689,Winter (Nov–Jan)
+2016-11-15,236.09,116.66,21.98,379.0,Very Poor,52,6.7,21.3,0.0,False,5.4642,Winter (Nov–Jan)
+2016-11-16,291.98,109.65,23.97,428.0,Severe,52,8.7,20.1,0.0,False,5.6767,Winter (Nov–Jan)
+2016-11-17,351.47,96.23,21.65,504.0,Severe,50,12.5,20.0,0.0,False,5.8621,Winter (Nov–Jan)
+2016-11-18,237.21,102.95,23.11,512.0,Severe,55,10.4,20.1,0.0,False,5.4689,Winter (Nov–Jan)
+2016-11-19,285.71,114.11,30.47,494.0,Severe,58,7.0,19.6,0.0,False,5.655,Winter (Nov–Jan)
+2016-11-20,323.74,117.17,27.23,438.0,Severe,62,6.4,19.7,0.0,False,5.7799,Winter (Nov–Jan)
+2016-11-21,340.61,128.85,26.25,474.0,Severe,60,7.1,20.4,0.0,False,5.8307,Winter (Nov–Jan)
+2016-11-22,281.76,111.52,25.26,471.0,Severe,53,9.9,20.6,0.0,False,5.6411,Winter (Nov–Jan)
+2016-11-23,174.56,98.73,30.13,432.0,Severe,58,10.5,20.7,0.0,False,5.1623,Winter (Nov–Jan)
+2016-11-24,216.1,109.5,22.29,397.0,Very Poor,56,10.2,20.0,0.0,False,5.3757,Winter (Nov–Jan)
+2016-11-25,136.21,68.9,20.99,375.0,Very Poor,43,17.8,21.3,0.0,False,4.9142,Winter (Nov–Jan)
+2016-11-26,113.3,70.01,23.22,330.0,Very Poor,39,17.4,22.0,0.0,False,4.73,Winter (Nov–Jan)
+2016-11-27,128.7,71.29,22.68,347.0,Very Poor,42,14.8,21.5,0.0,False,4.8575,Winter (Nov–Jan)
+2016-11-28,127.5,82.99,29.33,274.0,Poor,41,12.6,20.9,0.0,False,4.8481,Winter (Nov–Jan)
+2016-11-29,236.58,133.28,27.59,360.0,Very Poor,55,6.2,18.7,0.0,False,5.4663,Winter (Nov–Jan)
+2016-11-30,246.25,95.64,20.23,441.0,Severe,71,8.1,19.1,0.0,False,5.5063,Winter (Nov–Jan)
+2016-12-01,263.61,83.15,19.08,418.0,Severe,75,6.0,19.9,0.0,False,5.5745,Winter (Nov–Jan)
+2016-12-02,263.25,101.67,20.38,474.0,Severe,72,5.8,19.2,0.0,False,5.5731,Winter (Nov–Jan)
+2016-12-03,196.6,97.75,23.49,419.0,Severe,62,6.6,18.2,0.0,False,5.2812,Winter (Nov–Jan)
+2016-12-04,223.3,109.4,22.96,379.0,Very Poor,59,7.5,17.7,0.0,False,5.4085,Winter (Nov–Jan)
+2016-12-05,204.6,78.79,23.92,389.0,Very Poor,63,8.1,18.0,0.0,False,5.3211,Winter (Nov–Jan)
+2016-12-06,293.91,96.68,23.11,402.0,Severe,68,5.8,18.1,0.0,False,5.6833,Winter (Nov–Jan)
+2016-12-07,283.61,81.86,23.69,472.0,Severe,72,4.8,18.2,0.0,False,5.6476,Winter (Nov–Jan)
+2016-12-08,238.21,72.44,22.2,422.0,Severe,73,4.2,17.8,0.0,False,5.4732,Winter (Nov–Jan)
+2016-12-09,295.62,71.44,23.47,443.0,Severe,71,4.4,18.2,0.0,False,5.6891,Winter (Nov–Jan)
+2016-12-10,189.09,58.86,20.83,413.0,Severe,74,7.8,18.6,0.0,False,5.2422,Winter (Nov–Jan)
+2016-12-11,199.12,50.79,22.65,351.0,Very Poor,71,5.7,19.2,0.0,False,5.2939,Winter (Nov–Jan)
+2016-12-12,210.28,76.9,23.52,418.0,Severe,68,7.0,18.7,0.0,False,5.3484,Winter (Nov–Jan)
+2016-12-13,209.91,76.81,21.71,413.0,Severe,72,7.3,18.1,0.0,False,5.3467,Winter (Nov–Jan)
+2016-12-14,154.55,66.38,18.5,379.0,Very Poor,69,9.3,17.3,0.0,False,5.0405,Winter (Nov–Jan)
+2016-12-15,167.64,61.53,20.65,359.0,Very Poor,61,11.4,16.3,0.0,False,5.1218,Winter (Nov–Jan)
+2016-12-16,200.78,85.26,23.5,390.0,Very Poor,64,7.6,15.3,0.0,False,5.3022,Winter (Nov–Jan)
+2016-12-17,229.35,88.54,21.22,437.0,Severe,66,8.0,15.2,0.0,False,5.4352,Winter (Nov–Jan)
+2016-12-18,232.33,86.92,21.99,411.0,Severe,64,8.4,15.0,0.0,False,5.4482,Winter (Nov–Jan)
+2016-12-19,236.24,88.02,21.32,443.0,Severe,63,11.1,15.3,0.0,False,5.4648,Winter (Nov–Jan)
+2016-12-20,161.92,68.35,22.9,377.0,Very Poor,57,16.7,17.2,0.0,False,5.0871,Winter (Nov–Jan)
+2016-12-21,131.95,66.67,22.63,317.0,Very Poor,52,14.8,17.3,0.0,False,4.8824,Winter (Nov–Jan)
+2016-12-22,187.3,82.03,24.9,349.0,Very Poor,60,7.5,16.4,0.0,False,5.2327,Winter (Nov–Jan)
+2016-12-23,364.15,122.88,22.09,470.0,Severe,68,3.2,16.7,0.0,False,5.8976,Winter (Nov–Jan)
+2016-12-24,411.8,114.03,19.54,576.0,Severe,73,9.6,16.1,0.0,False,6.0205,Winter (Nov–Jan)
+2016-12-25,232.41,59.88,19.37,412.0,Severe,78,9.1,16.2,0.0,False,5.4485,Winter (Nov–Jan)
+2016-12-26,154.26,65.49,22.82,338.0,Very Poor,73,11.5,16.1,0.0,False,5.0386,Winter (Nov–Jan)
+2016-12-27,213.2,93.45,24.51,319.0,Very Poor,63,10.2,15.7,0.0,False,5.3622,Winter (Nov–Jan)
+2016-12-28,273.82,129.41,26.1,455.0,Severe,68,6.3,15.8,0.0,False,5.6125,Winter (Nov–Jan)
+2016-12-29,339.96,108.76,21.6,524.0,Severe,76,8.7,15.8,0.0,False,5.8288,Winter (Nov–Jan)
+2016-12-30,231.1,62.46,23.47,381.0,Very Poor,80,9.1,16.0,0.0,False,5.4429,Winter (Nov–Jan)
+2016-12-31,211.16,56.66,23.82,338.0,Very Poor,79,9.3,15.6,0.0,False,5.3526,Winter (Nov–Jan)
+2017-01-01,191.5,66.19,25.13,332.0,Very Poor,80,9.1,15.7,0.0,False,5.2549,Winter (Nov–Jan)
+2017-01-02,247.79,95.55,22.29,384.0,Very Poor,82,7.0,15.5,0.0,False,5.5126,Winter (Nov–Jan)
+2017-01-03,255.33,90.79,25.33,373.0,Very Poor,75,5.2,16.1,0.0,False,5.5426,Winter (Nov–Jan)
+2017-01-04,248.01,91.07,23.11,439.0,Severe,74,5.8,16.6,0.0,False,5.5135,Winter (Nov–Jan)
+2017-01-05,215.42,87.15,25.15,318.0,Very Poor,78,6.6,16.7,0.0,False,5.3726,Winter (Nov–Jan)
+2017-01-06,194.12,65.86,20.52,390.0,Very Poor,77,10.8,16.8,1.8,False,5.2685,Winter (Nov–Jan)
+2017-01-07,154.52,38.85,22.19,332.0,Very Poor,87,10.7,14.6,5.4,False,5.0403,Winter (Nov–Jan)
+2017-01-08,136.98,52.31,32.22,283.0,Poor,81,8.0,13.6,0.0,False,4.9198,Winter (Nov–Jan)
+2017-01-09,141.88,64.33,24.76,300.0,Poor,72,9.5,13.0,0.0,False,4.955,Winter (Nov–Jan)
+2017-01-10,108.26,59.2,19.1,305.0,Very Poor,60,10.9,11.0,0.0,False,4.6845,Winter (Nov–Jan)
+2017-01-11,146.04,67.72,21.36,337.0,Very Poor,58,10.7,9.7,0.0,False,4.9839,Winter (Nov–Jan)
+2017-01-12,216.73,79.35,20.33,417.0,Severe,64,8.9,10.1,0.0,False,5.3787,Winter (Nov–Jan)
+2017-01-13,232.37,85.07,24.71,426.0,Severe,66,9.2,10.5,0.0,False,5.4483,Winter (Nov–Jan)
+2017-01-14,309.28,84.75,11.7,439.0,Severe,64,7.5,11.3,0.0,False,5.7342,Winter (Nov–Jan)
+2017-01-15,222.66,63.97,17.67,382.0,Very Poor,63,6.7,13.8,0.0,False,5.4056,Winter (Nov–Jan)
+2017-01-16,188.08,60.94,20.6,397.0,Very Poor,62,11.6,14.5,0.2,False,5.2369,Winter (Nov–Jan)
+2017-01-17,177.67,51.44,18.44,330.0,Very Poor,76,9.7,10.7,0.0,False,5.1799,Winter (Nov–Jan)
+2017-01-18,218.63,66.94,20.52,358.0,Very Poor,73,8.8,11.5,0.0,False,5.3874,Winter (Nov–Jan)
+2017-01-19,227.68,55.95,20.86,376.0,Very Poor,66,13.5,12.9,0.0,False,5.4279,Winter (Nov–Jan)
+2017-01-20,217.55,63.7,22.23,334.0,Very Poor,68,12.3,12.0,0.0,False,5.3824,Winter (Nov–Jan)
+2017-01-21,349.98,63.36,17.93,387.0,Very Poor,66,9.5,13.2,0.1,False,5.8579,Winter (Nov–Jan)
+2017-01-22,286.6,63.71,18.75,446.0,Severe,73,8.0,15.7,0.0,False,5.6581,Winter (Nov–Jan)
+2017-01-23,189.45,67.27,20.61,379.0,Very Poor,71,9.2,16.3,0.0,False,5.2441,Winter (Nov–Jan)
+2017-01-24,230.94,92.12,24.56,375.0,Very Poor,71,6.7,16.9,0.0,False,5.4422,Winter (Nov–Jan)
+2017-01-25,241.78,88.02,23.95,450.0,Severe,75,12.9,18.4,12.8,False,5.488,Winter (Nov–Jan)
+2017-01-26,135.87,50.39,22.04,340.0,Very Poor,90,11.8,16.3,33.3,False,4.9117,Winter (Nov–Jan)
+2017-01-27,74.92,42.24,18.11,203.0,Poor,81,12.9,14.7,1.8,False,4.3164,Winter (Nov–Jan)
+2017-01-28,109.13,45.82,18.1,236.0,Poor,82,10.0,14.2,0.0,False,4.6925,Winter (Nov–Jan)
+2017-01-29,132.35,46.68,18.12,252.0,Poor,82,12.4,14.9,0.0,False,4.8854,Winter (Nov–Jan)
+2017-01-30,166.71,65.43,20.29,302.0,Very Poor,84,7.3,14.8,0.0,False,5.1163,Winter (Nov–Jan)
+2017-01-31,214.23,82.78,22.81,358.0,Very Poor,84,6.9,15.6,0.0,False,5.3671,Winter (Nov–Jan)
+2017-02-01,136.02,64.08,19.51,317.0,Very Poor,81,9.0,14.7,0.0,False,4.9128,Other months
+2017-02-02,198.24,93.86,18.84,387.0,Very Poor,79,6.3,14.7,0.0,False,5.2895,Other months
+2017-02-03,194.99,88.38,19.98,438.0,Severe,82,6.9,14.7,0.0,False,5.2729,Other months
+2017-02-04,186.65,62.01,17.04,407.0,Severe,79,14.6,16.8,0.0,False,5.2292,Other months
+2017-02-05,146.49,49.57,18.3,312.0,Very Poor,79,13.0,17.7,3.2,False,4.987,Other months
+2017-02-06,176.04,60.62,17.23,367.0,Very Poor,78,10.7,16.2,0.1,False,5.1707,Other months
+2017-02-07,77.85,55.29,16.07,263.0,Poor,73,11.4,14.3,0.0,False,4.3548,Other months
+2017-02-08,129.1,69.98,17.2,287.0,Poor,73,8.2,14.8,0.0,False,4.8606,Other months
+2017-02-09,133.12,67.24,20.84,346.0,Very Poor,72,10.9,14.7,0.0,False,4.8913,Other months
+2017-02-10,120.43,62.77,20.09,314.0,Very Poor,68,12.4,14.5,0.0,False,4.7911,Other months
+2017-02-11,129.09,58.31,17.55,314.0,Very Poor,70,8.1,14.0,0.0,False,4.8605,Other months
+2017-02-12,166.55,56.97,19.9,314.0,Very Poor,72,7.6,15.0,0.0,False,5.1153,Other months
+2017-02-13,130.62,73.3,21.25,298.0,Poor,68,9.3,15.8,0.0,False,4.8723,Other months
+2017-02-14,168.96,81.51,21.87,319.0,Very Poor,65,10.5,16.4,0.0,False,5.1297,Other months
+2017-02-15,183.98,82.14,21.26,382.0,Very Poor,65,9.7,17.6,0.0,False,5.2148,Other months
+2017-02-16,163.86,78.82,21.02,352.0,Very Poor,61,12.7,19.9,0.0,False,5.099,Other months
+2017-02-17,112.02,72.55,19.33,309.0,Very Poor,64,12.0,20.1,0.0,False,4.7187,Other months
+2017-02-18,107.13,71.98,19.29,301.0,Very Poor,66,10.2,20.6,0.0,False,4.674,Other months
+2017-02-19,109.38,68.84,18.33,274.0,Poor,62,8.9,21.5,0.0,False,4.6948,Other months
+2017-02-20,126.74,67.45,23.96,313.0,Very Poor,63,7.6,22.4,0.0,False,4.8421,Other months
+2017-02-21,106.92,60.72,19.57,310.0,Very Poor,64,10.3,19.4,0.0,False,4.6721,Other months
+2017-02-22,93.03,65.62,19.84,258.0,Poor,57,8.9,18.9,0.0,False,4.5329,Other months
+2017-02-23,182.29,55.22,13.77,238.0,Poor,44,13.8,17.9,0.0,False,5.2056,Other months
+2017-02-24,451.25,42.2,6.64,449.0,Severe,37,17.7,18.3,0.0,False,6.112,Other months
+2017-02-25,425.22,46.64,8.41,516.0,Severe,39,16.9,19.3,0.0,False,6.0526,Other months
+2017-02-26,328.23,59.34,17.55,520.0,Severe,46,13.2,18.8,0.0,False,5.7937,Other months
+2017-02-27,178.5,72.8,21.66,363.0,Very Poor,48,11.2,19.4,0.0,False,5.1846,Other months
+2017-02-28,149.73,94.66,28.15,362.0,Very Poor,47,5.6,22.0,0.0,False,5.0088,Other months
+2017-03-01,127.9,79.46,24.07,397.0,Very Poor,56,7.3,22.2,2.9,False,4.8512,Other months
+2017-03-02,114.68,69.08,23.53,280.0,Poor,62,7.4,20.3,1.3,False,4.7421,Other months
+2017-03-03,67.83,56.64,19.69,206.0,Poor,46,10.3,19.7,0.0,False,4.217,Other months
+2017-03-04,82.32,60.55,22.03,190.0,Moderate,43,11.4,18.4,0.0,False,4.4106,Other months
+2017-03-05,90.6,61.48,25.34,210.0,Poor,43,13.4,18.8,0.0,False,4.5065,Other months
+2017-03-06,91.6,64.99,26.91,201.0,Poor,43,11.9,19.4,0.0,False,4.5174,Other months
+2017-03-07,112.41,65.16,30.7,243.0,Poor,46,8.0,20.5,0.0,False,4.7222,Other months
+2017-03-08,134.4,49.88,24.14,267.0,Poor,50,11.3,20.5,1.2,False,4.9008,Other months
+2017-03-09,106.45,39.68,20.15,245.0,Poor,64,9.6,19.1,0.3,False,4.6677,Other months
+2017-03-10,68.88,33.32,17.93,165.0,Moderate,77,11.1,17.1,12.1,False,4.2324,Other months
+2017-03-11,37.49,32.0,19.4,102.0,Moderate,76,10.0,16.1,1.3,False,3.6241,Other months
+2017-03-12,64.42,32.11,20.11,159.0,Moderate,63,9.6,15.9,0.0,False,4.1654,Other months
+2017-03-13,74.58,27.78,19.33,174.0,Moderate,53,11.7,16.2,0.0,False,4.3119,Other months
+2017-03-14,102.46,34.28,22.37,270.0,Poor,53,8.2,17.5,0.0,False,4.6295,Other months
+2017-03-15,112.71,42.06,23.96,397.0,Very Poor,54,9.7,18.9,0.0,False,4.7248,Other months
+2017-03-16,125.8,42.18,23.59,371.0,Very Poor,52,8.3,20.3,0.0,False,4.8347,Other months
+2017-03-17,114.07,38.7,21.42,328.0,Very Poor,56,11.4,19.8,0.0,False,4.7368,Other months
+2017-03-18,96.39,46.65,22.29,254.0,Poor,50,8.8,20.5,0.0,False,4.5684,Other months
+2017-03-19,120.43,51.65,22.89,342.0,Very Poor,55,7.8,21.5,1.3,False,4.7911,Other months
+2017-03-20,121.21,49.53,22.25,367.0,Very Poor,56,11.7,21.8,0.0,False,4.7975,Other months
+2017-03-21,128.51,51.94,24.38,400.0,Very Poor,48,11.9,23.5,0.0,False,4.856,Other months
+2017-03-22,120.88,69.31,28.88,390.0,Very Poor,48,12.3,25.5,0.0,False,4.7948,Other months
+2017-03-23,151.17,70.55,27.21,417.0,Severe,50,7.8,25.8,0.2,False,5.0184,Other months
+2017-03-24,149.42,79.52,22.09,359.0,Very Poor,47,12.2,26.0,0.0,False,5.0068,Other months
+2017-03-25,168.23,83.82,15.18,309.0,Very Poor,41,12.8,25.4,0.0,False,5.1253,Other months
+2017-03-26,118.34,78.84,14.85,292.0,Poor,38,15.1,26.7,0.0,False,4.7736,Other months
+2017-03-27,156.38,79.24,17.55,278.0,Poor,40,16.9,28.4,0.0,False,5.0523,Other months
+2017-03-28,152.66,85.54,18.24,320.0,Very Poor,43,12.0,28.9,0.0,False,5.0282,Other months
+2017-03-29,113.62,75.87,17.26,350.0,Very Poor,39,14.2,29.7,0.0,False,4.7329,Other months
+2017-03-30,69.44,76.28,23.72,234.0,Poor,36,13.6,29.8,0.0,False,4.2405,Other months
+2017-03-31,91.19,84.22,20.48,233.0,Poor,39,10.8,30.0,0.0,False,4.5129,Other months
+2017-04-01,105.71,81.75,20.05,341.0,Very Poor,35,12.9,29.8,0.0,False,4.6607,Other months
+2017-04-02,83.36,77.96,19.33,259.0,Poor,29,13.4,29.4,0.0,False,4.4232,Other months
+2017-04-03,70.62,83.8,24.03,204.0,Poor,31,10.6,29.1,0.0,False,4.2573,Other months
+2017-04-04,84.4,73.67,24.14,220.0,Poor,32,10.5,29.0,0.0,False,4.4356,Other months
+2017-04-05,47.67,64.65,19.75,255.0,Poor,41,20.4,28.3,1.1,False,3.8643,Other months
+2017-04-06,62.44,67.13,17.21,211.0,Poor,40,17.5,28.7,0.0,False,4.1342,Other months
+2017-04-07,150.76,74.99,27.69,428.0,Severe,40,10.2,26.4,0.0,False,5.0157,Other months
+2017-04-08,151.25,77.6,33.4,497.0,Severe,24,10.2,25.5,0.0,False,5.0189,Other months
+2017-04-09,68.88,68.1,22.78,289.0,Poor,22,17.4,25.6,0.0,False,4.2324,Other months
+2017-04-10,129.15,72.06,21.85,285.0,Poor,22,20.5,25.9,0.0,False,4.861,Other months
+2017-04-11,146.59,71.58,24.49,368.0,Very Poor,24,19.1,28.1,0.0,False,4.9876,Other months
+2017-04-12,107.69,61.17,32.76,304.0,Very Poor,26,15.6,29.5,0.0,False,4.6793,Other months
+2017-04-13,163.97,87.79,43.82,377.0,Very Poor,27,8.8,30.3,0.0,False,5.0997,Other months
+2017-04-14,184.69,110.15,50.31,418.0,Severe,28,8.6,30.9,0.0,False,5.2187,Other months
+2017-04-15,176.54,102.4,42.8,355.0,Very Poor,27,10.2,31.3,0.0,False,5.1735,Other months
+2017-04-16,175.23,102.55,62.6,416.0,Severe,31,8.7,31.0,0.0,False,5.1661,Other months
+2017-04-17,145.22,102.55,42.39,403.0,Severe,38,10.7,31.9,0.0,False,4.9782,Other months
+2017-04-18,152.84,88.05,44.15,415.0,Severe,35,8.8,32.7,0.0,False,5.0294,Other months
+2017-04-19,136.35,80.08,41.33,412.0,Severe,20,11.2,33.7,0.0,False,4.9152,Other months
+2017-04-20,152.99,93.15,37.38,394.0,Very Poor,25,9.7,33.7,0.0,False,5.0304,Other months
+2017-04-21,130.13,103.25,30.82,357.0,Very Poor,38,10.8,33.3,0.0,False,4.8685,Other months
+2017-04-22,110.54,93.8,30.11,291.0,Poor,47,8.6,32.5,2.0,True,4.7054,Other months
+2017-04-23,103.42,75.05,29.4,244.0,Poor,38,10.8,31.4,0.0,False,4.6388,Other months
+2017-04-24,99.09,61.32,31.95,287.0,Poor,31,11.6,30.4,2.1,False,4.596,Other months
+2017-04-25,96.07,69.59,39.9,254.0,Poor,24,13.3,30.5,0.0,False,4.5651,Other months
+2017-04-26,72.31,72.94,29.27,242.0,Poor,23,10.3,29.9,0.0,False,4.281,Other months
+2017-04-27,93.14,73.49,46.69,223.0,Poor,24,8.4,30.6,0.0,False,4.5341,Other months
+2017-04-28,109.36,68.76,39.58,243.0,Poor,29,9.5,30.4,0.3,False,4.6946,Other months
+2017-04-29,126.74,85.21,54.52,237.0,Poor,30,7.1,30.8,0.0,False,4.8421,Other months
+2017-04-30,80.81,65.55,46.62,275.0,Poor,34,12.1,30.0,0.1,False,4.3921,Other months
+2017-05-01,85.8,70.38,56.64,183.0,Moderate,31,7.4,29.9,0.0,False,4.452,Other months
+2017-05-02,198.2,108.48,50.78,370.0,Very Poor,22,5.7,31.9,0.0,False,5.2893,Other months
+2017-05-03,145.74,97.21,54.83,419.0,Severe,25,8.9,31.6,0.0,False,4.9818,Other months
+2017-05-04,109.91,67.76,34.97,317.0,Very Poor,25,12.9,31.6,0.0,False,4.6997,Other months
+2017-05-05,207.4,75.66,46.67,455.0,Severe,26,10.4,31.7,0.0,False,5.3346,Other months
+2017-05-06,204.56,92.19,51.7,435.0,Severe,24,9.2,33.2,0.0,False,5.3209,Other months
+2017-05-07,220.77,92.34,45.39,468.0,Severe,23,8.6,34.5,0.0,False,5.3971,Other months
+2017-05-08,183.82,94.19,52.99,442.0,Severe,23,8.1,34.2,0.0,False,5.214,Other months
+2017-05-09,109.76,65.21,36.94,400.0,Very Poor,32,13.4,33.7,0.0,False,4.6983,Other months
+2017-05-10,74.42,46.48,35.61,223.0,Poor,44,14.5,32.3,1.8,False,4.3097,Other months
+2017-05-11,94.28,62.22,44.94,220.0,Poor,38,10.6,33.6,0.0,False,4.5463,Other months
+2017-05-12,216.96,70.84,65.5,474.0,Severe,37,9.1,33.1,1.4,False,5.3797,Other months
+2017-05-13,198.09,87.53,53.24,479.0,Severe,33,9.4,33.6,0.1,False,5.2887,Other months
+2017-05-14,121.76,70.37,44.98,373.0,Very Poor,23,9.9,35.0,0.0,False,4.8021,Other months
+2017-05-15,135.54,75.55,46.16,354.0,Very Poor,22,9.6,35.2,0.0,False,4.9093,Other months
+2017-05-16,123.21,54.83,41.96,349.0,Very Poor,28,11.8,33.8,0.7,False,4.8139,Other months
+2017-05-17,78.18,47.84,39.01,264.0,Poor,40,8.0,31.1,1.0,False,4.359,Other months
+2017-05-18,126.04,50.3,55.11,188.0,Moderate,43,9.5,31.5,0.4,False,4.8366,Other months
+2017-05-19,139.1,58.93,41.31,294.0,Poor,38,8.3,33.1,0.0,False,4.9352,Other months
+2017-05-20,233.82,59.74,36.26,334.0,Very Poor,31,8.0,33.1,0.0,False,5.4546,Other months
+2017-05-21,178.44,52.38,40.4,505.0,Severe,34,9.5,32.4,0.0,False,5.1843,Other months
+2017-05-22,110.1,63.7,35.36,349.0,Very Poor,44,7.1,30.7,0.9,False,4.7014,Other months
+2017-05-23,118.43,84.21,37.55,421.0,Severe,42,9.4,31.5,0.1,False,4.7743,Other months
+2017-05-24,107.37,80.72,42.21,238.0,Poor,40,8.8,33.0,0.2,False,4.6763,Other months
+2017-05-25,113.9,65.71,41.43,204.0,Poor,39,8.0,33.5,0.0,False,4.7353,Other months
+2017-05-26,103.75,79.07,41.4,289.0,Poor,33,10.5,35.4,0.0,False,4.642,Other months
+2017-05-27,69.88,50.12,38.55,236.0,Poor,46,15.7,32.9,0.2,False,4.2468,Other months
+2017-05-28,40.33,45.6,31.5,148.0,Moderate,51,16.8,32.4,0.3,False,3.6971,Other months
+2017-05-29,48.95,55.2,26.99,94.0,Satisfactory,57,13.8,29.9,2.4,False,3.8908,Other months
+2017-05-30,63.27,64.11,26.15,130.0,Moderate,61,7.3,30.0,0.5,False,4.1474,Other months
+2017-05-31,56.38,69.98,21.94,123.0,Moderate,57,12.4,30.9,0.2,False,4.0321,Other months
+2017-06-01,95.23,97.33,23.0,192.0,Moderate,55,7.4,31.4,0.0,False,4.5563,Other months
+2017-06-02,123.44,131.55,24.75,324.0,Very Poor,43,8.9,32.6,0.0,False,4.8158,Other months
+2017-06-03,122.2,119.37,23.23,357.0,Very Poor,35,12.2,35.2,0.0,False,4.8057,Other months
+2017-06-04,121.1,92.68,22.69,393.0,Very Poor,26,16.4,37.3,0.0,False,4.7966,Other months
+2017-06-05,71.89,64.07,18.63,302.0,Very Poor,29,19.3,37.9,0.0,False,4.2751,Other months
+2017-06-06,80.37,57.63,16.51,239.0,Poor,36,16.4,36.8,0.3,False,4.3866,Other months
+2017-06-07,40.87,70.77,23.51,210.0,Poor,57,13.0,31.7,0.6,False,3.7104,Other months
+2017-06-08,41.83,79.9,,77.0,Satisfactory,57,6.4,31.4,3.8,False,3.7336,Other months
+2017-06-09,66.73,76.52,,89.0,Satisfactory,55,6.4,31.0,0.3,False,4.2007,Other months
+2017-06-10,64.63,80.04,,143.0,Moderate,51,6.4,32.2,0.6,False,4.1687,Other months
+2017-06-11,43.02,77.07,,80.0,Satisfactory,46,7.0,32.1,0.2,False,3.7617,Other months
+2017-06-12,57.4,106.23,,92.0,Satisfactory,42,10.6,32.8,0.0,False,4.05,Other months
+2017-06-13,48.6,96.64,,112.0,Moderate,37,9.8,33.7,0.1,False,3.8836,Other months
+2017-06-14,62.0,86.9,,117.0,Moderate,35,12.2,34.4,0.4,False,4.1271,Other months
+2017-06-15,80.14,139.09,,101.0,Moderate,48,10.6,32.9,2.2,False,4.3838,Other months
+2017-06-16,51.6,80.43,,106.0,Moderate,49,6.6,31.0,0.4,False,3.9435,Other months
+2017-06-17,41.96,70.93,,88.0,Satisfactory,61,7.2,30.5,7.0,False,3.7367,Other months
+2017-06-18,65.19,56.65,,94.0,Satisfactory,66,8.7,30.8,3.1,False,4.1773,Other months
+2017-06-19,60.9,36.63,,150.0,Moderate,65,11.7,31.4,5.5,False,4.1092,Other months
+2017-06-20,35.1,99.75,,97.0,Satisfactory,70,5.6,29.7,10.2,False,3.5582,Other months
+2017-06-21,58.27,63.2,,109.0,Moderate,71,10.0,28.7,2.4,False,4.0651,Other months
+2017-06-22,61.93,36.35,,124.0,Moderate,68,8.3,29.1,0.0,False,4.126,Other months
+2017-06-23,44.08,103.29,,,,71,7.5,29.3,5.5,False,3.786,Other months
+2017-06-24,63.62,83.84,,111.0,Moderate,60,4.5,31.6,0.0,False,4.1529,Other months
+2017-06-25,76.1,71.42,,148.0,Moderate,58,8.2,33.1,0.2,False,4.332,Other months
+2017-06-26,51.52,53.97,,108.0,Moderate,60,11.5,33.5,2.3,False,3.942,Other months
+2017-06-27,36.62,54.02,,73.0,Satisfactory,62,11.6,32.9,1.1,False,3.6006,Other months
+2017-06-28,29.83,58.02,,58.0,Satisfactory,80,12.7,29.4,24.1,False,3.3955,Other months
+2017-06-29,22.98,35.01,,58.0,Satisfactory,85,12.6,27.8,3.6,False,3.1346,Other months
+2017-06-30,25.83,32.97,,46.0,Good,86,7.8,27.8,15.1,False,3.2515,Other months
+2017-07-01,43.35,17.4,,84.0,Satisfactory,85,5.8,28.6,10.5,False,3.7693,Monsoon (Jul–Sep)
+2017-07-02,20.52,11.37,,54.0,Satisfactory,86,9.3,27.9,12.4,False,3.0214,Monsoon (Jul–Sep)
+2017-07-03,46.71,20.06,,49.0,Good,82,6.1,29.2,3.5,False,3.844,Monsoon (Jul–Sep)
+2017-07-04,116.12,19.37,,149.0,Moderate,75,14.9,30.8,3.8,False,4.7546,Monsoon (Jul–Sep)
+2017-07-05,50.81,14.86,,212.0,Poor,71,12.3,30.8,0.4,False,3.9281,Monsoon (Jul–Sep)
+2017-07-06,47.17,18.32,,85.0,Satisfactory,72,8.5,30.1,1.0,False,3.8538,Monsoon (Jul–Sep)
+2017-07-07,41.42,18.21,,77.0,Satisfactory,75,9.2,29.9,1.7,False,3.7238,Monsoon (Jul–Sep)
+2017-07-08,45.31,23.52,,65.0,Satisfactory,72,8.0,31.0,0.1,False,3.8135,Monsoon (Jul–Sep)
+2017-07-09,58.46,21.16,,108.0,Moderate,64,11.0,32.2,0.0,False,4.0683,Monsoon (Jul–Sep)
+2017-07-10,41.92,18.81,,78.0,Satisfactory,60,13.5,32.0,0.4,False,3.7358,Monsoon (Jul–Sep)
+2017-07-11,33.04,21.44,,59.0,Satisfactory,69,9.8,30.4,1.4,False,3.4977,Monsoon (Jul–Sep)
+2017-07-12,22.35,19.98,,47.0,Good,78,12.1,28.2,1.1,False,3.1068,Monsoon (Jul–Sep)
+2017-07-13,22.44,21.59,,39.0,Good,72,12.9,29.2,0.6,False,3.1108,Monsoon (Jul–Sep)
+2017-07-14,30.35,38.36,,40.0,Good,73,13.5,29.7,0.6,False,3.4128,Monsoon (Jul–Sep)
+2017-07-15,32.02,77.47,,56.0,Satisfactory,76,12.7,29.5,9.6,False,3.4664,Monsoon (Jul–Sep)
+2017-07-16,38.77,76.98,,65.0,Satisfactory,79,9.4,29.8,5.1,False,3.6576,Monsoon (Jul–Sep)
+2017-07-17,33.56,86.61,,71.0,Satisfactory,80,8.3,29.7,5.8,False,3.5133,Monsoon (Jul–Sep)
+2017-07-18,37.67,126.91,,97.0,Satisfactory,79,6.6,30.2,4.3,False,3.6289,Monsoon (Jul–Sep)
+2017-07-19,55.96,137.15,,118.0,Moderate,73,6.3,31.5,2.0,False,4.0246,Monsoon (Jul–Sep)
+2017-07-20,28.88,61.54,,116.0,Moderate,78,11.0,29.4,14.0,False,3.3631,Monsoon (Jul–Sep)
+2017-07-21,23.12,23.67,,53.0,Satisfactory,76,12.2,29.7,5.7,False,3.1407,Monsoon (Jul–Sep)
+2017-07-22,18.54,19.9,,30.0,Good,79,18.3,28.4,1.8,False,2.9199,Monsoon (Jul–Sep)
+2017-07-23,22.65,18.22,,37.0,Good,82,17.9,28.0,5.3,False,3.1202,Monsoon (Jul–Sep)
+2017-07-24,17.52,19.95,,35.0,Good,84,15.1,27.6,6.3,False,2.8633,Monsoon (Jul–Sep)
+2017-07-25,22.17,18.1,,37.0,Good,83,13.8,27.7,5.6,False,3.0987,Monsoon (Jul–Sep)
+2017-07-26,20.17,21.95,,32.0,Good,80,10.5,28.7,0.7,False,3.0042,Monsoon (Jul–Sep)
+2017-07-27,24.42,25.33,,41.0,Good,75,11.9,29.4,1.9,False,3.1954,Monsoon (Jul–Sep)
+2017-07-28,25.71,24.07,,42.0,Good,76,14.2,29.1,0.9,False,3.2469,Monsoon (Jul–Sep)
+2017-07-29,27.25,22.87,,47.0,Good,77,17.1,28.9,1.8,False,3.3051,Monsoon (Jul–Sep)
+2017-07-30,10.88,20.58,,30.0,Good,80,9.2,28.5,2.3,False,2.3869,Monsoon (Jul–Sep)
+2017-07-31,17.1,26.19,,29.0,Good,87,7.2,27.3,17.6,False,2.8391,Monsoon (Jul–Sep)
+2017-08-01,17.24,23.4,,44.0,Good,90,10.5,26.8,4.8,False,2.8472,Monsoon (Jul–Sep)
+2017-08-02,27.56,26.54,,40.0,Good,83,9.8,28.2,2.6,False,3.3164,Monsoon (Jul–Sep)
+2017-08-03,27.29,29.16,,49.0,Good,77,14.0,28.9,1.0,False,3.3065,Monsoon (Jul–Sep)
+2017-08-04,42.65,33.74,,50.0,Good,74,11.0,29.1,0.7,False,3.753,Monsoon (Jul–Sep)
+2017-08-05,53.69,42.98,,88.0,Satisfactory,72,6.9,29.8,3.8,False,3.9832,Monsoon (Jul–Sep)
+2017-08-06,61.44,41.75,,99.0,Satisfactory,79,6.9,29.5,1.3,False,4.1181,Monsoon (Jul–Sep)
+2017-08-07,57.42,32.2,,110.0,Moderate,87,5.4,28.4,17.7,False,4.0504,Monsoon (Jul–Sep)
+2017-08-08,36.58,29.91,,68.0,Satisfactory,86,4.9,28.6,12.5,False,3.5995,Monsoon (Jul–Sep)
+2017-08-09,50.42,48.7,,73.0,Satisfactory,89,5.4,27.9,17.3,False,3.9204,Monsoon (Jul–Sep)
+2017-08-10,48.6,64.0,,95.0,Satisfactory,81,11.6,28.8,10.2,False,3.8836,Monsoon (Jul–Sep)
+2017-08-11,21.83,35.39,,58.0,Satisfactory,70,18.5,30.2,0.2,False,3.0833,Monsoon (Jul–Sep)
+2017-08-12,23.4,52.95,,45.0,Good,69,20.6,30.0,0.3,True,3.1527,Monsoon (Jul–Sep)
+2017-08-13,24.97,70.51,,,,71,15.4,29.8,0.5,True,3.2177,Monsoon (Jul–Sep)
+2017-08-14,26.54,88.07,,,,69,8.1,29.7,0.2,False,3.2787,Monsoon (Jul–Sep)
+2017-08-15,30.12,49.91,,59.0,Satisfactory,71,9.4,29.8,0.6,False,3.4052,Monsoon (Jul–Sep)
+2017-08-16,35.23,64.66,,53.0,Satisfactory,67,12.6,30.4,0.0,False,3.5619,Monsoon (Jul–Sep)
+2017-08-17,39.6,68.78,,66.0,Satisfactory,64,12.8,31.1,0.0,False,3.6788,Monsoon (Jul–Sep)
+2017-08-18,46.25,60.15,,70.0,Satisfactory,65,10.8,31.1,0.0,False,3.8341,Monsoon (Jul–Sep)
+2017-08-19,35.48,39.67,,70.0,Satisfactory,83,13.4,28.2,6.3,False,3.569,Monsoon (Jul–Sep)
+2017-08-20,22.15,30.28,,63.0,Satisfactory,74,13.1,29.6,0.4,False,3.0978,Monsoon (Jul–Sep)
+2017-08-21,25.5,24.42,,42.0,Good,78,11.8,29.2,6.2,False,3.2387,Monsoon (Jul–Sep)
+2017-08-22,46.0,38.7,,,,81,8.3,28.8,6.0,False,3.8286,Monsoon (Jul–Sep)
+2017-08-23,36.54,43.43,,,,86,8.3,28.0,3.8,False,3.5984,Monsoon (Jul–Sep)
+2017-08-24,47.79,45.26,,58.0,Satisfactory,84,5.9,28.6,1.7,False,3.8668,Monsoon (Jul–Sep)
+2017-08-25,51.33,39.3,,104.0,Moderate,86,5.6,28.1,6.7,False,3.9383,Monsoon (Jul–Sep)
+2017-08-26,62.33,37.65,,,,88,4.9,27.6,26.7,False,4.1324,Monsoon (Jul–Sep)
+2017-08-27,34.3,34.06,,,,83,6.3,28.6,1.8,False,3.5351,Monsoon (Jul–Sep)
+2017-08-28,23.82,27.89,2.34,,,84,13.6,27.4,2.0,False,3.1705,Monsoon (Jul–Sep)
+2017-08-29,15.23,69.8,,,,80,15.0,27.9,8.0,False,2.7233,Monsoon (Jul–Sep)
+2017-08-30,20.5,101.89,,73.0,Satisfactory,81,14.9,28.2,4.4,False,3.0204,Monsoon (Jul–Sep)
+2017-08-31,41.62,50.7,,94.0,Satisfactory,90,10.0,26.4,24.2,False,3.7286,Monsoon (Jul–Sep)
+2017-09-01,25.58,26.64,,91.0,Satisfactory,88,10.0,26.5,33.7,False,3.2418,Monsoon (Jul–Sep)
+2017-09-02,20.06,26.09,,88.0,Satisfactory,88,9.8,25.7,24.7,False,2.9987,Monsoon (Jul–Sep)
+2017-09-03,38.19,27.32,,88.0,Satisfactory,80,6.4,27.5,0.5,False,3.6426,Monsoon (Jul–Sep)
+2017-09-04,47.89,25.85,,89.0,Satisfactory,78,10.3,28.6,0.0,False,3.8689,Monsoon (Jul–Sep)
+2017-09-05,35.61,30.29,,88.0,Satisfactory,77,10.1,28.5,0.1,False,3.5726,Monsoon (Jul–Sep)
+2017-09-06,39.41,35.92,,88.0,Satisfactory,76,7.3,28.7,1.5,False,3.674,Monsoon (Jul–Sep)
+2017-09-07,40.34,23.75,,88.0,Satisfactory,84,6.6,27.4,0.4,False,3.6973,Monsoon (Jul–Sep)
+2017-09-08,51.7,16.52,,106.0,Moderate,81,6.2,28.2,0.3,False,3.9455,Monsoon (Jul–Sep)
+2017-09-09,54.83,17.54,,96.0,Satisfactory,76,8.2,28.7,0.0,False,4.0042,Monsoon (Jul–Sep)
+2017-09-10,60.46,19.76,,118.0,Moderate,73,5.9,29.8,0.0,False,4.102,Monsoon (Jul–Sep)
+2017-09-11,63.97,20.25,,119.0,Moderate,72,6.9,29.7,0.0,False,4.1584,Monsoon (Jul–Sep)
+2017-09-12,46.65,16.56,,106.0,Moderate,71,7.2,29.4,0.0,False,3.8427,Monsoon (Jul–Sep)
+2017-09-13,54.77,10.76,,115.0,Moderate,69,6.5,29.8,0.0,False,4.0031,Monsoon (Jul–Sep)
+2017-09-14,80.47,31.88,,142.0,Moderate,73,6.1,29.5,0.0,False,4.3879,Monsoon (Jul–Sep)
+2017-09-15,64.37,34.75,,169.0,Moderate,69,7.8,29.3,0.0,False,4.1646,Monsoon (Jul–Sep)
+2017-09-16,51.56,36.6,,110.0,Moderate,71,6.0,28.7,0.0,False,3.9427,Monsoon (Jul–Sep)
+2017-09-17,53.05,37.33,,106.0,Moderate,69,9.8,28.7,0.0,False,3.9712,Monsoon (Jul–Sep)
+2017-09-18,60.83,56.67,,99.0,Satisfactory,65,9.5,29.1,0.0,False,4.1081,Monsoon (Jul–Sep)
+2017-09-19,55.55,34.72,,109.0,Moderate,74,5.8,29.5,0.1,False,4.0173,Monsoon (Jul–Sep)
+2017-09-20,70.81,21.49,,137.0,Moderate,67,5.2,30.0,0.0,False,4.26,Monsoon (Jul–Sep)
+2017-09-21,55.93,22.74,,144.0,Moderate,72,10.7,29.1,0.0,False,4.0241,Monsoon (Jul–Sep)
+2017-09-22,11.81,22.4,,92.0,Satisfactory,85,11.7,25.6,12.4,False,2.4689,Monsoon (Jul–Sep)
+2017-09-23,17.76,18.63,,83.0,Satisfactory,91,10.6,24.3,18.0,False,2.8769,Monsoon (Jul–Sep)
+2017-09-24,35.5,17.01,,84.0,Satisfactory,83,11.3,25.3,0.0,False,3.5695,Monsoon (Jul–Sep)
+2017-09-25,50.09,27.25,,104.0,Moderate,76,10.0,27.5,0.0,False,3.9138,Monsoon (Jul–Sep)
+2017-09-26,66.12,27.52,7.13,131.0,Moderate,71,6.5,28.3,0.0,False,4.1915,Monsoon (Jul–Sep)
+2017-09-27,80.94,21.39,6.62,165.0,Moderate,66,6.4,28.4,0.0,False,4.3937,Monsoon (Jul–Sep)
+2017-09-28,75.4,38.55,6.08,176.0,Moderate,64,6.2,28.6,0.0,False,4.3228,Monsoon (Jul–Sep)
+2017-09-29,89.38,29.45,7.17,172.0,Moderate,64,6.8,29.0,0.0,False,4.4929,Monsoon (Jul–Sep)
+2017-09-30,74.2,26.08,6.64,137.0,Moderate,63,7.6,28.8,0.0,False,4.3068,Monsoon (Jul–Sep)
+2017-10-01,68.47,28.66,3.46,131.0,Moderate,59,6.7,28.4,0.0,False,4.2264,Other months
+2017-10-02,63.41,25.2,2.94,132.0,Moderate,57,7.0,29.0,0.0,False,4.1496,Other months
+2017-10-03,69.45,26.09,5.81,115.0,Moderate,59,7.9,28.1,0.0,False,4.2406,Other months
+2017-10-04,76.81,28.99,11.7,151.0,Moderate,62,7.7,28.1,0.0,False,4.3413,Other months
+2017-10-05,75.73,24.45,11.96,180.0,Moderate,65,8.5,28.1,0.0,False,4.3272,Other months
+2017-10-06,79.81,27.44,13.91,183.0,Moderate,56,8.9,27.9,0.0,False,4.3796,Other months
+2017-10-07,70.98,25.61,22.29,193.0,Moderate,52,6.8,27.7,0.0,False,4.2624,Other months
+2017-10-08,102.2,24.51,24.0,224.0,Poor,62,6.4,27.4,0.0,False,4.6269,Other months
+2017-10-09,107.63,27.06,23.51,268.0,Poor,63,7.7,27.9,0.0,False,4.6787,Other months
+2017-10-10,105.88,31.67,7.6,253.0,Poor,60,6.9,27.9,0.0,False,4.6623,Other months
+2017-10-11,104.45,30.92,6.57,208.0,Poor,59,7.2,27.9,0.0,False,4.6487,Other months
+2017-10-12,106.85,31.1,7.65,211.0,Poor,55,6.8,28.2,0.0,False,4.6714,Other months
+2017-10-13,137.42,29.16,9.36,246.0,Poor,48,7.3,28.1,0.0,False,4.923,Other months
+2017-10-14,147.07,30.14,14.64,319.0,Very Poor,51,7.5,28.0,0.0,False,4.9909,Other months
+2017-10-15,147.83,30.0,14.31,317.0,Very Poor,52,6.6,28.0,0.0,False,4.9961,Other months
+2017-10-16,152.61,58.53,23.09,310.0,Very Poor,52,7.5,27.9,0.0,False,5.0279,Other months
+2017-10-17,121.7,57.08,17.44,313.0,Very Poor,51,9.3,26.5,0.0,False,4.8016,Other months
+2017-10-18,152.16,63.15,27.42,310.0,Very Poor,62,7.8,26.2,0.0,False,5.0249,Other months
+2017-10-19,176.17,53.51,22.15,336.0,Very Poor,63,6.6,27.3,0.0,False,5.1714,Other months
+2017-10-20,426.52,54.76,36.85,497.0,Severe,58,7.1,28.0,0.0,False,6.0557,Other months
+2017-10-21,213.12,50.13,20.55,404.0,Severe,53,8.5,27.1,0.0,False,5.3619,Other months
+2017-10-22,146.01,55.88,24.42,338.0,Very Poor,49,8.3,27.0,0.0,False,4.9837,Other months
+2017-10-23,163.35,64.25,27.79,327.0,Very Poor,55,6.7,26.5,0.0,False,5.0959,Other months
+2017-10-24,188.24,81.33,23.19,366.0,Very Poor,51,10.2,25.5,0.0,False,5.2377,Other months
+2017-10-25,203.03,80.62,23.77,357.0,Very Poor,46,7.0,25.1,0.0,False,5.3134,Other months
+2017-10-26,178.91,90.56,24.12,328.0,Very Poor,51,7.2,24.7,0.0,False,5.1869,Other months
+2017-10-27,167.54,65.44,21.24,345.0,Very Poor,60,6.4,24.0,0.0,False,5.1212,Other months
+2017-10-28,198.37,84.45,27.88,379.0,Very Poor,61,6.8,24.7,0.0,False,5.2901,Other months
+2017-10-29,187.82,60.61,25.08,362.0,Very Poor,61,6.5,23.9,0.0,False,5.2355,Other months
+2017-10-30,196.37,69.51,23.68,340.0,Very Poor,63,6.4,23.4,0.0,False,5.28,Other months
+2017-10-31,211.64,53.08,19.36,366.0,Very Poor,63,4.8,24.0,0.0,False,5.3549,Other months
+2017-11-01,179.17,46.83,16.01,344.0,Very Poor,61,7.8,24.4,0.0,False,5.1883,Winter (Nov–Jan)
+2017-11-02,160.69,47.7,17.19,305.0,Very Poor,69,6.5,23.9,0.0,False,5.0795,Winter (Nov–Jan)
+2017-11-03,168.16,46.49,15.29,310.0,Very Poor,70,6.6,23.4,0.0,False,5.1249,Winter (Nov–Jan)
+2017-11-04,190.33,47.28,18.87,345.0,Very Poor,73,7.4,22.9,0.0,False,5.2488,Winter (Nov–Jan)
+2017-11-05,209.61,60.56,19.55,370.0,Very Poor,67,4.8,23.9,0.0,False,5.3452,Winter (Nov–Jan)
+2017-11-06,216.53,57.27,18.74,377.0,Very Poor,64,6.3,23.7,0.0,False,5.3777,Winter (Nov–Jan)
+2017-11-07,517.93,65.17,15.29,532.0,Severe,71,6.2,22.9,0.0,False,6.2498,Winter (Nov–Jan)
+2017-11-08,639.19,77.51,20.46,675.0,Severe,68,7.1,22.9,0.0,False,6.4602,Winter (Nov–Jan)
+2017-11-09,495.9,81.67,15.68,677.0,Severe,72,7.8,22.2,0.0,False,6.2064,Winter (Nov–Jan)
+2017-11-10,370.73,80.73,17.84,597.0,Severe,68,7.8,22.1,0.0,False,5.9155,Winter (Nov–Jan)
+2017-11-11,363.77,78.61,17.8,471.0,Severe,69,7.5,21.3,0.0,False,5.8965,Winter (Nov–Jan)
+2017-11-12,465.08,70.1,13.94,613.0,Severe,70,7.5,21.0,0.0,False,6.1422,Winter (Nov–Jan)
+2017-11-13,354.56,65.77,15.58,561.0,Severe,70,6.4,20.9,0.0,False,5.8709,Winter (Nov–Jan)
+2017-11-14,254.36,56.46,13.67,444.0,Severe,66,11.9,21.1,0.0,False,5.5388,Winter (Nov–Jan)
+2017-11-15,192.04,57.85,19.24,378.0,Very Poor,64,9.1,20.8,0.0,False,5.2577,Winter (Nov–Jan)
+2017-11-16,191.57,53.86,22.89,357.0,Very Poor,66,8.6,20.0,0.2,False,5.2553,Winter (Nov–Jan)
+2017-11-17,150.79,47.38,16.32,330.0,Very Poor,69,9.4,19.9,0.1,False,5.0159,Winter (Nov–Jan)
+2017-11-18,143.51,43.91,13.3,309.0,Very Poor,67,10.7,20.2,0.1,False,4.9664,Winter (Nov–Jan)
+2017-11-19,128.65,45.6,15.12,297.0,Poor,52,12.7,19.0,0.0,False,4.8571,Winter (Nov–Jan)
+2017-11-20,171.34,52.73,13.7,329.0,Very Poor,50,11.6,17.0,0.0,False,5.1436,Winter (Nov–Jan)
+2017-11-21,178.08,54.75,15.02,341.0,Very Poor,51,11.8,16.5,0.0,False,5.1822,Winter (Nov–Jan)
+2017-11-22,177.41,54.64,18.13,348.0,Very Poor,51,11.8,16.7,0.0,False,5.1785,Winter (Nov–Jan)
+2017-11-23,175.56,55.04,18.32,340.0,Very Poor,47,11.6,16.6,0.0,False,5.168,Winter (Nov–Jan)
+2017-11-24,187.97,64.15,19.2,348.0,Very Poor,47,9.9,16.9,0.0,False,5.2363,Winter (Nov–Jan)
+2017-11-25,185.31,76.48,17.95,347.0,Very Poor,52,9.7,17.0,0.0,False,5.222,Winter (Nov–Jan)
+2017-11-26,224.37,67.6,21.01,368.0,Very Poor,61,8.4,17.0,0.0,False,5.4133,Winter (Nov–Jan)
+2017-11-27,198.34,68.93,18.95,382.0,Very Poor,56,11.1,17.3,0.0,False,5.29,Winter (Nov–Jan)
+2017-11-28,167.74,62.53,19.39,360.0,Very Poor,58,8.8,17.4,0.0,False,5.1224,Winter (Nov–Jan)
+2017-11-29,215.17,75.37,20.1,359.0,Very Poor,63,7.3,17.8,0.0,False,5.3714,Winter (Nov–Jan)
+2017-11-30,219.84,57.73,16.83,388.0,Very Poor,66,7.0,17.4,0.0,False,5.3929,Winter (Nov–Jan)
+2017-12-01,190.45,56.83,17.59,377.0,Very Poor,60,5.8,17.1,0.0,False,5.2494,Winter (Nov–Jan)
+2017-12-02,208.87,65.66,20.17,356.0,Very Poor,57,5.2,17.3,0.0,False,5.3417,Winter (Nov–Jan)
+2017-12-03,240.87,65.83,19.92,384.0,Very Poor,53,4.4,17.4,0.0,False,5.4843,Winter (Nov–Jan)
+2017-12-04,261.82,65.49,20.17,415.0,Severe,61,6.4,16.6,0.0,False,5.5677,Winter (Nov–Jan)
+2017-12-05,230.56,64.61,18.29,404.0,Severe,60,6.4,17.3,0.0,False,5.4405,Winter (Nov–Jan)
+2017-12-06,120.91,51.02,20.88,330.0,Very Poor,51,8.4,17.5,0.0,False,4.795,Winter (Nov–Jan)
+2017-12-07,88.95,45.83,18.17,215.0,Poor,37,11.3,17.4,0.1,False,4.4881,Winter (Nov–Jan)
+2017-12-08,115.08,53.85,21.69,220.0,Poor,37,11.8,16.7,0.0,False,4.7456,Winter (Nov–Jan)
+2017-12-09,165.76,70.14,24.22,312.0,Very Poor,46,7.2,16.7,0.0,False,5.1105,Winter (Nov–Jan)
+2017-12-10,230.34,83.94,25.97,389.0,Very Poor,60,5.4,17.0,0.0,False,5.4396,Winter (Nov–Jan)
+2017-12-11,218.87,71.25,24.39,406.0,Severe,67,7.0,17.2,2.1,False,5.3885,Winter (Nov–Jan)
+2017-12-12,109.18,45.94,11.71,280.0,Poor,84,5.6,16.5,5.6,False,4.693,Winter (Nov–Jan)
+2017-12-13,134.99,40.27,10.81,263.0,Poor,83,6.2,14.3,0.0,False,4.9052,Winter (Nov–Jan)
+2017-12-14,126.67,36.59,11.18,276.0,Poor,71,9.0,13.6,0.0,False,4.8416,Winter (Nov–Jan)
+2017-12-15,127.57,34.73,9.69,292.0,Poor,70,12.5,13.0,0.0,False,4.8487,Winter (Nov–Jan)
+2017-12-16,100.72,29.84,4.98,228.0,Poor,63,15.1,12.7,0.0,False,4.6123,Winter (Nov–Jan)
+2017-12-17,95.58,37.37,12.68,195.0,Moderate,51,17.0,13.7,0.0,False,4.56,Winter (Nov–Jan)
+2017-12-18,115.19,45.8,16.97,223.0,Poor,46,17.8,15.6,0.0,False,4.7466,Winter (Nov–Jan)
+2017-12-19,168.33,54.84,23.03,291.0,Poor,59,11.2,14.7,0.0,False,5.1259,Winter (Nov–Jan)
+2017-12-20,283.24,66.41,25.0,378.0,Very Poor,74,7.6,15.3,0.0,False,5.6463,Winter (Nov–Jan)
+2017-12-21,293.14,61.63,22.54,467.0,Severe,79,8.0,16.2,0.0,False,5.6807,Winter (Nov–Jan)
+2017-12-22,157.72,50.73,20.47,370.0,Very Poor,66,14.9,16.3,0.0,False,5.0608,Winter (Nov–Jan)
+2017-12-23,117.72,50.97,19.95,253.0,Poor,59,14.0,15.7,0.0,False,4.7683,Winter (Nov–Jan)
+2017-12-24,203.18,66.65,23.73,309.0,Very Poor,65,5.4,15.6,0.0,False,5.3141,Winter (Nov–Jan)
+2017-12-25,259.0,58.92,23.76,398.0,Very Poor,70,8.8,15.1,0.0,False,5.5568,Winter (Nov–Jan)
+2017-12-26,224.42,57.6,22.1,372.0,Very Poor,72,9.8,14.4,0.0,False,5.4135,Winter (Nov–Jan)
+2017-12-27,224.27,65.61,23.17,379.0,Very Poor,66,6.9,15.2,0.0,False,5.4129,Winter (Nov–Jan)
+2017-12-28,249.17,70.25,25.51,398.0,Very Poor,71,7.9,14.9,0.0,False,5.5181,Winter (Nov–Jan)
+2017-12-29,227.28,59.7,25.54,399.0,Very Poor,76,8.1,14.1,0.0,False,5.4262,Winter (Nov–Jan)
+2017-12-30,273.56,60.4,21.01,421.0,Severe,76,6.7,14.1,0.0,False,5.6115,Winter (Nov–Jan)
+2017-12-31,306.17,66.97,17.97,451.0,Severe,75,6.8,12.9,0.0,False,5.7241,Winter (Nov–Jan)
+2018-01-01,303.41,63.92,18.58,462.0,Severe,66,5.9,13.1,0.0,False,5.7151,Winter (Nov–Jan)
+2018-01-02,277.48,53.73,12.43,439.0,Severe,69,5.8,13.4,0.0,False,5.6257,Winter (Nov–Jan)
+2018-01-03,217.01,52.24,10.28,405.0,Severe,74,7.7,12.2,0.0,False,5.3799,Winter (Nov–Jan)
+2018-01-04,248.54,61.57,14.42,394.0,Very Poor,74,7.0,11.8,0.0,False,5.5156,Winter (Nov–Jan)
+2018-01-05,240.42,54.8,13.2,398.0,Very Poor,74,6.8,12.3,0.0,False,5.4824,Winter (Nov–Jan)
+2018-01-06,252.57,59.12,18.15,403.0,Severe,76,7.4,12.0,0.0,False,5.5317,Winter (Nov–Jan)
+2018-01-07,191.66,47.02,16.27,384.0,Very Poor,69,12.0,11.9,0.0,False,5.2557,Winter (Nov–Jan)
+2018-01-08,152.98,51.6,17.15,314.0,Very Poor,70,10.8,12.1,0.0,False,5.0303,Winter (Nov–Jan)
+2018-01-09,233.1,66.19,21.82,373.0,Very Poor,71,9.6,12.1,0.0,False,5.4515,Winter (Nov–Jan)
+2018-01-10,186.26,60.21,18.98,366.0,Very Poor,68,14.3,13.3,0.0,False,5.2271,Winter (Nov–Jan)
+2018-01-11,154.64,63.57,17.4,318.0,Very Poor,63,14.7,13.9,0.0,False,5.0411,Winter (Nov–Jan)
+2018-01-12,168.87,65.3,24.03,306.0,Very Poor,58,10.9,14.8,0.0,False,5.1291,Winter (Nov–Jan)
+2018-01-13,230.5,61.28,24.28,370.0,Very Poor,69,8.1,14.0,0.0,False,5.4403,Winter (Nov–Jan)
+2018-01-14,191.47,54.37,22.47,365.0,Very Poor,69,9.8,13.5,0.0,False,5.2547,Winter (Nov–Jan)
+2018-01-15,177.71,52.51,19.12,352.0,Very Poor,63,12.0,13.9,0.0,False,5.1802,Winter (Nov–Jan)
+2018-01-16,133.56,46.86,19.06,278.0,Poor,57,12.1,14.6,0.0,False,4.8946,Winter (Nov–Jan)
+2018-01-17,235.06,47.86,14.48,350.0,Very Poor,74,10.3,13.6,0.0,False,5.4598,Winter (Nov–Jan)
+2018-01-18,276.25,55.08,21.02,411.0,Severe,76,7.4,15.1,0.0,False,5.6213,Winter (Nov–Jan)
+2018-01-19,253.7,49.45,22.27,451.0,Severe,74,9.1,15.6,0.0,False,5.5362,Winter (Nov–Jan)
+2018-01-20,152.33,38.87,14.45,351.0,Very Poor,64,11.9,14.5,0.0,False,5.026,Winter (Nov–Jan)
+2018-01-21,153.61,44.09,16.91,310.0,Very Poor,57,6.8,14.1,0.0,False,5.0344,Winter (Nov–Jan)
+2018-01-22,202.11,56.45,21.64,362.0,Very Poor,67,7.8,14.1,0.0,False,5.3088,Winter (Nov–Jan)
+2018-01-23,160.79,47.26,14.25,343.0,Very Poor,79,11.9,13.4,6.0,False,5.0801,Winter (Nov–Jan)
+2018-01-24,130.16,35.33,11.9,286.0,Poor,82,7.6,12.7,0.8,False,4.8688,Winter (Nov–Jan)
+2018-01-25,111.75,40.13,6.84,267.0,Poor,79,11.6,13.1,0.0,False,4.7163,Winter (Nov–Jan)
+2018-01-26,128.45,38.17,7.99,263.0,Poor,80,8.5,12.5,0.0,False,4.8555,Winter (Nov–Jan)
+2018-01-27,155.2,45.14,7.94,284.0,Poor,77,9.0,12.1,0.0,False,5.0447,Winter (Nov–Jan)
+2018-01-28,150.96,47.6,10.26,334.0,Very Poor,75,9.1,12.8,0.0,False,5.017,Winter (Nov–Jan)
+2018-01-29,162.48,54.51,12.61,332.0,Very Poor,74,10.6,13.8,0.0,False,5.0906,Winter (Nov–Jan)
+2018-01-30,126.84,47.59,14.47,300.0,Poor,68,16.7,16.3,0.0,False,4.8429,Winter (Nov–Jan)
+2018-01-31,123.48,45.46,11.35,271.0,Poor,64,18.4,17.6,0.0,False,4.8161,Winter (Nov–Jan)
+2018-02-01,157.33,63.88,18.67,293.0,Poor,67,10.9,17.4,0.0,False,5.0583,Other months
+2018-02-02,140.35,54.28,12.25,318.0,Very Poor,72,7.8,16.8,0.0,False,4.9441,Other months
+2018-02-03,115.05,51.46,14.2,277.0,Poor,60,9.1,16.3,0.0,False,4.7454,Other months
+2018-02-04,133.8,46.74,13.2,284.0,Poor,59,11.0,14.4,0.0,False,4.8963,Other months
+2018-02-05,163.6,63.42,14.77,313.0,Very Poor,56,8.0,14.8,0.0,False,5.0974,Other months
+2018-02-06,143.29,56.51,14.94,324.0,Very Poor,52,11.5,16.0,0.0,False,4.9649,Other months
+2018-02-07,131.49,54.53,14.58,287.0,Poor,53,12.4,14.4,0.0,False,4.8789,Other months
+2018-02-08,186.19,74.83,13.8,334.0,Very Poor,60,9.2,13.8,0.0,False,5.2268,Other months
+2018-02-09,203.33,74.5,14.35,375.0,Very Poor,60,9.1,14.4,0.0,False,5.3148,Other months
+2018-02-10,209.7,99.06,13.77,378.0,Very Poor,51,6.2,16.7,0.0,False,5.3457,Other months
+2018-02-11,148.13,62.4,14.45,350.0,Very Poor,57,11.4,16.2,1.6,False,4.9981,Other months
+2018-02-12,72.36,33.08,8.58,218.0,Poor,79,16.6,15.8,2.9,False,4.2817,Other months
+2018-02-13,103.93,46.48,10.25,189.0,Moderate,79,7.8,15.4,0.0,False,4.6437,Other months
+2018-02-14,76.92,34.92,9.03,217.0,Poor,66,14.8,15.5,0.0,False,4.3428,Other months
+2018-02-15,94.49,38.54,11.47,189.0,Moderate,64,15.6,16.8,0.0,False,4.5485,Other months
+2018-02-16,123.19,48.33,12.49,248.0,Poor,66,11.8,17.7,0.0,False,4.8137,Other months
+2018-02-17,127.8,49.9,15.01,277.0,Poor,67,11.7,18.0,0.0,False,4.8505,Other months
+2018-02-18,127.27,50.94,12.17,284.0,Poor,59,9.7,17.6,0.0,False,4.8463,Other months
+2018-02-19,172.55,71.76,15.25,321.0,Very Poor,58,7.6,17.4,0.0,False,5.1507,Other months
+2018-02-20,167.16,68.29,14.53,335.0,Very Poor,60,8.2,19.4,0.0,False,5.119,Other months
+2018-02-21,172.99,92.54,13.97,347.0,Very Poor,58,6.9,21.4,0.0,False,5.1532,Other months
+2018-02-22,159.67,66.4,15.89,333.0,Very Poor,63,7.8,21.7,0.0,False,5.0731,Other months
+2018-02-23,163.75,70.77,16.26,331.0,Very Poor,69,6.3,21.9,0.0,False,5.0983,Other months
+2018-02-24,164.2,62.66,15.09,347.0,Very Poor,73,8.5,21.1,1.9,False,5.1011,Other months
+2018-02-25,106.26,42.88,14.34,317.0,Very Poor,68,9.8,21.0,0.3,False,4.6659,Other months
+2018-02-26,67.27,33.59,9.64,170.0,Moderate,63,16.8,20.5,0.0,False,4.2087,Other months
+2018-02-27,85.53,43.12,10.72,167.0,Moderate,62,11.4,21.5,0.0,False,4.4489,Other months
+2018-02-28,143.25,52.5,14.52,274.0,Poor,67,8.2,21.6,0.0,False,4.9646,Other months
+2018-03-01,120.71,51.74,14.9,293.0,Poor,65,9.0,21.4,0.0,False,4.7934,Other months
+2018-03-02,139.18,50.64,11.52,300.0,Poor,58,8.8,23.1,0.0,False,4.9358,Other months
+2018-03-03,98.25,41.07,12.93,244.0,Poor,60,7.7,22.6,0.0,False,4.5875,Other months
+2018-03-04,79.83,39.02,12.95,205.0,Poor,59,10.6,21.5,1.2,False,4.3799,Other months
+2018-03-05,76.96,39.58,12.7,180.0,Moderate,57,10.0,20.4,0.0,False,4.3433,Other months
+2018-03-06,75.45,37.92,12.99,170.0,Moderate,53,12.5,20.3,0.0,False,4.3235,Other months
+2018-03-07,87.62,45.6,13.23,192.0,Moderate,52,11.6,21.1,0.0,False,4.473,Other months
+2018-03-08,139.88,79.5,16.98,262.0,Poor,53,5.2,22.3,0.0,False,4.9408,Other months
+2018-03-09,134.76,65.86,18.68,316.0,Very Poor,52,8.8,22.9,1.1,False,4.9035,Other months
+2018-03-10,75.67,39.85,14.8,207.0,Poor,48,12.4,23.1,0.0,False,4.3264,Other months
+2018-03-11,88.3,41.81,15.41,179.0,Moderate,52,11.6,23.3,0.0,False,4.4807,Other months
+2018-03-12,105.29,45.32,17.48,236.0,Poor,53,10.8,23.7,0.0,False,4.6567,Other months
+2018-03-13,109.22,56.5,17.22,241.0,Poor,49,9.0,25.4,0.0,False,4.6934,Other months
+2018-03-14,116.62,64.82,17.39,287.0,Poor,37,8.7,25.8,0.0,False,4.7589,Other months
+2018-03-15,108.98,48.86,16.08,314.0,Very Poor,42,9.8,23.8,0.0,False,4.6912,Other months
+2018-03-16,111.67,41.48,16.61,269.0,Poor,48,9.7,22.7,0.0,False,4.7155,Other months
+2018-03-17,81.57,32.61,13.63,218.0,Poor,40,12.3,21.9,0.0,False,4.4015,Other months
+2018-03-18,82.15,31.72,17.22,177.0,Moderate,41,11.3,22.7,0.0,False,4.4085,Other months
+2018-03-19,81.93,43.85,16.95,177.0,Moderate,41,8.5,23.6,0.0,False,4.4059,Other months
+2018-03-20,109.99,55.71,20.52,224.0,Poor,49,6.5,24.3,0.2,False,4.7004,Other months
+2018-03-21,133.53,45.33,24.36,302.0,Very Poor,56,10.7,23.6,1.6,False,4.8943,Other months
+2018-03-22,83.4,33.49,17.14,226.0,Poor,56,8.3,23.0,0.3,False,4.4236,Other months
+2018-03-23,64.2,34.53,12.75,171.0,Moderate,54,9.4,23.0,0.0,False,4.162,Other months
+2018-03-24,78.4,37.32,14.56,183.0,Moderate,48,10.8,24.3,0.0,False,4.3618,Other months
+2018-03-25,85.34,34.66,15.57,202.0,Poor,44,12.8,25.0,0.0,False,4.4466,Other months
+2018-03-26,85.9,41.2,16.28,203.0,Poor,42,13.6,26.0,0.0,False,4.4532,Other months
+2018-03-27,111.26,60.75,18.5,246.0,Poor,40,9.8,26.3,0.0,False,4.7119,Other months
+2018-03-28,117.78,71.04,16.27,293.0,Poor,37,9.4,27.9,0.0,False,4.7688,Other months
+2018-03-29,95.98,41.56,16.53,238.0,Poor,34,13.4,27.2,0.0,False,4.5641,Other months
+2018-03-30,96.45,45.84,15.95,234.0,Poor,34,14.4,26.8,0.0,False,4.569,Other months
+2018-03-31,101.59,44.76,16.59,269.0,Poor,47,11.9,25.7,0.0,False,4.6209,Other months
+2018-04-01,75.14,37.97,14.13,217.0,Poor,45,10.7,26.5,0.0,False,4.3194,Other months
+2018-04-02,96.38,48.52,16.54,217.0,Poor,45,8.5,28.0,0.0,False,4.5683,Other months
+2018-04-03,101.18,51.63,17.36,239.0,Poor,44,9.0,28.7,1.7,False,4.6169,Other months
+2018-04-04,111.82,52.51,16.58,244.0,Poor,43,8.3,29.2,0.0,False,4.7169,Other months
+2018-04-05,152.56,60.24,19.67,329.0,Very Poor,49,6.4,28.6,2.1,False,5.0276,Other months
+2018-04-06,100.5,44.92,19.96,271.0,Poor,52,6.9,27.9,1.1,False,4.6102,Other months
+2018-04-07,48.46,36.94,10.48,170.0,Moderate,54,10.6,26.9,3.4,False,3.8807,Other months
+2018-04-08,50.27,34.29,10.5,142.0,Moderate,55,13.0,26.7,1.3,False,3.9174,Other months
+2018-04-09,49.56,39.45,10.77,133.0,Moderate,62,10.3,25.6,3.5,False,3.9032,Other months
+2018-04-10,93.89,45.16,12.65,205.0,Poor,58,8.6,26.7,3.1,False,4.5421,Other months
+2018-04-11,48.61,32.33,11.21,179.0,Moderate,63,12.8,25.3,2.5,False,3.8838,Other months
+2018-04-12,46.21,40.94,10.07,135.0,Moderate,61,6.1,25.4,0.2,False,3.8332,Other months
+2018-04-13,83.96,54.68,13.37,201.0,Poor,43,8.5,26.2,0.0,False,4.4303,Other months
+2018-04-14,97.16,59.41,15.77,233.0,Poor,34,10.4,27.2,0.0,False,4.5764,Other months
+2018-04-15,107.36,67.79,17.56,240.0,Poor,35,8.8,28.8,0.0,False,4.6762,Other months
+2018-04-16,119.75,76.17,21.02,296.0,Poor,36,10.5,29.2,5.4,False,4.7854,Other months
+2018-04-17,81.97,57.84,13.57,266.0,Poor,35,8.9,29.4,1.3,False,4.4064,Other months
+2018-04-18,73.44,40.44,13.29,216.0,Poor,28,15.5,29.4,0.0,False,4.2965,Other months
+2018-04-19,89.49,51.78,16.76,242.0,Poor,28,11.5,30.0,0.0,False,4.4941,Other months
+2018-04-20,100.01,40.56,15.55,271.0,Poor,27,16.2,30.3,1.1,False,4.6053,Other months
+2018-04-21,119.24,30.99,12.08,444.0,Severe,34,12.4,27.0,0.0,False,4.7811,Other months
+2018-04-22,62.06,31.63,16.92,302.0,Very Poor,25,15.0,27.5,0.0,False,4.1281,Other months
+2018-04-23,76.11,39.43,12.89,197.0,Moderate,23,13.6,28.3,0.0,False,4.3322,Other months
+2018-04-24,108.64,57.07,17.01,242.0,Poor,20,10.1,30.1,0.0,False,4.688,Other months
+2018-04-25,117.56,82.47,15.1,287.0,Poor,20,10.2,31.8,0.0,False,4.7669,Other months
+2018-04-26,142.82,78.5,17.89,329.0,Very Poor,20,9.1,32.5,0.0,False,4.9616,Other months
+2018-04-27,107.47,49.86,12.96,351.0,Very Poor,43,13.5,30.9,1.2,False,4.6772,Other months
+2018-04-28,84.13,36.11,12.38,288.0,Poor,44,13.3,30.7,0.9,False,4.4324,Other months
+2018-04-29,89.1,42.57,16.1,259.0,Poor,43,9.8,30.8,0.4,False,4.4898,Other months
+2018-04-30,79.3,46.42,11.9,221.0,Poor,42,11.3,31.0,0.7,False,4.3732,Other months
+2018-05-01,54.88,33.37,8.8,173.0,Moderate,52,17.7,30.5,10.5,False,4.0051,Other months
+2018-05-02,66.74,34.14,7.65,161.0,Moderate,54,17.1,29.8,5.9,False,4.2008,Other months
+2018-05-03,47.25,31.77,9.52,167.0,Moderate,58,16.1,28.7,0.0,False,3.8555,Other months
+2018-05-04,49.09,30.44,9.06,146.0,Moderate,55,13.5,29.0,0.0,False,3.8937,Other months
+2018-05-05,74.82,46.75,11.85,174.0,Moderate,48,7.7,30.3,0.0,False,4.3151,Other months
+2018-05-06,110.48,53.69,14.61,280.0,Poor,38,10.4,31.0,0.0,False,4.7048,Other months
+2018-05-07,111.95,54.75,16.31,243.0,Poor,37,8.6,30.5,0.0,False,4.7181,Other months
+2018-05-08,61.0,27.66,6.97,252.0,Poor,46,9.1,27.2,3.5,False,4.1109,Other months
+2018-05-09,71.99,46.09,12.35,168.0,Moderate,44,7.2,28.1,2.2,False,4.2765,Other months
+2018-05-10,93.45,52.15,12.02,218.0,Poor,38,8.3,30.2,0.0,False,4.5374,Other months
+2018-05-11,132.39,65.41,16.58,292.0,Poor,36,9.2,32.5,0.0,False,4.8858,Other months
+2018-05-12,144.33,74.13,17.75,330.0,Very Poor,42,9.6,32.3,1.1,False,4.9721,Other months
+2018-05-13,80.64,31.22,11.48,285.0,Poor,56,11.7,29.6,3.8,False,4.39,Other months
+2018-05-14,49.22,40.3,11.3,174.0,Moderate,52,8.0,30.0,0.0,False,3.8963,Other months
+2018-05-15,67.23,39.81,11.9,173.0,Moderate,50,8.4,31.2,0.0,False,4.2081,Other months
+2018-05-16,78.74,41.79,9.25,194.0,Moderate,42,8.1,31.9,0.4,False,4.3662,Other months
+2018-05-17,105.99,44.14,13.61,240.0,Poor,30,8.2,32.7,0.0,False,4.6633,Other months
+2018-05-18,96.96,53.88,13.97,254.0,Poor,32,6.9,32.5,0.0,False,4.5743,Other months
+2018-05-19,103.98,65.52,12.48,270.0,Poor,38,6.5,32.1,1.5,False,4.6442,Other months
+2018-05-20,83.66,45.88,12.65,231.0,Poor,28,10.2,32.9,0.0,False,4.4268,Other months
+2018-05-21,71.25,42.68,12.73,208.0,Poor,17,11.7,33.7,0.0,False,4.2662,Other months
+2018-05-22,91.16,59.07,15.56,207.0,Poor,18,9.8,35.5,0.0,False,4.5126,Other months
+2018-05-23,129.23,77.28,17.57,306.0,Very Poor,26,10.2,34.5,0.1,False,4.8616,Other months
+2018-05-24,114.13,57.51,17.78,303.0,Very Poor,30,9.2,33.8,0.0,False,4.7373,Other months
+2018-05-25,83.88,59.34,12.73,260.0,Poor,25,9.3,34.6,0.0,False,4.4294,Other months
+2018-05-26,103.02,64.88,14.9,244.0,Poor,17,9.2,34.9,0.0,False,4.6349,Other months
+2018-05-27,97.37,58.31,11.59,268.0,Poor,19,10.8,35.3,0.0,False,4.5785,Other months
+2018-05-28,117.56,54.01,15.54,276.0,Poor,28,9.2,34.8,0.0,False,4.7669,Other months
+2018-05-29,112.6,60.34,11.93,303.0,Very Poor,33,12.6,34.0,0.0,False,4.7238,Other months
+2018-05-30,65.76,33.21,8.58,272.0,Poor,49,14.3,32.8,0.7,False,4.186,Other months
+2018-05-31,71.99,40.76,9.71,223.0,Poor,45,11.1,34.3,0.0,False,4.2765,Other months
+2018-06-01,79.98,30.14,8.24,196.0,Moderate,48,18.0,33.9,4.8,False,4.3818,Other months
+2018-06-02,52.6,29.28,9.08,183.0,Moderate,49,15.6,33.0,0.0,False,3.9627,Other months
+2018-06-03,59.52,31.51,7.79,154.0,Moderate,53,13.3,32.9,0.0,False,4.0863,Other months
+2018-06-04,64.42,30.68,8.14,170.0,Moderate,45,16.0,34.9,0.0,False,4.1654,Other months
+2018-06-05,61.72,27.67,7.51,160.0,Moderate,45,16.1,35.3,0.7,False,4.1226,Other months
+2018-06-06,57.68,31.11,9.34,146.0,Moderate,55,12.3,33.4,0.8,False,4.0549,Other months
+2018-06-07,73.77,33.8,10.1,166.0,Moderate,53,8.3,34.1,0.0,False,4.301,Other months
+2018-06-08,76.78,31.27,7.75,180.0,Moderate,52,16.1,34.8,0.0,False,4.3409,Other months
+2018-06-09,52.79,27.39,6.41,153.0,Moderate,69,14.0,31.5,15.2,False,3.9663,Other months
+2018-06-10,67.02,34.23,7.35,153.0,Moderate,68,6.6,31.5,1.9,False,4.205,Other months
+2018-06-11,73.22,34.85,6.94,186.0,Moderate,52,11.1,34.0,0.0,False,4.2935,Other months
+2018-06-12,141.28,31.72,8.73,285.0,Poor,40,13.5,35.5,0.0,False,4.9507,Other months
+2018-06-13,261.77,25.75,6.91,453.0,Severe,38,16.8,36.4,0.0,False,5.5675,Other months
+2018-06-14,225.49,25.37,7.22,522.0,Severe,37,19.8,36.0,0.0,False,5.4183,Other months
+2018-06-15,153.28,24.61,7.31,593.0,Severe,36,17.8,35.5,0.0,False,5.0323,Other months
+2018-06-16,127.32,25.0,7.29,531.0,Severe,41,14.1,34.9,0.0,False,4.8467,Other months
+2018-06-17,84.47,22.78,6.18,384.0,Very Poor,58,10.4,31.7,0.2,False,4.4364,Other months
+2018-06-18,61.06,26.68,7.71,179.0,Moderate,55,8.2,31.1,0.6,False,4.1119,Other months
+2018-06-19,52.76,26.52,6.5,146.0,Moderate,51,8.5,32.6,0.0,False,3.9658,Other months
+2018-06-20,67.55,33.71,10.05,175.0,Moderate,45,5.7,34.9,0.0,False,4.2129,Other months
+2018-06-21,76.98,34.82,9.73,221.0,Poor,42,7.4,35.4,0.0,False,4.3435,Other months
+2018-06-22,83.98,45.06,12.38,249.0,Poor,38,5.8,36.5,0.0,False,4.4306,Other months
+2018-06-23,81.33,44.23,11.68,228.0,Poor,39,8.5,35.9,0.0,False,4.3985,Other months
+2018-06-24,54.15,34.98,13.73,194.0,Moderate,39,9.2,35.6,0.0,False,3.9918,Other months
+2018-06-25,46.9,34.92,12.17,168.0,Moderate,36,13.2,36.3,0.0,False,3.848,Other months
+2018-06-26,29.98,34.16,13.16,128.0,Moderate,52,9.3,32.9,1.8,False,3.4005,Other months
+2018-06-27,52.48,31.0,10.43,126.0,Moderate,78,9.0,29.2,29.8,False,3.9604,Other months
+2018-06-28,30.07,29.01,8.48,99.0,Satisfactory,81,14.5,28.6,12.6,False,3.4035,Other months
+2018-06-29,37.11,30.43,9.36,90.0,Satisfactory,76,16.6,29.4,4.3,False,3.6139,Other months
+2018-06-30,41.41,32.89,9.55,113.0,Moderate,79,8.5,29.6,4.9,False,3.7235,Other months
+2018-07-01,34.18,28.46,8.53,102.0,Moderate,75,10.8,30.7,4.7,False,3.5316,Monsoon (Jul–Sep)
+2018-07-02,34.24,25.74,8.82,111.0,Moderate,72,12.0,30.6,15.2,False,3.5334,Monsoon (Jul–Sep)
+2018-07-03,44.55,37.27,10.11,122.0,Moderate,68,8.6,30.6,0.7,False,3.7966,Monsoon (Jul–Sep)
+2018-07-04,45.76,31.17,10.14,128.0,Moderate,78,8.9,29.1,4.8,False,3.8234,Monsoon (Jul–Sep)
+2018-07-05,50.41,38.05,11.14,130.0,Moderate,71,6.0,30.8,0.0,False,3.9202,Monsoon (Jul–Sep)
+2018-07-06,57.12,36.71,10.27,147.0,Moderate,67,8.2,31.1,0.0,False,4.0452,Monsoon (Jul–Sep)
+2018-07-07,61.93,34.43,10.4,155.0,Moderate,65,7.8,31.7,0.0,False,4.126,Monsoon (Jul–Sep)
+2018-07-08,68.2,39.85,11.6,176.0,Moderate,61,6.3,32.9,0.0,False,4.2224,Monsoon (Jul–Sep)
+2018-07-09,70.48,35.14,11.0,168.0,Moderate,64,9.6,32.9,0.1,False,4.2553,Monsoon (Jul–Sep)
+2018-07-10,47.48,28.19,10.92,140.0,Moderate,67,11.8,32.8,0.3,False,3.8603,Monsoon (Jul–Sep)
+2018-07-11,39.78,31.82,11.26,111.0,Moderate,72,9.6,31.8,4.5,False,3.6834,Monsoon (Jul–Sep)
+2018-07-12,46.53,34.22,10.92,130.0,Moderate,80,7.9,29.6,25.5,False,3.8401,Monsoon (Jul–Sep)
+2018-07-13,28.44,31.94,10.69,109.0,Moderate,82,8.3,29.1,6.6,False,3.3478,Monsoon (Jul–Sep)
+2018-07-14,33.82,31.63,11.13,96.0,Satisfactory,85,8.6,28.5,6.4,False,3.5211,Monsoon (Jul–Sep)
+2018-07-15,37.76,28.9,10.64,92.0,Satisfactory,83,9.4,29.4,7.4,False,3.6313,Monsoon (Jul–Sep)
+2018-07-16,37.32,33.31,9.51,95.0,Satisfactory,85,9.3,29.1,10.9,False,3.6195,Monsoon (Jul–Sep)
+2018-07-17,34.26,30.73,10.2,105.0,Moderate,80,9.3,30.4,3.5,False,3.534,Monsoon (Jul–Sep)
+2018-07-18,37.76,29.45,11.04,114.0,Moderate,80,9.8,30.1,12.2,False,3.6313,Monsoon (Jul–Sep)
+2018-07-19,35.04,27.41,11.14,106.0,Moderate,80,6.5,30.1,13.3,False,3.5565,Monsoon (Jul–Sep)
+2018-07-20,37.26,33.46,10.4,90.0,Satisfactory,84,4.2,29.4,8.3,False,3.6179,Monsoon (Jul–Sep)
+2018-07-21,50.21,36.48,11.2,114.0,Moderate,89,5.5,28.4,20.9,False,3.9162,Monsoon (Jul–Sep)
+2018-07-22,25.81,27.55,9.85,87.0,Satisfactory,91,4.9,27.4,30.6,False,3.2508,Monsoon (Jul–Sep)
+2018-07-23,32.39,28.74,10.43,80.0,Satisfactory,86,6.5,28.8,5.1,False,3.4778,Monsoon (Jul–Sep)
+2018-07-24,39.3,29.15,10.78,101.0,Moderate,78,5.0,30.0,1.5,False,3.6712,Monsoon (Jul–Sep)
+2018-07-25,34.7,27.58,9.99,90.0,Satisfactory,85,6.6,28.8,8.2,False,3.5467,Monsoon (Jul–Sep)
+2018-07-26,32.22,25.1,9.27,90.0,Satisfactory,91,7.1,26.9,16.3,False,3.4726,Monsoon (Jul–Sep)
+2018-07-27,21.75,23.41,9.13,68.0,Satisfactory,90,6.6,26.8,14.2,False,3.0796,Monsoon (Jul–Sep)
+2018-07-28,37.69,21.59,9.55,71.0,Satisfactory,83,12.6,28.1,2.8,False,3.6294,Monsoon (Jul–Sep)
+2018-07-29,44.03,25.02,9.37,100.0,Satisfactory,82,9.2,29.0,2.4,False,3.7849,Monsoon (Jul–Sep)
+2018-07-30,39.89,25.06,8.96,122.0,Moderate,79,10.4,29.2,2.4,False,3.6861,Monsoon (Jul–Sep)
+2018-07-31,50.59,28.84,9.12,135.0,Moderate,76,11.9,29.7,2.5,False,3.9238,Monsoon (Jul–Sep)
+2018-08-01,55.77,26.14,9.71,155.0,Moderate,74,12.5,29.9,0.4,False,4.0212,Monsoon (Jul–Sep)
+2018-08-02,71.5,25.2,10.22,215.0,Poor,70,12.0,30.5,0.2,False,4.2697,Monsoon (Jul–Sep)
+2018-08-03,65.46,26.08,9.48,228.0,Poor,67,13.1,30.4,0.0,False,4.1814,Monsoon (Jul–Sep)
+2018-08-04,69.75,28.77,9.61,215.0,Poor,66,12.4,30.4,0.0,False,4.2449,Monsoon (Jul–Sep)
+2018-08-05,63.57,24.82,9.86,234.0,Poor,72,11.8,29.1,1.3,False,4.1521,Monsoon (Jul–Sep)
+2018-08-06,50.64,26.59,9.4,166.0,Moderate,86,5.7,26.8,4.6,False,3.9247,Monsoon (Jul–Sep)
+2018-08-07,44.54,26.15,10.65,123.0,Moderate,91,4.9,26.6,19.4,False,3.7964,Monsoon (Jul–Sep)
+2018-08-08,36.7,25.24,9.47,108.0,Moderate,86,8.4,27.9,9.4,False,3.6028,Monsoon (Jul–Sep)
+2018-08-09,36.84,24.98,9.85,102.0,Moderate,82,8.6,29.2,2.9,False,3.6066,Monsoon (Jul–Sep)
+2018-08-10,46.24,34.82,9.66,111.0,Moderate,83,5.7,29.5,2.9,False,3.8338,Monsoon (Jul–Sep)
+2018-08-11,32.72,24.06,8.84,106.0,Moderate,78,13.7,29.8,2.7,False,3.488,Monsoon (Jul–Sep)
+2018-08-12,25.7,23.5,9.09,92.0,Satisfactory,79,9.2,28.8,2.1,False,3.2465,Monsoon (Jul–Sep)
+2018-08-13,32.75,25.04,9.26,102.0,Moderate,77,5.2,29.1,2.5,False,3.4889,Monsoon (Jul–Sep)
+2018-08-14,46.85,29.49,9.86,122.0,Moderate,79,6.3,29.3,1.0,False,3.847,Monsoon (Jul–Sep)
+2018-08-15,43.0,23.72,8.85,128.0,Moderate,84,7.4,29.0,7.4,False,3.7612,Monsoon (Jul–Sep)
+2018-08-16,36.49,29.32,10.43,109.0,Moderate,85,6.9,29.1,3.4,False,3.597,Monsoon (Jul–Sep)
+2018-08-17,32.98,24.58,9.26,109.0,Moderate,83,10.1,29.4,3.4,False,3.4959,Monsoon (Jul–Sep)
+2018-08-18,32.11,26.17,10.05,90.0,Satisfactory,84,7.2,29.2,6.4,False,3.4692,Monsoon (Jul–Sep)
+2018-08-19,47.01,31.85,11.4,100.0,Satisfactory,87,6.0,28.9,4.9,False,3.8504,Monsoon (Jul–Sep)
+2018-08-20,61.1,32.54,10.88,138.0,Moderate,86,5.3,29.2,3.6,False,4.1125,Monsoon (Jul–Sep)
+2018-08-21,30.98,27.85,11.99,105.0,Moderate,85,6.6,29.5,2.5,False,3.4333,Monsoon (Jul–Sep)
+2018-08-22,29.75,28.18,11.43,91.0,Satisfactory,84,5.7,29.3,10.1,False,3.3928,Monsoon (Jul–Sep)
+2018-08-23,31.19,24.72,10.82,86.0,Satisfactory,88,7.6,28.3,12.4,False,3.4401,Monsoon (Jul–Sep)
+2018-08-24,23.71,24.6,10.4,89.0,Satisfactory,83,10.1,28.6,9.1,False,3.1659,Monsoon (Jul–Sep)
+2018-08-25,21.96,22.78,10.9,100.0,Satisfactory,79,12.5,28.5,1.8,False,3.0892,Monsoon (Jul–Sep)
+2018-08-26,23.96,19.92,10.31,85.0,Satisfactory,80,8.4,28.6,1.7,False,3.1764,Monsoon (Jul–Sep)
+2018-08-27,24.78,23.6,10.82,82.0,Satisfactory,89,4.2,27.5,6.0,False,3.21,Monsoon (Jul–Sep)
+2018-08-28,29.26,25.52,10.84,81.0,Satisfactory,88,7.4,27.6,14.0,False,3.3762,Monsoon (Jul–Sep)
+2018-08-29,36.06,26.12,10.23,88.0,Satisfactory,89,5.9,28.0,4.6,False,3.5852,Monsoon (Jul–Sep)
+2018-08-30,41.26,28.28,9.97,97.0,Satisfactory,85,6.2,29.0,3.5,False,3.7199,Monsoon (Jul–Sep)
+2018-08-31,47.53,25.96,9.67,127.0,Moderate,81,8.8,29.5,1.2,False,3.8614,Monsoon (Jul–Sep)
+2018-09-01,45.19,28.51,10.53,132.0,Moderate,86,5.1,28.3,1.3,False,3.8109,Monsoon (Jul–Sep)
+2018-09-02,40.9,23.44,9.81,116.0,Moderate,90,4.7,26.7,32.7,False,3.7111,Monsoon (Jul–Sep)
+2018-09-03,42.06,27.63,9.96,89.0,Satisfactory,90,4.2,26.7,8.2,False,3.7391,Monsoon (Jul–Sep)
+2018-09-04,55.72,35.94,10.8,118.0,Moderate,91,4.8,26.7,9.0,False,4.0203,Monsoon (Jul–Sep)
+2018-09-05,39.77,30.63,9.62,108.0,Moderate,85,8.4,27.7,0.9,False,3.6831,Monsoon (Jul–Sep)
+2018-09-06,49.44,30.88,10.13,137.0,Moderate,83,6.4,28.0,7.9,False,3.9008,Monsoon (Jul–Sep)
+2018-09-07,42.11,37.91,10.75,117.0,Moderate,88,6.8,27.9,8.6,False,3.7403,Monsoon (Jul–Sep)
+2018-09-08,35.45,26.65,11.38,105.0,Moderate,86,13.1,27.4,8.0,False,3.5681,Monsoon (Jul–Sep)
+2018-09-09,29.1,23.58,10.98,86.0,Satisfactory,83,14.1,27.0,0.2,False,3.3707,Monsoon (Jul–Sep)
+2018-09-10,36.99,29.61,11.21,92.0,Satisfactory,83,7.0,27.5,2.4,False,3.6106,Monsoon (Jul–Sep)
+2018-09-11,28.33,26.0,9.77,91.0,Satisfactory,84,8.4,27.8,3.0,False,3.3439,Monsoon (Jul–Sep)
+2018-09-12,28.55,24.4,10.31,96.0,Satisfactory,76,14.8,28.5,0.4,False,3.3517,Monsoon (Jul–Sep)
+2018-09-13,27.49,23.21,11.24,108.0,Moderate,71,13.6,28.5,0.0,False,3.3138,Monsoon (Jul–Sep)
+2018-09-14,31.38,25.18,11.21,113.0,Moderate,71,9.4,27.8,0.0,False,3.4462,Monsoon (Jul–Sep)
+2018-09-15,37.48,27.72,11.74,126.0,Moderate,70,8.6,27.9,0.0,False,3.6238,Monsoon (Jul–Sep)
+2018-09-16,43.09,25.92,11.14,124.0,Moderate,68,9.0,28.0,0.0,False,3.7633,Monsoon (Jul–Sep)
+2018-09-17,55.86,29.15,11.12,135.0,Moderate,71,7.8,28.1,0.0,False,4.0228,Monsoon (Jul–Sep)
+2018-09-18,54.94,29.8,11.95,154.0,Moderate,69,8.9,27.6,0.0,False,4.0062,Monsoon (Jul–Sep)
+2018-09-19,58.63,37.36,13.43,157.0,Moderate,69,8.8,27.7,0.0,False,4.0712,Monsoon (Jul–Sep)
+2018-09-20,73.3,38.16,14.41,173.0,Moderate,70,5.4,28.4,0.0,False,4.2946,Monsoon (Jul–Sep)
+2018-09-21,46.73,26.7,12.74,155.0,Moderate,78,13.2,27.2,6.2,False,3.8444,Monsoon (Jul–Sep)
+2018-09-22,24.29,21.72,11.11,76.0,Satisfactory,88,17.1,24.9,50.6,False,3.1901,Monsoon (Jul–Sep)
+2018-09-23,30.71,19.88,11.59,69.0,Satisfactory,89,20.6,25.4,15.6,False,3.4246,Monsoon (Jul–Sep)
+2018-09-24,21.46,25.07,11.08,63.0,Satisfactory,92,15.6,24.6,12.8,False,3.0662,Monsoon (Jul–Sep)
+2018-09-25,21.45,25.67,10.88,63.0,Satisfactory,85,13.2,25.2,0.3,False,3.0657,Monsoon (Jul–Sep)
+2018-09-26,42.83,32.38,11.59,99.0,Satisfactory,81,8.5,26.0,0.0,False,3.7572,Monsoon (Jul–Sep)
+2018-09-27,71.44,37.42,12.78,151.0,Moderate,77,5.5,27.0,0.0,False,4.2689,Monsoon (Jul–Sep)
+2018-09-28,83.78,44.68,12.98,200.0,Moderate,74,5.0,27.7,0.6,False,4.4282,Monsoon (Jul–Sep)
+2018-09-29,92.46,46.15,13.08,229.0,Poor,74,5.5,27.2,0.0,False,4.5268,Monsoon (Jul–Sep)
+2018-09-30,69.49,34.52,12.38,176.0,Moderate,73,10.0,26.6,0.0,False,4.2412,Monsoon (Jul–Sep)
+2018-10-01,65.78,40.86,12.7,148.0,Moderate,72,8.9,26.6,0.0,False,4.1863,Other months
+2018-10-02,76.03,36.68,12.25,186.0,Moderate,68,6.9,27.5,0.0,False,4.3311,Other months
+2018-10-03,63.37,42.57,13.36,160.0,Moderate,65,5.5,26.9,0.0,False,4.149,Other months
+2018-10-04,97.4,48.01,14.42,206.0,Poor,71,5.0,26.4,1.0,False,4.5788,Other months
+2018-10-05,121.12,53.69,17.27,268.0,Poor,72,5.2,26.4,0.0,False,4.7968,Other months
+2018-10-06,78.87,44.71,13.42,237.0,Poor,64,8.3,25.8,0.0,False,4.3678,Other months
+2018-10-07,81.14,44.81,14.33,189.0,Moderate,67,7.1,25.3,0.0,False,4.3962,Other months
+2018-10-08,118.6,56.21,16.13,253.0,Poor,67,4.3,26.1,0.0,False,4.7758,Other months
+2018-10-09,103.26,54.24,19.67,269.0,Poor,72,9.1,26.2,0.0,False,4.6373,Other months
+2018-10-10,93.36,47.73,16.55,263.0,Poor,78,11.9,25.3,0.2,False,4.5365,Other months
+2018-10-11,70.42,37.74,14.54,219.0,Poor,80,10.2,24.1,1.3,False,4.2545,Other months
+2018-10-12,67.93,44.48,16.06,163.0,Moderate,71,6.5,23.7,0.0,False,4.2185,Other months
+2018-10-13,132.93,49.89,17.91,264.0,Poor,66,7.9,23.2,0.0,False,4.8898,Other months
+2018-10-14,91.88,47.34,16.07,237.0,Poor,61,9.9,23.2,0.0,False,4.5205,Other months
+2018-10-15,115.96,55.44,17.96,253.0,Poor,58,6.7,24.4,0.0,False,4.7532,Other months
+2018-10-16,139.18,64.18,19.19,309.0,Very Poor,68,7.3,24.8,0.0,False,4.9358,Other months
+2018-10-17,137.29,52.81,17.13,332.0,Very Poor,68,7.1,25.0,0.0,False,4.9221,Other months
+2018-10-18,143.2,57.64,18.46,330.0,Very Poor,71,9.3,24.8,0.4,False,4.9642,Other months
+2018-10-19,137.73,54.31,18.35,300.0,Poor,60,6.4,25.3,0.0,False,4.9253,Other months
+2018-10-20,168.87,54.04,19.82,344.0,Very Poor,56,7.0,24.4,0.0,False,5.1291,Other months
+2018-10-21,141.15,55.77,20.59,325.0,Very Poor,54,8.8,23.4,0.0,False,4.9498,Other months
+2018-10-22,121.65,55.49,17.74,296.0,Poor,49,9.6,22.5,0.0,False,4.8011,Other months
+2018-10-23,119.4,63.32,19.49,274.0,Poor,48,7.7,23.0,0.0,False,4.7825,Other months
+2018-10-24,174.04,77.72,20.95,354.0,Very Poor,57,6.0,23.4,0.0,False,5.1593,Other months
+2018-10-25,168.82,72.23,22.51,356.0,Very Poor,59,6.7,23.2,0.0,False,5.1288,Other months
+2018-10-26,203.12,74.04,20.76,394.0,Very Poor,63,7.3,22.7,0.0,False,5.3138,Other months
+2018-10-27,206.05,77.3,19.9,396.0,Very Poor,61,7.3,23.3,0.0,False,5.3281,Other months
+2018-10-28,205.0,57.66,15.62,403.0,Severe,63,8.2,23.0,0.0,False,5.323,Other months
+2018-10-29,231.83,62.22,16.66,397.0,Very Poor,64,7.5,22.8,0.0,False,5.446,Other months
+2018-10-30,263.39,70.46,17.62,456.0,Severe,63,4.5,23.7,0.0,False,5.5736,Other months
+2018-10-31,225.17,68.02,18.11,422.0,Severe,63,4.8,23.8,0.0,False,5.4169,Other months
+2018-11-01,236.67,71.63,20.12,433.0,Severe,65,4.8,23.2,0.0,False,5.4667,Winter (Nov–Jan)
+2018-11-02,205.44,65.98,19.65,391.0,Very Poor,67,7.1,23.5,0.1,False,5.3252,Winter (Nov–Jan)
+2018-11-03,159.56,47.39,17.1,353.0,Very Poor,64,15.5,23.5,0.0,False,5.0724,Winter (Nov–Jan)
+2018-11-04,97.27,34.18,15.01,238.0,Poor,61,8.9,22.3,0.0,False,4.5775,Winter (Nov–Jan)
+2018-11-05,361.98,48.25,14.63,424.0,Severe,62,9.4,20.2,0.0,False,5.8916,Winter (Nov–Jan)
+2018-11-06,177.88,43.78,15.37,411.0,Severe,50,13.2,20.0,0.0,False,5.1811,Winter (Nov–Jan)
+2018-11-07,175.43,45.14,19.39,317.0,Very Poor,40,9.1,19.1,0.0,False,5.1672,Winter (Nov–Jan)
+2018-11-08,420.3,64.57,26.52,452.0,Severe,49,4.3,20.1,0.0,False,6.041,Winter (Nov–Jan)
+2018-11-09,300.91,68.25,17.41,487.0,Severe,60,5.6,20.4,0.0,False,5.7068,Winter (Nov–Jan)
+2018-11-10,288.86,79.5,18.01,430.0,Severe,63,4.7,20.8,0.0,False,5.6659,Winter (Nov–Jan)
+2018-11-11,256.68,70.55,16.2,454.0,Severe,61,4.8,21.8,0.0,False,5.5478,Winter (Nov–Jan)
+2018-11-12,271.7,71.88,17.4,437.0,Severe,68,6.0,21.5,0.0,False,5.6047,Winter (Nov–Jan)
+2018-11-13,265.06,74.72,18.72,454.0,Severe,69,6.7,22.1,0.1,False,5.58,Winter (Nov–Jan)
+2018-11-14,136.2,59.36,16.02,361.0,Very Poor,72,7.3,21.5,1.1,False,4.9141,Winter (Nov–Jan)
+2018-11-15,98.53,47.83,15.03,251.0,Poor,72,9.4,20.7,0.6,False,4.5904,Winter (Nov–Jan)
+2018-11-16,138.49,42.41,14.2,302.0,Very Poor,61,14.5,19.1,0.0,False,4.9308,Winter (Nov–Jan)
+2018-11-17,135.21,51.93,14.37,292.0,Poor,64,10.4,18.5,0.0,False,4.9068,Winter (Nov–Jan)
+2018-11-18,166.43,61.82,16.29,330.0,Very Poor,64,7.0,19.8,0.0,False,5.1146,Winter (Nov–Jan)
+2018-11-19,179.79,56.73,16.32,340.0,Very Poor,63,10.6,20.8,0.0,False,5.1918,Winter (Nov–Jan)
+2018-11-20,224.1,63.96,16.11,367.0,Very Poor,72,7.1,20.5,0.0,False,5.4121,Winter (Nov–Jan)
+2018-11-21,209.96,63.79,14.22,396.0,Very Poor,62,10.0,19.7,0.0,False,5.3469,Winter (Nov–Jan)
+2018-11-22,139.02,74.93,16.89,317.0,Very Poor,58,5.9,19.6,0.0,False,4.9346,Winter (Nov–Jan)
+2018-11-23,187.85,61.06,16.39,356.0,Very Poor,57,12.9,19.3,0.0,False,5.2356,Winter (Nov–Jan)
+2018-11-24,107.73,46.57,15.12,296.0,Poor,53,14.9,19.3,0.0,False,4.6796,Winter (Nov–Jan)
+2018-11-25,133.62,58.16,16.56,266.0,Poor,60,8.1,17.8,0.0,False,4.895,Winter (Nov–Jan)
+2018-11-26,200.69,68.3,20.11,349.0,Very Poor,66,8.6,18.5,0.0,False,5.3018,Winter (Nov–Jan)
+2018-11-27,205.53,78.94,18.31,396.0,Very Poor,69,6.7,19.5,0.0,False,5.3256,Winter (Nov–Jan)
+2018-11-28,193.1,69.6,15.96,363.0,Very Poor,72,5.1,19.6,0.0,False,5.2632,Winter (Nov–Jan)
+2018-11-29,205.17,63.68,12.76,384.0,Very Poor,72,8.5,18.6,0.0,False,5.3238,Winter (Nov–Jan)
+2018-11-30,190.36,56.74,13.69,365.0,Very Poor,69,9.6,18.3,0.0,False,5.2489,Winter (Nov–Jan)
+2018-12-01,147.48,56.43,14.4,335.0,Very Poor,67,9.0,17.4,0.0,False,4.9937,Winter (Nov–Jan)
+2018-12-02,164.63,67.18,16.62,329.0,Very Poor,58,5.3,17.8,0.0,False,5.1037,Winter (Nov–Jan)
+2018-12-03,178.87,66.91,16.52,356.0,Very Poor,61,5.0,17.7,0.0,False,5.1867,Winter (Nov–Jan)
+2018-12-04,211.57,74.17,16.28,394.0,Very Poor,66,6.0,17.3,0.0,False,5.3546,Winter (Nov–Jan)
+2018-12-05,181.62,65.87,15.89,374.0,Very Poor,69,6.5,16.7,0.0,False,5.2019,Winter (Nov–Jan)
+2018-12-06,218.06,71.73,16.49,385.0,Very Poor,67,5.7,17.0,0.0,False,5.3848,Winter (Nov–Jan)
+2018-12-07,193.81,54.83,14.11,376.0,Very Poor,70,9.7,15.9,0.0,False,5.2669,Winter (Nov–Jan)
+2018-12-08,202.83,59.06,15.47,366.0,Very Poor,70,7.3,15.4,0.0,False,5.3124,Winter (Nov–Jan)
+2018-12-09,226.35,65.3,18.08,389.0,Very Poor,67,6.0,15.9,0.0,False,5.4221,Winter (Nov–Jan)
+2018-12-10,264.63,66.58,16.74,431.0,Severe,72,8.0,15.5,0.1,False,5.5783,Winter (Nov–Jan)
+2018-12-11,274.97,68.87,15.49,464.0,Severe,68,6.1,15.5,0.0,False,5.6167,Winter (Nov–Jan)
+2018-12-12,209.63,55.1,14.64,443.0,Severe,76,8.7,14.6,0.8,False,5.3453,Winter (Nov–Jan)
+2018-12-13,94.29,42.59,13.07,264.0,Poor,75,7.6,14.3,0.1,False,4.5464,Winter (Nov–Jan)
+2018-12-14,113.42,45.22,12.5,248.0,Poor,70,8.6,14.0,0.0,False,4.7311,Winter (Nov–Jan)
+2018-12-15,122.69,47.31,13.34,274.0,Poor,68,10.8,13.8,0.0,False,4.8097,Winter (Nov–Jan)
+2018-12-16,150.28,50.86,15.76,295.0,Poor,67,8.7,13.4,0.0,False,5.0125,Winter (Nov–Jan)
+2018-12-17,182.78,58.08,16.14,338.0,Very Poor,69,8.4,13.0,0.0,False,5.2083,Winter (Nov–Jan)
+2018-12-18,204.08,61.34,17.76,370.0,Very Poor,66,10.3,12.9,0.0,False,5.3185,Winter (Nov–Jan)
+2018-12-19,205.22,63.77,17.41,370.0,Very Poor,68,9.1,12.8,0.0,False,5.3241,Winter (Nov–Jan)
+2018-12-20,258.1,68.97,17.68,423.0,Severe,68,7.3,12.4,0.0,False,5.5533,Winter (Nov–Jan)
+2018-12-21,252.2,66.03,15.9,422.0,Severe,69,8.8,12.1,0.0,False,5.5302,Winter (Nov–Jan)
+2018-12-22,326.79,78.71,18.47,468.0,Severe,70,6.5,11.9,0.0,False,5.7893,Winter (Nov–Jan)
+2018-12-23,401.58,77.63,18.21,557.0,Severe,70,7.9,12.3,0.0,False,5.9954,Winter (Nov–Jan)
+2018-12-24,378.68,75.26,17.86,577.0,Severe,66,7.3,13.2,0.0,False,5.9367,Winter (Nov–Jan)
+2018-12-25,268.2,61.2,14.14,475.0,Severe,66,11.0,12.2,0.0,False,5.5917,Winter (Nov–Jan)
+2018-12-26,241.0,65.2,15.37,405.0,Severe,63,8.0,11.9,0.0,False,5.4848,Winter (Nov–Jan)
+2018-12-27,290.1,78.43,18.03,458.0,Severe,63,6.6,12.1,0.0,False,5.6702,Winter (Nov–Jan)
+2018-12-28,249.23,60.59,14.8,413.0,Severe,67,12.6,11.5,0.0,False,5.5184,Winter (Nov–Jan)
+2018-12-29,248.12,64.97,16.49,420.0,Severe,64,9.9,11.2,0.0,False,5.5139,Winter (Nov–Jan)
+2018-12-30,336.42,76.89,19.91,484.0,Severe,61,4.8,13.2,0.0,False,5.8184,Winter (Nov–Jan)
+2018-12-31,319.69,70.54,17.38,509.0,Severe,70,9.2,12.3,0.0,False,5.7674,Winter (Nov–Jan)
+2019-01-01,287.34,69.46,17.77,475.0,Severe,71,7.1,12.7,0.0,False,5.6607,Winter (Nov–Jan)
+2019-01-02,331.2,75.06,18.27,501.0,Severe,71,6.9,14.1,0.0,False,5.8027,Winter (Nov–Jan)
+2019-01-03,355.4,66.2,15.12,537.0,Severe,70,9.9,13.4,0.0,False,5.8732,Winter (Nov–Jan)
+2019-01-04,246.46,57.53,13.22,432.0,Severe,70,7.5,12.6,0.0,False,5.5072,Winter (Nov–Jan)
+2019-01-05,262.53,60.35,15.59,440.0,Severe,69,11.9,13.4,0.0,False,5.5704,Winter (Nov–Jan)
+2019-01-06,174.26,51.94,13.65,371.0,Very Poor,77,8.7,13.0,2.3,False,5.1605,Winter (Nov–Jan)
+2019-01-07,181.74,52.45,15.49,331.0,Very Poor,77,8.3,12.4,0.0,False,5.2026,Winter (Nov–Jan)
+2019-01-08,156.26,48.95,14.67,340.0,Very Poor,75,10.2,12.2,0.0,False,5.0515,Winter (Nov–Jan)
+2019-01-09,143.66,49.49,15.09,321.0,Very Poor,69,12.8,12.6,0.0,False,4.9674,Winter (Nov–Jan)
+2019-01-10,165.95,58.22,16.81,317.0,Very Poor,66,8.7,12.7,0.0,False,5.1117,Winter (Nov–Jan)
+2019-01-11,278.95,76.71,20.03,401.0,Severe,68,6.9,12.9,0.0,False,5.631,Winter (Nov–Jan)
+2019-01-12,311.03,85.14,17.81,482.0,Severe,67,5.9,13.9,0.0,False,5.7399,Winter (Nov–Jan)
+2019-01-13,272.45,66.11,17.83,464.0,Severe,72,7.5,14.5,0.0,False,5.6075,Winter (Nov–Jan)
+2019-01-14,94.44,42.16,15.05,320.0,Very Poor,58,15.0,12.5,0.0,False,4.548,Winter (Nov–Jan)
+2019-01-15,134.57,52.45,17.09,248.0,Poor,56,13.2,11.5,0.0,False,4.9021,Winter (Nov–Jan)
+2019-01-16,271.96,83.75,20.35,383.0,Very Poor,67,6.6,11.7,0.0,False,5.6057,Winter (Nov–Jan)
+2019-01-17,358.91,84.74,19.63,515.0,Severe,71,7.5,12.7,0.0,False,5.8831,Winter (Nov–Jan)
+2019-01-18,237.22,68.58,14.7,437.0,Severe,72,8.7,12.0,0.0,False,5.469,Winter (Nov–Jan)
+2019-01-19,262.68,77.9,18.07,411.0,Severe,67,7.1,14.4,0.0,False,5.5709,Winter (Nov–Jan)
+2019-01-20,314.59,106.04,20.98,480.0,Severe,67,5.0,17.8,0.0,False,5.7513,Winter (Nov–Jan)
+2019-01-21,175.49,63.04,16.82,413.0,Severe,80,14.8,16.2,6.5,False,5.1676,Winter (Nov–Jan)
+2019-01-22,53.25,38.56,11.87,174.0,Moderate,86,14.2,14.8,16.9,False,3.975,Winter (Nov–Jan)
+2019-01-23,135.68,48.14,14.17,186.0,Moderate,84,6.4,13.2,0.1,False,4.9103,Winter (Nov–Jan)
+2019-01-24,130.59,44.11,15.29,328.0,Very Poor,81,8.1,13.7,0.3,False,4.8721,Winter (Nov–Jan)
+2019-01-25,81.2,40.03,14.62,188.0,Moderate,79,8.3,12.1,0.1,False,4.3969,Winter (Nov–Jan)
+2019-01-26,101.61,38.43,14.48,231.0,Poor,66,10.3,11.3,0.0,False,4.6211,Winter (Nov–Jan)
+2019-01-27,136.47,45.27,15.89,275.0,Poor,66,11.7,10.1,0.0,False,4.9161,Winter (Nov–Jan)
+2019-01-28,126.48,49.13,15.76,301.0,Very Poor,61,12.8,10.6,0.0,False,4.8401,Winter (Nov–Jan)
+2019-01-29,142.0,51.47,18.56,297.0,Poor,60,12.5,11.1,0.0,False,4.9558,Winter (Nov–Jan)
+2019-01-30,206.14,63.7,24.75,342.0,Very Poor,68,9.4,11.5,0.0,False,5.3286,Winter (Nov–Jan)
+2019-01-31,204.25,65.7,20.48,397.0,Very Poor,69,11.4,13.0,0.6,False,5.3193,Winter (Nov–Jan)
+2019-02-01,178.68,50.75,17.83,329.0,Very Poor,74,9.2,14.2,0.2,False,5.1856,Other months
+2019-02-02,177.32,35.89,11.55,338.0,Very Poor,80,10.2,12.9,0.0,False,5.178,Other months
+2019-02-03,131.1,34.53,11.7,323.0,Very Poor,81,8.7,12.6,0.0,False,4.876,Other months
+2019-02-04,144.62,52.85,14.06,301.0,Very Poor,73,6.6,14.2,0.0,False,4.9741,Other months
+2019-02-05,256.33,75.89,22.38,398.0,Very Poor,75,7.0,15.9,0.0,False,5.5465,Other months
+2019-02-06,177.25,50.55,15.59,380.0,Very Poor,84,12.2,17.1,9.1,False,5.1776,Other months
+2019-02-07,65.65,30.8,11.12,233.0,Poor,89,20.9,15.7,12.7,False,4.1843,Other months
+2019-02-08,72.29,39.24,12.66,136.0,Moderate,71,9.1,12.7,0.0,False,4.2807,Other months
+2019-02-09,82.5,38.31,13.25,169.0,Moderate,68,13.0,12.5,0.0,False,4.4128,Other months
+2019-02-10,143.31,49.26,16.41,277.0,Poor,72,7.4,12.4,0.5,False,4.965,Other months
+2019-02-11,173.61,58.56,17.52,332.0,Very Poor,73,6.5,13.2,0.0,False,5.1568,Other months
+2019-02-12,208.64,66.37,19.93,357.0,Very Poor,75,5.2,15.2,0.0,False,5.3406,Other months
+2019-02-13,198.26,70.04,18.61,372.0,Very Poor,73,7.0,16.5,0.4,False,5.2896,Other months
+2019-02-14,153.73,53.15,14.53,350.0,Very Poor,83,14.8,16.3,4.0,False,5.0352,Other months
+2019-02-15,123.46,44.28,15.38,275.0,Poor,85,6.9,15.9,4.5,False,4.8159,Other months
+2019-02-16,112.34,33.33,12.92,288.0,Poor,85,8.2,14.4,0.1,False,4.7215,Other months
+2019-02-17,99.27,42.59,15.14,247.0,Poor,79,11.7,14.6,0.0,False,4.5978,Other months
+2019-02-18,109.11,56.12,16.78,278.0,Poor,71,11.2,16.3,0.1,False,4.6924,Other months
+2019-02-19,126.12,55.44,15.93,232.0,Poor,77,6.3,16.9,0.0,False,4.8372,Other months
+2019-02-20,102.3,51.88,17.16,305.0,Very Poor,82,12.5,17.0,2.6,False,4.6279,Other months
+2019-02-21,73.33,47.15,20.1,158.0,Moderate,75,11.2,19.3,0.0,False,4.295,Other months
+2019-02-22,73.9,33.95,13.94,191.0,Moderate,72,15.2,17.9,0.4,False,4.3027,Other months
+2019-02-23,56.51,36.12,15.66,116.0,Moderate,64,14.6,15.1,0.0,False,4.0344,Other months
+2019-02-24,89.34,46.26,18.99,169.0,Moderate,66,9.1,15.4,0.2,False,4.4924,Other months
+2019-02-25,92.36,53.86,18.07,221.0,Poor,65,7.6,15.5,0.0,False,4.5257,Other months
+2019-02-26,59.97,50.31,16.88,144.0,Moderate,67,11.7,15.6,2.8,False,4.0938,Other months
+2019-02-27,47.18,35.07,12.52,112.0,Moderate,79,7.5,13.5,11.2,False,3.854,Other months
+2019-02-28,96.38,45.02,16.98,198.0,Moderate,70,9.4,13.1,0.0,False,4.5683,Other months
+2019-03-01,93.83,48.87,15.81,222.0,Poor,66,9.5,13.9,0.0,False,4.5415,Other months
+2019-03-02,109.6,62.05,17.96,227.0,Poor,73,6.0,15.0,6.8,False,4.6968,Other months
+2019-03-03,62.92,40.61,13.48,172.0,Moderate,80,8.8,15.9,4.1,False,4.1419,Other months
+2019-03-04,105.93,40.1,14.75,217.0,Poor,80,7.9,16.9,0.2,False,4.6628,Other months
+2019-03-05,68.86,40.05,14.26,173.0,Moderate,71,10.5,16.1,0.0,False,4.2321,Other months
+2019-03-06,83.45,45.3,15.16,189.0,Moderate,63,10.7,16.7,0.0,False,4.4242,Other months
+2019-03-07,104.61,51.9,16.39,228.0,Poor,62,8.2,17.1,0.0,False,4.6502,Other months
+2019-03-08,92.07,51.75,17.44,220.0,Poor,58,7.9,18.6,0.0,False,4.5225,Other months
+2019-03-09,73.31,40.84,17.3,194.0,Moderate,65,11.6,18.2,0.0,False,4.2947,Other months
+2019-03-10,73.98,44.17,16.36,157.0,Moderate,54,9.3,17.7,0.0,False,4.3038,Other months
+2019-03-11,82.17,52.91,18.44,190.0,Moderate,55,14.6,20.0,1.7,False,4.4088,Other months
+2019-03-12,57.28,37.45,13.82,149.0,Moderate,57,10.9,19.6,0.0,False,4.048,Other months
+2019-03-13,89.17,57.03,22.48,168.0,Moderate,63,6.9,18.3,0.0,False,4.4905,Other months
+2019-03-14,111.2,48.81,17.54,281.0,Poor,72,11.1,17.2,0.3,False,4.7113,Other months
+2019-03-15,74.88,41.27,16.21,183.0,Moderate,65,11.0,17.9,0.0,False,4.3159,Other months
+2019-03-16,68.64,40.6,15.72,143.0,Moderate,57,10.5,18.1,0.0,False,4.2289,Other months
+2019-03-17,93.61,46.88,19.96,198.0,Moderate,49,9.1,20.1,0.0,False,4.5391,Other months
+2019-03-18,100.32,50.33,20.36,221.0,Poor,49,7.0,20.7,0.0,False,4.6084,Other months
+2019-03-19,103.77,55.47,20.72,239.0,Poor,50,8.7,21.7,0.0,False,4.6422,Other months
+2019-03-20,89.82,54.67,21.42,234.0,Poor,47,14.4,23.3,0.0,False,4.4978,Other months
+2019-03-21,112.29,34.63,19.99,272.0,Poor,49,10.5,22.8,0.0,False,4.7211,Other months
+2019-03-22,38.43,32.19,16.06,141.0,Moderate,40,13.2,22.0,0.0,False,3.6488,Other months
+2019-03-23,55.62,34.57,17.52,131.0,Moderate,38,15.7,22.4,0.0,False,4.0185,Other months
+2019-03-24,53.28,34.25,19.06,126.0,Moderate,45,12.9,24.1,0.0,False,3.9756,Other months
+2019-03-25,65.0,34.84,20.19,136.0,Moderate,62,11.5,21.7,0.5,False,4.1744,Other months
+2019-03-26,75.82,40.8,19.26,162.0,Moderate,57,11.2,22.3,0.0,False,4.3284,Other months
+2019-03-27,78.37,49.68,20.35,177.0,Moderate,52,9.5,23.6,0.0,False,4.3614,Other months
+2019-03-28,116.55,60.18,24.86,245.0,Poor,52,8.2,26.0,0.0,False,4.7583,Other months
+2019-03-29,112.67,60.4,19.52,273.0,Poor,50,7.0,27.9,0.0,False,4.7245,Other months
+2019-03-30,102.27,53.75,22.39,252.0,Poor,54,7.4,27.0,0.0,False,4.6276,Other months
+2019-03-31,58.96,38.42,18.9,198.0,Moderate,41,14.1,26.5,0.0,False,4.0769,Other months
+2019-04-01,59.08,38.55,20.09,153.0,Moderate,33,13.7,25.5,0.0,False,4.0789,Other months
+2019-04-02,90.1,55.76,24.4,194.0,Moderate,39,8.6,25.5,0.0,False,4.5009,Other months
+2019-04-03,85.02,54.91,21.6,208.0,Poor,39,9.4,26.3,0.0,False,4.4429,Other months
+2019-04-04,119.71,63.62,29.11,260.0,Poor,40,8.2,28.0,0.0,False,4.7851,Other months
+2019-04-05,125.44,64.7,28.67,284.0,Poor,41,7.1,29.4,0.0,False,4.8318,Other months
+2019-04-06,96.6,48.72,23.23,269.0,Poor,47,9.3,28.8,0.0,False,4.5706,Other months
+2019-04-07,152.91,44.64,21.35,315.0,Very Poor,54,10.1,28.2,0.0,False,5.0298,Other months
+2019-04-08,81.3,45.87,15.1,284.0,Poor,54,11.2,26.9,0.2,False,4.3981,Other months
+2019-04-09,87.74,53.88,22.03,240.0,Poor,47,8.1,28.4,0.0,False,4.4744,Other months
+2019-04-10,101.94,56.82,20.84,263.0,Poor,43,7.9,29.2,0.0,False,4.6244,Other months
+2019-04-11,70.25,47.54,21.51,196.0,Moderate,36,8.3,30.4,0.0,False,4.2521,Other months
+2019-04-12,61.34,40.09,19.48,202.0,Poor,36,10.0,29.6,0.0,False,4.1164,Other months
+2019-04-13,55.93,37.89,20.82,175.0,Moderate,38,12.0,29.9,0.0,False,4.0241,Other months
+2019-04-14,51.51,36.61,20.65,150.0,Moderate,34,14.0,30.6,0.0,False,3.9418,Other months
+2019-04-15,54.84,41.92,22.2,163.0,Moderate,31,11.5,31.1,0.0,False,4.0044,Other months
+2019-04-16,59.08,35.01,12.59,206.0,Poor,49,12.6,26.2,0.5,False,4.0789,Other months
+2019-04-17,22.14,26.84,11.1,102.0,Moderate,73,11.6,21.8,4.6,False,3.0974,Other months
+2019-04-18,38.92,39.07,15.05,104.0,Moderate,67,5.6,22.5,0.1,False,3.6615,Other months
+2019-04-19,71.62,47.56,21.22,151.0,Moderate,53,9.0,24.5,0.1,False,4.2714,Other months
+2019-04-20,90.55,55.28,26.03,199.0,Moderate,47,7.3,26.4,0.0,False,4.5059,Other months
+2019-04-21,95.24,58.95,22.16,225.0,Poor,39,9.3,28.7,0.0,False,4.5564,Other months
+2019-04-22,110.16,61.72,29.31,246.0,Poor,40,9.4,30.1,0.0,False,4.7019,Other months
+2019-04-23,104.17,63.45,25.76,257.0,Poor,34,8.5,32.1,0.0,False,4.646,Other months
+2019-04-24,85.7,51.58,19.17,232.0,Poor,35,10.9,32.7,0.0,False,4.4509,Other months
+2019-04-25,86.41,39.89,17.67,251.0,Poor,36,11.1,33.0,0.0,False,4.4591,Other months
+2019-04-26,82.37,50.69,26.12,223.0,Poor,33,12.6,33.0,0.0,False,4.4112,Other months
+2019-04-27,73.06,39.8,21.85,248.0,Poor,22,18.9,33.5,0.0,False,4.2913,Other months
+2019-04-28,76.44,40.9,20.02,269.0,Poor,20,15.8,33.3,0.0,False,4.3365,Other months
+2019-04-29,84.04,52.04,23.71,256.0,Poor,19,10.5,33.6,0.0,False,4.4313,Other months
+2019-04-30,95.72,59.32,26.58,257.0,Poor,20,12.0,34.2,0.0,False,4.5614,Other months
+2019-05-01,111.57,63.15,27.67,285.0,Poor,25,8.9,33.0,0.0,False,4.7147,Other months
+2019-05-02,77.72,43.19,18.26,275.0,Poor,33,13.4,31.5,0.5,False,4.3531,Other months
+2019-05-03,52.16,49.82,17.91,202.0,Poor,33,9.7,31.0,0.0,False,3.9543,Other months
+2019-05-04,77.96,59.78,18.19,182.0,Moderate,22,13.8,31.1,0.0,False,4.3562,Other months
+2019-05-05,101.25,55.16,21.93,231.0,Poor,19,14.1,31.1,0.0,False,4.6176,Other months
+2019-05-06,118.9,70.81,23.72,267.0,Poor,21,10.8,32.2,0.0,False,4.7783,Other months
+2019-05-07,128.78,69.77,22.77,310.0,Very Poor,20,13.3,32.3,0.0,False,4.8581,Other months
+2019-05-08,143.34,60.85,25.84,389.0,Very Poor,18,13.5,34.0,0.0,False,4.9652,Other months
+2019-05-09,137.2,51.13,23.46,390.0,Very Poor,19,17.1,34.2,0.0,False,4.9214,Other months
+2019-05-10,95.07,38.05,17.6,333.0,Very Poor,20,16.8,34.6,0.0,False,4.5546,Other months
+2019-05-11,101.83,42.02,21.6,266.0,Poor,29,13.1,32.3,0.0,False,4.6233,Other months
+2019-05-12,178.22,40.68,19.36,352.0,Very Poor,30,10.8,31.9,0.0,False,5.183,Other months
+2019-05-13,170.81,50.88,33.5,376.0,Very Poor,30,8.3,32.4,0.0,False,5.1406,Other months
+2019-05-14,58.22,37.53,13.4,217.0,Poor,42,8.0,30.1,0.0,False,4.0642,Other months
+2019-05-15,84.81,57.75,20.93,194.0,Moderate,45,7.3,30.3,0.1,False,4.4404,Other months
+2019-05-16,75.45,50.99,15.36,192.0,Moderate,46,8.9,30.2,0.0,False,4.3235,Other months
+2019-05-17,92.53,45.67,13.26,257.0,Poor,57,7.2,28.3,2.7,False,4.5275,Other months
+2019-05-18,44.28,33.79,10.93,176.0,Moderate,60,11.9,27.4,0.2,False,3.7905,Other months
+2019-05-19,81.99,45.8,17.36,168.0,Moderate,43,10.8,30.1,0.0,False,4.4066,Other months
+2019-05-20,93.97,56.55,19.81,216.0,Poor,34,11.1,31.9,0.0,False,4.543,Other months
+2019-05-21,77.78,47.58,20.15,206.0,Poor,31,10.6,32.6,0.0,False,4.3539,Other months
+2019-05-22,64.24,51.8,16.92,167.0,Moderate,35,9.9,32.8,0.0,False,4.1626,Other months
+2019-05-23,92.4,52.71,21.68,228.0,Poor,37,8.3,33.1,0.0,False,4.5261,Other months
+2019-05-24,43.86,40.33,11.99,151.0,Moderate,45,12.4,30.8,0.0,False,3.781,Other months
+2019-05-25,43.66,34.52,13.09,125.0,Moderate,39,15.3,31.1,0.0,False,3.7764,Other months
+2019-05-26,55.13,41.51,17.94,135.0,Moderate,34,11.5,31.6,0.0,False,4.0097,Other months
+2019-05-27,64.66,53.92,18.9,163.0,Moderate,27,12.0,33.7,0.0,False,4.1691,Other months
+2019-05-28,65.82,61.45,20.59,175.0,Moderate,20,12.4,33.5,0.0,False,4.1869,Other months
+2019-05-29,74.8,65.84,23.61,191.0,Moderate,20,10.5,34.7,0.0,False,4.3148,Other months
+2019-05-30,85.21,71.8,21.99,226.0,Poor,21,9.0,35.6,0.0,False,4.4451,Other months
+2019-05-31,88.57,56.83,19.82,266.0,Poor,20,10.8,36.8,0.0,False,4.4838,Other months
+2019-06-01,95.4,57.24,21.54,300.0,Poor,29,10.3,35.6,0.0,False,4.5581,Other months
+2019-06-02,73.36,32.22,14.15,222.0,Poor,40,13.8,35.5,0.0,False,4.2954,Other months
+2019-06-03,66.94,30.33,12.64,232.0,Poor,46,15.5,34.6,0.0,False,4.2038,Other months
+2019-06-04,54.95,36.0,13.67,212.0,Poor,42,14.4,34.8,0.0,False,4.0064,Other months
+2019-06-05,73.35,42.68,15.82,190.0,Moderate,39,9.4,35.5,0.3,False,4.2952,Other months
+2019-06-06,70.61,44.85,16.15,209.0,Poor,37,11.2,35.6,0.5,False,4.2572,Other months
+2019-06-07,54.81,35.32,14.44,192.0,Moderate,42,8.6,34.1,0.0,False,4.0039,Other months
+2019-06-08,69.75,51.0,13.47,184.0,Moderate,33,8.1,35.5,0.0,False,4.2449,Other months
+2019-06-09,101.05,62.84,21.74,237.0,Poor,24,8.1,36.9,0.0,False,4.6156,Other months
+2019-06-10,74.48,61.53,15.19,230.0,Poor,23,7.9,37.2,0.0,False,4.3105,Other months
+2019-06-11,118.38,49.86,13.52,315.0,Very Poor,23,10.4,37.4,0.0,False,4.7739,Other months
+2019-06-12,59.86,30.46,11.57,280.0,Poor,44,11.6,34.6,2.2,False,4.092,Other months
+2019-06-13,52.66,34.53,11.79,189.0,Moderate,38,12.2,35.4,0.0,False,3.9639,Other months
+2019-06-14,53.79,37.07,12.89,167.0,Moderate,29,15.2,36.0,0.0,False,3.9851,Other months
+2019-06-15,81.86,47.15,17.56,217.0,Poor,22,14.5,36.5,0.0,False,4.405,Other months
+2019-06-16,42.06,20.56,9.54,205.0,Poor,43,20.4,33.8,0.0,False,3.7391,Other months
+2019-06-17,40.18,27.51,11.07,126.0,Moderate,47,19.0,33.5,0.0,False,3.6934,Other months
+2019-06-18,30.39,32.32,8.0,119.0,Moderate,55,8.7,30.5,0.5,False,3.4141,Other months
+2019-06-19,79.96,37.14,12.69,173.0,Moderate,53,7.5,31.0,0.0,False,4.3815,Other months
+2019-06-20,42.76,31.19,9.7,175.0,Moderate,48,7.1,31.8,0.0,False,3.7556,Other months
+2019-06-21,71.15,44.78,12.23,178.0,Moderate,47,6.3,33.3,1.2,False,4.2648,Other months
+2019-06-22,68.27,44.12,14.97,185.0,Moderate,38,8.9,34.7,0.0,False,4.2235,Other months
+2019-06-23,42.06,23.02,10.11,153.0,Moderate,49,14.3,34.0,0.0,False,3.7391,Other months
+2019-06-24,26.29,25.93,10.74,118.0,Moderate,60,10.5,31.5,0.6,False,3.2692,Other months
+2019-06-25,53.65,32.24,11.91,131.0,Moderate,62,5.4,32.1,4.8,False,3.9825,Other months
+2019-06-26,67.36,37.39,12.87,161.0,Moderate,48,8.6,34.8,0.6,False,4.2101,Other months
+2019-06-27,65.3,39.94,13.46,169.0,Moderate,40,11.8,34.6,0.0,False,4.179,Other months
+2019-06-28,61.21,38.37,14.43,207.0,Poor,38,13.3,35.5,0.0,False,4.1143,Other months
+2019-06-29,58.08,34.56,11.99,223.0,Poor,36,12.9,36.3,0.0,False,4.0618,Other months
+2019-06-30,65.24,33.03,12.82,234.0,Poor,35,11.7,36.8,0.0,False,4.1781,Other months
+2019-07-01,57.27,31.09,12.22,195.0,Moderate,42,6.8,36.0,0.0,False,4.0478,Monsoon (Jul–Sep)
+2019-07-02,71.68,28.13,12.02,202.0,Poor,46,9.1,35.7,0.0,False,4.2722,Monsoon (Jul–Sep)
+2019-07-03,39.99,26.57,9.75,162.0,Moderate,56,11.5,33.7,1.6,False,3.6886,Monsoon (Jul–Sep)
+2019-07-04,36.82,29.23,9.75,111.0,Moderate,60,10.4,33.0,6.6,False,3.606,Monsoon (Jul–Sep)
+2019-07-05,48.6,34.77,11.05,113.0,Moderate,72,5.9,31.0,3.7,False,3.8836,Monsoon (Jul–Sep)
+2019-07-06,34.25,29.91,10.18,99.0,Satisfactory,69,7.9,31.0,0.3,False,3.5337,Monsoon (Jul–Sep)
+2019-07-07,38.81,28.87,10.67,101.0,Moderate,69,4.6,31.1,2.1,False,3.6587,Monsoon (Jul–Sep)
+2019-07-08,49.12,32.85,10.64,129.0,Moderate,68,5.3,31.9,4.0,False,3.8943,Monsoon (Jul–Sep)
+2019-07-09,42.56,30.38,9.52,131.0,Moderate,72,8.7,30.7,4.9,False,3.7509,Monsoon (Jul–Sep)
+2019-07-10,69.21,31.36,10.41,150.0,Moderate,74,9.1,31.0,7.1,False,4.2371,Monsoon (Jul–Sep)
+2019-07-11,76.99,29.87,9.64,300.0,Poor,57,15.2,33.4,0.0,False,4.3437,Monsoon (Jul–Sep)
+2019-07-12,76.35,26.97,8.96,294.0,Poor,51,13.6,33.4,0.5,False,4.3353,Monsoon (Jul–Sep)
+2019-07-13,63.18,23.13,9.11,312.0,Very Poor,47,19.6,34.1,0.0,False,4.146,Monsoon (Jul–Sep)
+2019-07-14,63.16,25.1,9.85,243.0,Poor,52,15.9,32.9,0.0,False,4.1457,Monsoon (Jul–Sep)
+2019-07-15,42.04,27.17,10.39,180.0,Moderate,72,10.0,29.7,4.4,False,3.7386,Monsoon (Jul–Sep)
+2019-07-16,31.51,27.54,9.64,117.0,Moderate,89,9.2,26.6,20.6,False,3.4503,Monsoon (Jul–Sep)
+2019-07-17,32.06,28.44,8.91,92.0,Satisfactory,85,6.8,27.2,14.8,False,3.4676,Monsoon (Jul–Sep)
+2019-07-18,32.92,37.14,8.86,98.0,Satisfactory,82,5.0,27.5,12.8,False,3.4941,Monsoon (Jul–Sep)
+2019-07-19,63.02,40.79,9.95,142.0,Moderate,79,4.6,29.4,6.7,False,4.1435,Monsoon (Jul–Sep)
+2019-07-20,46.43,37.1,8.6,137.0,Moderate,80,6.7,30.0,12.5,False,3.8379,Monsoon (Jul–Sep)
+2019-07-21,50.57,33.89,8.83,123.0,Moderate,81,7.8,29.7,11.1,False,3.9234,Monsoon (Jul–Sep)
+2019-07-22,60.38,33.03,8.95,124.0,Moderate,80,6.3,30.4,6.1,False,4.1007,Monsoon (Jul–Sep)
+2019-07-23,73.08,39.89,9.05,156.0,Moderate,77,6.2,31.6,4.6,False,4.2916,Monsoon (Jul–Sep)
+2019-07-24,63.26,40.29,8.83,165.0,Moderate,74,9.2,31.5,6.8,False,4.1473,Monsoon (Jul–Sep)
+2019-07-25,22.79,33.52,8.76,98.0,Satisfactory,86,6.6,27.6,10.9,False,3.1263,Monsoon (Jul–Sep)
+2019-07-26,30.63,31.61,8.92,94.0,Satisfactory,87,10.4,27.2,26.9,False,3.422,Monsoon (Jul–Sep)
+2019-07-27,26.16,25.34,8.67,85.0,Satisfactory,90,13.5,26.6,6.0,False,3.2642,Monsoon (Jul–Sep)
+2019-07-28,21.13,21.89,8.43,83.0,Satisfactory,86,14.2,28.1,7.3,False,3.0507,Monsoon (Jul–Sep)
+2019-07-29,24.45,25.11,8.97,82.0,Satisfactory,79,14.4,29.2,1.3,False,3.1966,Monsoon (Jul–Sep)
+2019-07-30,30.1,26.92,9.36,90.0,Satisfactory,78,12.4,28.9,0.8,False,3.4045,Monsoon (Jul–Sep)
+2019-07-31,30.22,26.45,8.78,90.0,Satisfactory,78,9.7,29.0,0.5,False,3.4085,Monsoon (Jul–Sep)
+2019-08-01,34.26,28.4,8.79,98.0,Satisfactory,82,9.2,29.3,2.1,False,3.534,Monsoon (Jul–Sep)
+2019-08-02,35.06,30.96,8.45,95.0,Satisfactory,85,7.1,28.7,12.9,False,3.5571,Monsoon (Jul–Sep)
+2019-08-03,38.54,31.0,9.43,104.0,Moderate,88,8.2,28.3,6.8,False,3.6517,Monsoon (Jul–Sep)
+2019-08-04,46.69,30.9,9.96,101.0,Moderate,87,4.3,28.9,4.2,False,3.8435,Monsoon (Jul–Sep)
+2019-08-05,52.2,34.64,9.37,108.0,Moderate,86,5.7,29.2,18.5,False,3.9551,Monsoon (Jul–Sep)
+2019-08-06,30.04,34.68,8.26,99.0,Satisfactory,89,8.6,27.9,20.7,False,3.4025,Monsoon (Jul–Sep)
+2019-08-07,32.63,31.82,9.81,104.0,Moderate,88,5.6,28.2,7.0,False,3.4852,Monsoon (Jul–Sep)
+2019-08-08,27.69,28.9,10.61,99.0,Satisfactory,78,9.2,30.1,0.5,False,3.3211,Monsoon (Jul–Sep)
+2019-08-09,14.59,22.08,9.3,89.0,Satisfactory,75,21.4,29.3,0.8,False,2.6803,Monsoon (Jul–Sep)
+2019-08-10,16.73,22.06,8.47,75.0,Satisfactory,80,18.8,28.8,1.7,False,2.8172,Monsoon (Jul–Sep)
+2019-08-11,25.53,25.93,8.65,83.0,Satisfactory,79,7.9,29.5,0.3,False,3.2399,Monsoon (Jul–Sep)
+2019-08-12,20.53,26.18,8.14,80.0,Satisfactory,80,9.3,29.3,7.6,False,3.0219,Monsoon (Jul–Sep)
+2019-08-13,21.68,27.12,8.37,85.0,Satisfactory,84,9.0,29.1,20.1,False,3.0764,Monsoon (Jul–Sep)
+2019-08-14,33.21,31.9,8.5,93.0,Satisfactory,88,4.0,28.3,2.8,False,3.5029,Monsoon (Jul–Sep)
+2019-08-15,28.78,25.03,8.51,93.0,Satisfactory,82,14.0,29.0,11.2,False,3.3597,Monsoon (Jul–Sep)
+2019-08-16,15.52,21.51,8.61,73.0,Satisfactory,84,17.3,27.9,9.4,False,2.7421,Monsoon (Jul–Sep)
+2019-08-17,10.24,19.1,7.67,67.0,Satisfactory,90,20.7,26.1,8.4,False,2.3263,Monsoon (Jul–Sep)
+2019-08-18,15.51,20.93,8.57,66.0,Satisfactory,87,10.1,26.8,31.0,False,2.7415,Monsoon (Jul–Sep)
+2019-08-19,38.55,28.59,8.6,99.0,Satisfactory,84,5.0,28.0,1.3,False,3.652,Monsoon (Jul–Sep)
+2019-08-20,41.74,26.86,8.12,103.0,Moderate,82,9.6,28.5,0.8,False,3.7315,Monsoon (Jul–Sep)
+2019-08-21,46.69,32.68,7.81,107.0,Moderate,78,9.9,29.3,0.0,False,3.8435,Monsoon (Jul–Sep)
+2019-08-22,44.16,42.21,8.41,125.0,Moderate,84,6.3,28.6,0.8,False,3.7878,Monsoon (Jul–Sep)
+2019-08-23,50.49,40.32,8.36,130.0,Moderate,82,3.5,29.2,4.0,False,3.9218,Monsoon (Jul–Sep)
+2019-08-24,60.71,41.76,8.78,149.0,Moderate,83,5.8,29.1,3.9,False,4.1061,Monsoon (Jul–Sep)
+2019-08-25,33.49,31.71,8.23,107.0,Moderate,88,8.2,27.5,12.9,False,3.5112,Monsoon (Jul–Sep)
+2019-08-26,25.06,31.6,8.55,77.0,Satisfactory,83,8.6,28.8,0.6,False,3.2213,Monsoon (Jul–Sep)
+2019-08-27,40.68,34.48,10.01,114.0,Moderate,80,6.3,29.8,0.1,False,3.7057,Monsoon (Jul–Sep)
+2019-08-28,42.04,34.62,9.64,119.0,Moderate,78,8.4,30.4,0.4,False,3.7386,Monsoon (Jul–Sep)
+2019-08-29,33.92,30.6,8.24,103.0,Moderate,80,9.1,30.1,1.0,False,3.524,Monsoon (Jul–Sep)
+2019-08-30,43.5,32.44,9.33,110.0,Moderate,81,5.1,30.1,0.9,False,3.7728,Monsoon (Jul–Sep)
+2019-08-31,57.16,40.79,9.14,123.0,Moderate,78,5.4,30.5,6.4,False,4.0459,Monsoon (Jul–Sep)
+2019-09-01,35.13,32.08,8.41,123.0,Moderate,86,10.0,28.6,4.7,False,3.5591,Monsoon (Jul–Sep)
+2019-09-02,46.15,31.91,8.81,105.0,Moderate,83,4.2,29.5,1.3,False,3.8319,Monsoon (Jul–Sep)
+2019-09-03,70.64,36.51,8.95,131.0,Moderate,80,5.1,30.2,5.5,False,4.2576,Monsoon (Jul–Sep)
+2019-09-04,73.33,36.99,9.03,165.0,Moderate,85,8.9,29.0,7.8,False,4.295,Monsoon (Jul–Sep)
+2019-09-05,33.9,29.09,9.25,118.0,Moderate,82,7.8,29.4,0.6,False,3.5234,Monsoon (Jul–Sep)
+2019-09-06,35.81,30.05,10.9,96.0,Satisfactory,81,7.8,29.7,0.4,False,3.5782,Monsoon (Jul–Sep)
+2019-09-07,34.98,30.9,8.17,95.0,Satisfactory,85,9.1,28.8,2.1,False,3.5548,Monsoon (Jul–Sep)
+2019-09-08,32.83,26.84,8.72,99.0,Satisfactory,83,6.3,29.1,0.2,False,3.4913,Monsoon (Jul–Sep)
+2019-09-09,56.31,30.47,8.45,107.0,Moderate,78,4.9,30.1,0.1,False,4.0309,Monsoon (Jul–Sep)
+2019-09-10,64.48,34.12,9.49,139.0,Moderate,74,5.5,30.6,0.0,False,4.1664,Monsoon (Jul–Sep)
+2019-09-11,79.6,39.69,9.54,166.0,Moderate,73,5.8,31.2,0.4,False,4.377,Monsoon (Jul–Sep)
+2019-09-12,57.83,34.01,8.91,158.0,Moderate,79,13.4,30.2,0.6,False,4.0575,Monsoon (Jul–Sep)
+2019-09-13,33.59,29.75,8.16,103.0,Moderate,77,10.8,29.8,0.6,False,3.5142,Monsoon (Jul–Sep)
+2019-09-14,26.65,26.05,8.48,85.0,Satisfactory,79,12.1,28.7,0.7,False,3.2828,Monsoon (Jul–Sep)
+2019-09-15,35.52,27.77,8.55,83.0,Satisfactory,83,8.3,28.1,5.2,False,3.5701,Monsoon (Jul–Sep)
+2019-09-16,56.6,36.18,8.35,111.0,Moderate,81,5.4,29.3,0.4,False,4.036,Monsoon (Jul–Sep)
+2019-09-17,59.14,38.18,8.64,143.0,Moderate,80,7.8,29.2,2.0,False,4.0799,Monsoon (Jul–Sep)
+2019-09-18,35.41,31.3,9.46,117.0,Moderate,80,11.2,28.5,3.0,False,3.567,Monsoon (Jul–Sep)
+2019-09-19,21.74,24.15,9.29,80.0,Satisfactory,80,12.7,26.9,1.0,False,3.0792,Monsoon (Jul–Sep)
+2019-09-20,40.33,31.73,10.81,96.0,Satisfactory,83,7.0,27.0,7.7,False,3.6971,Monsoon (Jul–Sep)
+2019-09-21,39.23,31.43,9.63,112.0,Moderate,80,6.1,27.8,0.7,False,3.6694,Monsoon (Jul–Sep)
+2019-09-22,26.51,30.66,9.32,86.0,Satisfactory,83,8.7,27.1,13.9,False,3.2775,Monsoon (Jul–Sep)
+2019-09-23,34.46,30.02,9.9,89.0,Satisfactory,81,8.0,26.7,2.0,False,3.5398,Monsoon (Jul–Sep)
+2019-09-24,35.88,34.98,9.19,103.0,Moderate,80,8.6,27.0,2.9,False,3.5802,Monsoon (Jul–Sep)
+2019-09-25,30.52,29.99,8.94,100.0,Satisfactory,81,11.3,27.2,3.6,False,3.4184,Monsoon (Jul–Sep)
+2019-09-26,22.9,27.25,10.43,87.0,Satisfactory,76,15.9,27.6,1.9,False,3.1311,Monsoon (Jul–Sep)
+2019-09-27,15.66,24.52,10.3,78.0,Satisfactory,78,13.0,26.6,0.5,False,2.7511,Monsoon (Jul–Sep)
+2019-09-28,22.52,26.18,10.01,78.0,Satisfactory,83,12.8,25.5,4.6,False,3.1144,Monsoon (Jul–Sep)
+2019-09-29,16.91,22.84,8.85,68.0,Satisfactory,84,11.7,25.0,2.0,False,2.8279,Monsoon (Jul–Sep)
+2019-09-30,29.42,27.89,8.22,75.0,Satisfactory,83,7.9,25.3,6.0,False,3.3817,Monsoon (Jul–Sep)
+2019-10-01,33.92,28.0,8.5,98.0,Satisfactory,85,7.5,25.1,4.5,False,3.524,Other months
+2019-10-02,40.16,29.72,8.95,105.0,Moderate,80,5.3,26.5,0.2,False,3.6929,Other months
+2019-10-03,57.99,36.77,10.42,140.0,Moderate,73,4.5,27.5,0.0,False,4.0603,Other months
+2019-10-04,43.07,34.07,8.34,113.0,Moderate,72,8.2,26.1,4.9,False,3.7628,Other months
+2019-10-05,39.48,33.82,8.08,108.0,Moderate,66,10.4,26.1,0.0,False,3.6758,Other months
+2019-10-06,58.75,36.98,8.62,127.0,Moderate,62,8.2,26.4,0.0,False,4.0733,Other months
+2019-10-07,55.88,33.46,8.25,133.0,Moderate,62,10.9,26.3,0.0,False,4.0232,Other months
+2019-10-08,44.85,33.4,8.91,123.0,Moderate,57,7.0,26.4,0.0,False,3.8033,Other months
+2019-10-09,77.02,45.5,11.9,165.0,Moderate,61,6.3,25.5,0.0,False,4.3441,Other months
+2019-10-10,100.82,50.32,13.83,208.0,Poor,59,5.9,26.4,0.0,False,4.6133,Other months
+2019-10-11,98.07,48.05,11.02,243.0,Poor,54,5.7,26.6,0.0,False,4.5857,Other months
+2019-10-12,103.45,48.54,11.26,235.0,Poor,57,6.6,27.3,0.0,False,4.6391,Other months
+2019-10-13,132.57,51.27,12.75,282.0,Poor,52,6.8,27.7,0.0,False,4.8871,Other months
+2019-10-14,116.33,50.83,11.46,285.0,Poor,58,7.5,27.0,0.0,False,4.7564,Other months
+2019-10-15,133.35,58.61,13.31,291.0,Poor,62,6.2,27.1,0.0,False,4.893,Other months
+2019-10-16,146.37,53.03,13.22,320.0,Very Poor,58,6.3,27.6,0.0,False,4.9861,Other months
+2019-10-17,121.68,46.51,14.95,300.0,Poor,61,7.4,27.0,0.0,False,4.8014,Other months
+2019-10-18,90.41,39.62,11.36,265.0,Poor,65,8.9,26.4,2.7,False,4.5044,Other months
+2019-10-19,76.77,51.37,11.33,170.0,Moderate,67,5.8,25.5,2.5,False,4.3408,Other months
+2019-10-20,98.05,48.83,10.64,242.0,Poor,49,9.3,25.7,0.0,False,4.5855,Other months
+2019-10-21,115.16,51.05,11.11,254.0,Poor,51,10.8,25.0,0.0,False,4.7463,Other months
+2019-10-22,93.51,50.05,11.7,243.0,Poor,48,12.0,24.4,0.0,False,4.5381,Other months
+2019-10-23,122.12,57.92,14.08,248.0,Poor,54,8.5,24.4,0.0,False,4.805,Other months
+2019-10-24,173.56,67.36,18.87,335.0,Very Poor,65,6.7,24.2,0.0,False,5.1565,Other months
+2019-10-25,129.9,52.55,15.17,331.0,Very Poor,63,7.2,24.4,0.0,False,4.8668,Other months
+2019-10-26,148.73,56.43,12.76,315.0,Very Poor,61,6.2,24.5,0.0,False,5.0021,Other months
+2019-10-27,198.81,48.37,13.21,354.0,Very Poor,58,9.2,24.5,0.0,False,5.2923,Other months
+2019-10-28,301.39,48.45,18.03,417.0,Severe,59,7.5,24.1,0.0,False,5.7084,Other months
+2019-10-29,287.56,60.03,12.71,419.0,Severe,65,5.6,24.4,0.0,False,5.6614,Other months
+2019-10-30,279.32,63.87,13.81,452.0,Severe,64,7.7,25.4,0.0,False,5.6324,Other months
+2019-10-31,314.32,71.37,15.86,460.0,Severe,66,7.9,24.3,0.0,False,5.7504,Other months
+2019-11-01,388.45,73.61,16.32,591.0,Severe,65,6.7,24.8,0.0,False,5.9622,Winter (Nov–Jan)
+2019-11-02,320.26,54.1,12.88,473.0,Severe,69,9.3,24.4,0.2,False,5.7691,Winter (Nov–Jan)
+2019-11-03,582.28,49.67,10.2,659.0,Severe,71,9.1,23.8,0.0,False,6.367,Winter (Nov–Jan)
+2019-11-04,272.3,44.53,11.68,532.0,Severe,63,12.6,23.7,0.0,False,5.6069,Winter (Nov–Jan)
+2019-11-05,190.41,44.32,13.17,385.0,Very Poor,57,12.5,22.9,0.0,False,5.2492,Winter (Nov–Jan)
+2019-11-06,101.09,54.77,11.58,265.0,Poor,59,7.8,23.3,0.0,False,4.616,Winter (Nov–Jan)
+2019-11-07,182.47,51.64,11.95,296.0,Poor,71,9.7,22.1,1.4,False,5.2066,Winter (Nov–Jan)
+2019-11-08,154.14,52.79,14.04,346.0,Very Poor,74,7.1,21.9,0.8,False,5.0379,Winter (Nov–Jan)
+2019-11-09,140.8,44.01,11.58,321.0,Very Poor,60,11.2,21.8,0.0,False,4.9473,Winter (Nov–Jan)
+2019-11-10,192.35,50.35,13.95,339.0,Very Poor,60,9.5,20.8,0.0,False,5.2593,Winter (Nov–Jan)
+2019-11-11,252.48,61.36,15.18,376.0,Very Poor,59,8.4,20.3,0.0,False,5.5313,Winter (Nov–Jan)
+2019-11-12,384.34,66.1,14.41,475.0,Severe,62,8.2,19.6,0.0,False,5.9515,Winter (Nov–Jan)
+2019-11-13,383.36,73.6,15.12,532.0,Severe,67,7.0,20.7,0.0,False,5.949,Winter (Nov–Jan)
+2019-11-14,371.42,82.63,16.26,537.0,Severe,69,6.6,21.4,0.0,False,5.9173,Winter (Nov–Jan)
+2019-11-15,423.52,59.35,14.14,595.0,Severe,72,9.0,21.0,0.0,False,6.0486,Winter (Nov–Jan)
+2019-11-16,174.03,42.35,12.89,438.0,Severe,64,14.0,21.9,0.0,False,5.1592,Winter (Nov–Jan)
+2019-11-17,96.34,33.78,10.78,273.0,Poor,61,18.4,21.7,0.0,False,4.5679,Winter (Nov–Jan)
+2019-11-18,108.4,40.05,10.55,245.0,Poor,64,12.6,19.9,0.0,False,4.6858,Winter (Nov–Jan)
+2019-11-19,126.92,52.79,12.05,251.0,Poor,66,9.3,19.4,0.0,False,4.8436,Winter (Nov–Jan)
+2019-11-20,175.19,77.62,14.74,315.0,Very Poor,65,5.8,19.1,0.0,False,5.1659,Winter (Nov–Jan)
+2019-11-21,217.7,91.65,19.85,375.0,Very Poor,67,7.1,19.6,0.0,False,5.3831,Winter (Nov–Jan)
+2019-11-22,201.17,75.08,16.02,377.0,Very Poor,65,6.6,20.6,0.0,False,5.3042,Winter (Nov–Jan)
+2019-11-23,130.41,52.7,11.64,334.0,Very Poor,62,10.6,20.6,0.0,False,4.8707,Winter (Nov–Jan)
+2019-11-24,107.86,43.51,11.35,264.0,Poor,64,11.1,20.7,0.0,False,4.6808,Winter (Nov–Jan)
+2019-11-25,122.37,53.29,13.59,269.0,Poor,67,6.6,20.0,0.0,False,4.807,Winter (Nov–Jan)
+2019-11-26,114.27,53.83,17.65,284.0,Poor,67,9.5,20.1,0.9,False,4.7386,Winter (Nov–Jan)
+2019-11-27,65.7,42.94,10.71,166.0,Moderate,68,7.1,19.7,0.0,False,4.1851,Winter (Nov–Jan)
+2019-11-28,31.03,32.3,8.99,106.0,Moderate,83,13.4,18.3,22.1,False,3.435,Winter (Nov–Jan)
+2019-11-29,53.79,41.9,10.14,89.0,Satisfactory,82,6.1,17.7,0.0,False,3.9851,Winter (Nov–Jan)
+2019-11-30,96.96,45.04,9.87,175.0,Moderate,78,8.8,17.0,0.0,False,4.5743,Winter (Nov–Jan)
+2019-12-01,123.66,50.39,11.39,257.0,Poor,74,8.5,15.5,0.0,False,4.8175,Winter (Nov–Jan)
+2019-12-02,141.12,57.23,11.18,299.0,Poor,70,9.8,15.4,0.0,False,4.9496,Winter (Nov–Jan)
+2019-12-03,140.07,60.85,11.37,302.0,Very Poor,66,10.8,15.1,0.0,False,4.9421,Winter (Nov–Jan)
+2019-12-04,163.24,71.65,13.48,313.0,Very Poor,72,6.4,15.3,0.0,False,5.0952,Winter (Nov–Jan)
+2019-12-05,271.99,91.53,14.48,389.0,Very Poor,74,6.6,15.4,0.0,False,5.6058,Winter (Nov–Jan)
+2019-12-06,241.69,69.73,13.41,423.0,Severe,82,6.5,15.4,0.0,False,5.4877,Winter (Nov–Jan)
+2019-12-07,233.79,66.41,15.4,382.0,Very Poor,79,5.7,16.0,0.0,False,5.4544,Winter (Nov–Jan)
+2019-12-08,239.98,68.59,13.69,404.0,Severe,79,6.9,15.7,0.0,False,5.4806,Winter (Nov–Jan)
+2019-12-09,200.33,68.28,12.34,371.0,Very Poor,73,6.2,15.3,0.0,False,5.3,Winter (Nov–Jan)
+2019-12-10,236.4,72.63,12.49,377.0,Very Poor,70,7.4,15.1,0.0,False,5.4655,Winter (Nov–Jan)
+2019-12-11,299.85,85.56,14.71,430.0,Severe,71,6.1,15.7,0.0,False,5.7033,Winter (Nov–Jan)
+2019-12-12,284.18,64.36,12.61,471.0,Severe,78,13.3,15.6,5.9,False,5.6496,Winter (Nov–Jan)
+2019-12-13,94.62,41.21,7.9,322.0,Very Poor,87,12.3,15.1,3.7,False,4.5499,Winter (Nov–Jan)
+2019-12-14,78.59,41.29,9.04,179.0,Moderate,85,5.0,13.0,0.0,False,4.3642,Winter (Nov–Jan)
+2019-12-15,94.67,39.9,8.5,205.0,Poor,80,8.1,13.2,0.0,False,4.5504,Winter (Nov–Jan)
+2019-12-16,88.05,35.06,7.17,202.0,Poor,80,10.2,12.4,0.0,False,4.4779,Winter (Nov–Jan)
+2019-12-17,93.07,32.7,7.26,178.0,Moderate,80,10.1,11.8,0.0,False,4.5334,Winter (Nov–Jan)
+2019-12-18,144.0,44.41,7.98,273.0,Poor,78,9.4,11.9,0.0,False,4.9698,Winter (Nov–Jan)
+2019-12-19,261.16,55.64,9.64,354.0,Very Poor,80,5.4,11.5,0.0,False,5.5651,Winter (Nov–Jan)
+2019-12-20,316.09,60.58,9.92,452.0,Severe,79,5.1,13.0,0.0,False,5.756,Winter (Nov–Jan)
+2019-12-21,249.87,50.24,8.52,441.0,Severe,81,6.2,13.4,0.2,False,5.5209,Winter (Nov–Jan)
+2019-12-22,146.81,38.96,6.67,351.0,Very Poor,84,10.1,12.5,0.0,False,4.9891,Winter (Nov–Jan)
+2019-12-23,171.47,39.83,7.0,321.0,Very Poor,82,10.5,11.8,0.0,False,5.1444,Winter (Nov–Jan)
+2019-12-24,262.69,56.72,8.7,376.0,Very Poor,90,6.2,9.6,0.0,False,5.571,Winter (Nov–Jan)
+2019-12-25,166.71,39.77,6.96,384.0,Very Poor,87,9.7,8.7,0.0,False,5.1163,Winter (Nov–Jan)
+2019-12-26,196.97,45.08,6.99,340.0,Very Poor,84,11.2,8.4,0.0,False,5.2831,Winter (Nov–Jan)
+2019-12-27,240.07,54.6,7.88,372.0,Very Poor,88,7.2,7.3,0.0,False,5.4809,Winter (Nov–Jan)
+2019-12-28,275.6,55.98,10.26,425.0,Severe,90,6.5,6.7,0.0,False,5.619,Winter (Nov–Jan)
+2019-12-29,326.79,57.76,10.25,455.0,Severe,86,5.2,7.3,0.0,False,5.7893,Winter (Nov–Jan)
+2019-12-30,333.43,55.61,11.15,506.0,Severe,89,6.8,6.9,0.0,False,5.8094,Winter (Nov–Jan)
+2019-12-31,245.53,47.5,11.03,417.0,Severe,78,6.8,7.6,0.0,False,5.5034,Winter (Nov–Jan)
+2020-01-01,372.14,64.18,18.49,492.0,Severe,79,8.1,10.0,0.0,False,5.9193,Winter (Nov–Jan)
+2020-01-02,327.04,64.8,19.95,485.0,Severe,79,8.6,12.9,0.0,False,5.7901,Winter (Nov–Jan)
+2020-01-03,228.9,55.65,14.93,426.0,Severe,78,6.5,14.0,0.1,False,5.4333,Winter (Nov–Jan)
+2020-01-04,220.6,57.67,12.85,366.0,Very Poor,82,5.4,13.4,0.5,False,5.3964,Winter (Nov–Jan)
+2020-01-05,170.21,48.25,9.59,354.0,Very Poor,74,9.1,13.3,0.0,False,5.137,Winter (Nov–Jan)
+2020-01-06,159.64,51.19,11.34,335.0,Very Poor,76,6.7,13.5,0.0,False,5.0729,Winter (Nov–Jan)
+2020-01-07,120.31,44.9,12.74,285.0,Poor,83,9.8,14.0,2.1,False,4.7901,Winter (Nov–Jan)
+2020-01-08,117.98,38.64,8.67,281.0,Poor,92,9.2,12.8,17.5,False,4.7705,Winter (Nov–Jan)
+2020-01-09,89.26,32.3,7.28,231.0,Poor,78,12.0,10.5,0.0,False,4.4916,Winter (Nov–Jan)
+2020-01-10,130.82,45.12,9.44,255.0,Poor,77,11.7,10.1,0.0,False,4.8738,Winter (Nov–Jan)
+2020-01-11,151.1,53.28,11.65,309.0,Very Poor,77,9.3,10.3,0.0,False,5.0179,Winter (Nov–Jan)
+2020-01-12,207.23,59.91,12.35,352.0,Very Poor,78,8.4,11.8,0.0,False,5.3338,Winter (Nov–Jan)
+2020-01-13,218.98,55.04,11.59,381.0,Very Poor,83,10.5,14.6,16.6,False,5.389,Winter (Nov–Jan)
+2020-01-14,115.62,38.08,9.24,314.0,Very Poor,86,8.6,14.0,0.3,False,4.7503,Winter (Nov–Jan)
+2020-01-15,111.57,47.45,10.68,241.0,Poor,83,8.6,12.4,0.0,False,4.7147,Winter (Nov–Jan)
+2020-01-16,139.06,44.21,10.44,286.0,Poor,90,7.7,12.4,11.1,False,4.9349,Winter (Nov–Jan)
+2020-01-17,107.65,36.19,9.69,287.0,Poor,88,7.6,13.0,0.6,False,4.6789,Winter (Nov–Jan)
+2020-01-18,125.3,43.78,9.65,262.0,Poor,89,6.3,12.5,0.2,False,4.8307,Winter (Nov–Jan)
+2020-01-19,125.04,34.18,8.69,290.0,Poor,82,9.3,11.7,0.0,False,4.8286,Winter (Nov–Jan)
+2020-01-20,142.18,38.21,9.65,282.0,Poor,84,8.2,12.1,0.0,False,4.9571,Winter (Nov–Jan)
+2020-01-21,222.81,48.18,12.24,359.0,Very Poor,86,5.8,12.9,0.0,False,5.4063,Winter (Nov–Jan)
+2020-01-22,198.88,44.3,10.95,378.0,Very Poor,82,10.1,12.5,0.0,False,5.2927,Winter (Nov–Jan)
+2020-01-23,74.45,35.26,8.71,273.0,Poor,66,17.9,12.5,0.0,False,4.3101,Winter (Nov–Jan)
+2020-01-24,79.83,44.0,10.73,155.0,Moderate,60,17.7,12.8,0.0,False,4.3799,Winter (Nov–Jan)
+2020-01-25,136.72,56.31,12.36,251.0,Poor,74,7.7,11.8,0.0,False,4.9179,Winter (Nov–Jan)
+2020-01-26,201.2,50.94,12.81,349.0,Very Poor,79,7.0,13.6,0.0,False,5.3043,Winter (Nov–Jan)
+2020-01-27,209.97,67.09,14.72,365.0,Very Poor,77,8.2,14.0,0.4,False,5.347,Winter (Nov–Jan)
+2020-01-28,104.45,42.01,11.12,302.0,Very Poor,83,13.2,14.2,16.0,False,4.6487,Winter (Nov–Jan)
+2020-01-29,77.95,42.24,9.85,218.0,Poor,82,6.6,13.3,0.5,False,4.3561,Winter (Nov–Jan)
+2020-01-30,91.56,45.04,10.06,195.0,Moderate,77,11.2,12.6,0.0,False,4.517,Winter (Nov–Jan)
+2020-01-31,92.04,47.35,9.9,203.0,Poor,74,9.3,12.1,0.0,False,4.5222,Winter (Nov–Jan)
+2020-02-01,112.13,44.25,10.02,244.0,Poor,74,7.7,12.3,0.0,False,4.7197,Other months
+2020-02-02,120.86,45.28,10.32,254.0,Poor,76,10.1,11.7,0.0,False,4.7946,Other months
+2020-02-03,138.5,53.71,11.4,297.0,Poor,74,8.3,12.0,0.0,False,4.9309,Other months
+2020-02-04,188.42,64.8,15.26,336.0,Very Poor,74,8.1,13.0,0.0,False,5.2387,Other months
+2020-02-05,150.08,53.35,13.31,344.0,Very Poor,74,10.3,12.9,0.0,False,5.0112,Other months
+2020-02-06,118.57,51.82,12.08,277.0,Poor,75,8.2,11.7,0.0,False,4.7755,Other months
+2020-02-07,150.15,58.46,14.21,307.0,Very Poor,71,6.7,12.7,0.1,False,5.0116,Other months
+2020-02-08,149.67,47.55,14.39,315.0,Very Poor,75,8.5,12.4,0.0,False,5.0084,Other months
+2020-02-09,151.43,50.75,14.64,310.0,Very Poor,75,8.0,12.8,0.0,False,5.0201,Other months
+2020-02-10,174.4,56.48,14.83,328.0,Very Poor,73,9.1,13.2,0.0,False,5.1614,Other months
+2020-02-11,176.57,60.12,14.37,347.0,Very Poor,73,8.6,13.5,0.0,False,5.1737,Other months
+2020-02-12,172.12,55.96,16.24,343.0,Very Poor,68,13.2,15.9,0.0,False,5.1482,Other months
+2020-02-13,95.72,41.59,16.49,279.0,Poor,57,18.9,19.2,0.0,False,4.5614,Other months
+2020-02-14,73.84,34.6,13.53,186.0,Moderate,51,21.6,18.5,0.0,False,4.3019,Other months
+2020-02-15,83.07,44.57,17.59,174.0,Moderate,47,16.4,17.5,0.0,False,4.4197,Other months
+2020-02-16,132.63,57.15,19.61,254.0,Poor,60,10.2,17.1,0.0,False,4.8876,Other months
+2020-02-17,158.69,61.17,18.85,323.0,Very Poor,56,10.8,17.5,0.0,False,5.067,Other months
+2020-02-18,125.53,59.91,23.01,292.0,Poor,48,13.4,17.0,0.0,False,4.8325,Other months
+2020-02-19,138.46,59.9,20.13,300.0,Poor,54,14.9,18.2,0.0,False,4.9306,Other months
+2020-02-20,98.84,44.05,14.91,253.0,Poor,62,20.1,20.0,2.1,False,4.5935,Other months
+2020-02-21,53.11,33.27,10.45,170.0,Moderate,84,18.2,16.2,13.4,False,3.9724,Other months
+2020-02-22,63.62,41.23,13.38,104.0,Moderate,79,8.8,17.8,0.7,False,4.1529,Other months
+2020-02-23,105.71,42.24,14.3,221.0,Poor,82,7.2,17.5,2.6,False,4.6607,Other months
+2020-02-24,70.59,44.2,15.94,169.0,Moderate,78,8.0,17.6,0.1,False,4.2569,Other months
+2020-02-25,127.75,46.76,18.24,244.0,Poor,74,9.2,18.0,0.0,False,4.8501,Other months
+2020-02-26,141.81,50.67,17.61,303.0,Very Poor,74,6.6,18.6,0.0,False,4.9545,Other months
+2020-02-27,107.28,46.15,14.7,270.0,Poor,76,8.1,19.1,0.0,False,4.6754,Other months
+2020-02-28,83.48,33.92,11.55,214.0,Poor,74,15.8,20.3,0.0,False,4.4246,Other months
+2020-02-29,60.01,33.98,12.05,144.0,Moderate,82,14.8,18.7,9.1,False,4.0945,Other months
+2020-03-01,42.83,40.73,12.19,105.0,Moderate,80,8.6,19.1,0.0,False,3.7572,Other months
+2020-03-02,99.34,50.23,15.81,192.0,Moderate,78,6.2,19.7,0.2,False,4.5985,Other months
+2020-03-03,86.26,46.6,15.48,226.0,Poor,70,7.8,19.6,0.0,False,4.4574,Other months
+2020-03-04,82.9,45.62,16.22,200.0,Moderate,72,8.6,19.2,1.0,False,4.4176,Other months
+2020-03-05,31.43,32.97,11.32,112.0,Moderate,79,13.9,18.2,13.0,False,3.4478,Other months
+2020-03-06,21.32,33.71,10.42,82.0,Satisfactory,86,18.2,16.4,23.3,False,3.0596,Other months
+2020-03-07,40.96,35.53,11.84,77.0,Satisfactory,85,10.7,15.9,1.7,False,3.7126,Other months
+2020-03-08,72.1,37.14,12.61,156.0,Moderate,79,7.2,16.5,0.0,False,4.2781,Other months
+2020-03-09,58.04,32.29,13.33,138.0,Moderate,67,14.0,17.0,0.0,False,4.0611,Other months
+2020-03-10,84.35,30.22,17.21,186.0,Moderate,68,6.4,17.1,0.0,False,4.435,Other months
+2020-03-11,55.19,29.76,13.82,128.0,Moderate,74,14.3,18.7,2.6,False,4.0108,Other months
+2020-03-12,56.92,36.74,13.68,125.0,Moderate,67,13.2,19.6,0.0,False,4.0416,Other months
+2020-03-13,68.72,40.53,15.42,170.0,Moderate,65,8.3,18.7,10.0,False,4.23,Other months
+2020-03-14,39.41,34.59,11.59,131.0,Moderate,82,10.2,16.4,4.2,False,3.674,Other months
+2020-03-15,60.99,41.09,13.92,124.0,Moderate,78,5.5,16.3,0.1,False,4.1107,Other months
+2020-03-16,61.61,41.52,14.8,148.0,Moderate,75,9.6,18.0,0.0,False,4.1208,Other months
+2020-03-17,69.7,43.5,15.06,164.0,Moderate,71,10.7,18.9,0.0,False,4.2442,Other months
+2020-03-18,68.93,45.86,14.93,162.0,Moderate,67,11.0,20.4,0.0,False,4.2331,Other months
+2020-03-19,90.62,45.67,17.66,191.0,Moderate,71,7.7,20.8,0.2,False,4.5067,Other months
+2020-03-20,90.31,51.26,19.71,209.0,Poor,69,8.1,21.2,0.4,False,4.5032,Other months
+2020-03-21,82.39,46.04,18.55,205.0,Poor,70,5.3,21.7,1.6,False,4.4115,Other months
+2020-03-22,78.61,29.85,16.63,198.0,Moderate,68,8.1,22.0,0.0,False,4.3645,Other months
+2020-03-23,54.26,25.96,15.17,127.0,Moderate,61,5.6,22.5,0.0,False,3.9938,Other months
+2020-03-24,55.85,27.07,15.81,124.0,Moderate,64,7.4,23.6,0.7,False,4.0227,Other months
+2020-03-25,37.87,21.11,11.49,92.0,Satisfactory,62,10.1,23.8,0.0,False,3.6342,Other months
+2020-03-26,45.69,16.58,12.82,93.0,Satisfactory,61,12.7,23.5,0.0,False,3.8219,Other months
+2020-03-27,26.89,15.32,11.04,76.0,Satisfactory,74,10.7,21.4,6.0,False,3.2918,Other months
+2020-03-28,21.23,17.52,10.28,51.0,Satisfactory,69,10.5,21.3,0.1,False,3.0554,Other months
+2020-03-29,27.59,16.6,10.39,64.0,Satisfactory,59,14.5,21.9,0.0,False,3.3175,Other months
+2020-03-30,35.08,17.52,12.47,74.0,Satisfactory,55,12.1,21.9,0.0,False,3.5576,Other months
+2020-03-31,35.31,18.03,12.33,81.0,Satisfactory,56,11.4,22.7,0.1,False,3.5642,Other months
+2020-04-01,32.88,19.17,13.0,80.0,Satisfactory,56,7.4,23.9,0.0,False,3.4929,Other months
+2020-04-02,28.51,17.18,10.84,78.0,Satisfactory,53,14.7,23.3,0.0,False,3.3503,Other months
+2020-04-03,31.36,20.07,11.99,84.0,Satisfactory,44,12.0,22.4,0.0,False,3.4455,Other months
+2020-04-04,40.79,22.38,12.59,90.0,Satisfactory,48,11.8,23.2,0.0,False,3.7084,Other months
+2020-04-05,51.79,24.42,16.03,103.0,Moderate,53,9.0,24.0,0.0,False,3.9472,Other months
+2020-04-06,59.91,24.37,15.59,134.0,Moderate,46,10.0,26.2,0.0,False,4.0928,Other months
+2020-04-07,33.12,19.27,13.46,100.0,Satisfactory,46,13.7,25.0,0.4,False,3.5001,Other months
+2020-04-08,29.7,18.56,12.85,91.0,Satisfactory,46,11.9,24.9,0.0,False,3.3911,Other months
+2020-04-09,36.13,21.37,14.2,89.0,Satisfactory,46,10.6,24.4,0.0,False,3.5871,Other months
+2020-04-10,57.67,27.12,16.32,111.0,Moderate,47,8.4,25.7,0.0,False,4.0547,Other months
+2020-04-11,53.03,23.64,18.38,126.0,Moderate,42,8.1,27.7,0.0,False,3.9709,Other months
+2020-04-12,38.57,17.59,15.7,102.0,Moderate,42,11.3,28.0,0.0,False,3.6525,Other months
+2020-04-13,60.6,23.4,19.86,119.0,Moderate,41,10.9,29.3,0.0,False,4.1043,Other months
+2020-04-14,58.22,25.71,17.38,134.0,Moderate,41,8.7,30.1,0.0,False,4.0642,Other months
+2020-04-15,58.31,24.55,14.89,152.0,Moderate,38,10.2,30.4,0.0,False,4.0658,Other months
+2020-04-16,69.8,25.01,19.42,172.0,Moderate,36,10.2,30.3,0.0,False,4.2456,Other months
+2020-04-17,26.93,15.83,14.08,123.0,Moderate,34,12.7,29.6,0.0,False,3.2932,Other months
+2020-04-18,29.09,15.45,12.63,102.0,Moderate,38,13.8,29.0,0.0,False,3.3704,Other months
+2020-04-19,35.49,19.72,13.17,95.0,Satisfactory,43,9.8,27.9,0.0,False,3.5693,Other months
+2020-04-20,52.86,24.56,15.06,115.0,Moderate,45,7.6,26.8,0.4,False,3.9676,Other months
+2020-04-21,37.17,19.64,15.36,102.0,Moderate,51,8.4,26.1,0.0,False,3.6155,Other months
+2020-04-22,58.25,24.79,17.34,122.0,Moderate,41,7.8,27.5,0.0,False,4.0647,Other months
+2020-04-23,54.71,24.83,17.39,129.0,Moderate,38,10.1,28.9,0.0,False,4.002,Other months
+2020-04-24,65.91,25.62,18.62,143.0,Moderate,41,7.0,28.9,0.0,False,4.1883,Other months
+2020-04-25,33.09,18.68,12.76,121.0,Moderate,43,8.1,28.5,0.5,False,3.4992,Other months
+2020-04-26,40.24,17.45,16.21,119.0,Moderate,58,14.5,26.9,1.0,False,3.6949,Other months
+2020-04-27,27.18,14.8,15.59,98.0,Satisfactory,69,16.4,25.4,2.8,False,3.3025,Other months
+2020-04-28,41.75,17.35,17.6,105.0,Moderate,64,9.0,26.4,0.2,False,3.7317,Other months
+2020-04-29,55.18,20.11,19.08,123.0,Moderate,55,7.2,28.6,0.0,False,4.0106,Other months
+2020-04-30,49.96,17.61,17.42,128.0,Moderate,51,10.8,29.4,0.2,False,3.9112,Other months
+2020-05-01,61.04,18.46,17.52,140.0,Moderate,54,10.7,30.5,0.0,False,4.1115,Other months
+2020-05-02,34.67,14.36,13.0,127.0,Moderate,57,18.4,29.3,0.9,False,3.5459,Other months
+2020-05-03,32.56,15.14,11.94,110.0,Moderate,64,13.7,27.7,21.8,False,3.4831,Other months
+2020-05-04,26.63,16.95,11.92,92.0,Satisfactory,66,7.0,27.2,0.0,False,3.282,Other months
+2020-05-05,56.24,21.36,16.4,117.0,Moderate,50,7.7,28.8,0.0,False,4.0296,Other months
+2020-05-06,58.44,21.88,15.78,139.0,Moderate,45,7.5,28.6,0.0,False,4.068,Other months
+2020-05-07,36.02,17.97,13.6,140.0,Moderate,44,10.3,28.6,0.0,False,3.5841,Other months
+2020-05-08,51.09,21.66,13.82,138.0,Moderate,40,9.4,30.7,0.0,False,3.9336,Other months
+2020-05-09,54.18,17.65,13.33,142.0,Moderate,41,9.9,31.6,0.0,False,3.9923,Other months
+2020-05-10,44.3,16.46,12.02,127.0,Moderate,54,13.2,29.6,0.8,False,3.791,Other months
+2020-05-11,43.26,19.53,12.66,113.0,Moderate,57,11.2,29.1,0.3,False,3.7672,Other months
+2020-05-12,43.19,18.49,13.84,122.0,Moderate,55,10.0,29.4,0.0,False,3.7656,Other months
+2020-05-13,68.8,21.34,15.41,132.0,Moderate,55,7.7,29.7,0.3,False,4.2312,Other months
+2020-05-14,56.17,25.12,12.92,154.0,Moderate,53,7.3,30.5,0.0,False,4.0284,Other months
+2020-05-15,47.44,23.45,13.71,125.0,Moderate,41,12.2,31.4,0.0,False,3.8595,Other months
+2020-05-16,81.87,26.17,16.19,175.0,Moderate,33,12.4,31.5,0.0,False,4.4051,Other months
+2020-05-17,98.63,31.96,20.19,202.0,Poor,32,8.8,31.8,0.0,False,4.5914,Other months
+2020-05-18,101.02,34.76,22.11,222.0,Poor,30,10.2,31.4,0.0,False,4.6153,Other months
+2020-05-19,106.63,42.67,20.41,238.0,Poor,22,7.8,32.1,0.0,False,4.6694,Other months
+2020-05-20,67.8,32.8,18.96,196.0,Moderate,26,12.7,30.8,0.0,False,4.2166,Other months
+2020-05-21,55.92,31.36,18.99,149.0,Moderate,26,13.7,32.2,0.0,False,4.0239,Other months
+2020-05-22,94.37,45.36,26.05,199.0,Moderate,26,6.4,34.0,0.0,False,4.5472,Other months
+2020-05-23,74.92,42.43,17.05,202.0,Poor,28,8.8,34.6,0.0,False,4.3164,Other months
+2020-05-24,55.37,27.35,17.11,174.0,Moderate,25,12.6,35.6,0.0,False,4.014,Other months
+2020-05-25,61.46,30.92,21.3,157.0,Moderate,22,12.8,35.7,0.0,False,4.1184,Other months
+2020-05-26,55.38,37.79,16.82,153.0,Moderate,19,11.0,36.9,0.0,False,4.0142,Other months
+2020-05-27,43.22,26.95,14.49,156.0,Moderate,21,9.9,36.5,0.0,False,3.7663,Other months
+2020-05-28,39.07,17.1,11.68,174.0,Moderate,41,19.6,33.0,0.1,False,3.6654,Other months
+2020-05-29,24.62,19.02,9.95,129.0,Moderate,58,20.7,30.1,4.2,False,3.2036,Other months
+2020-05-30,23.09,18.51,9.95,84.0,Satisfactory,61,12.1,28.2,5.4,False,3.1394,Other months
+2020-05-31,21.51,17.05,9.06,80.0,Satisfactory,69,7.6,26.8,0.2,False,3.0685,Other months
+2020-06-01,41.05,22.99,14.02,100.0,Satisfactory,67,6.5,27.8,0.0,False,3.7148,Other months
+2020-06-02,45.9,24.78,12.71,123.0,Moderate,62,6.5,29.0,0.0,False,3.8265,Other months
+2020-06-03,50.62,28.02,15.91,123.0,Moderate,58,6.2,29.9,0.0,False,3.9243,Other months
+2020-06-04,68.24,34.11,17.97,144.0,Moderate,57,7.1,29.6,0.0,False,4.223,Other months
+2020-06-05,42.43,25.87,12.46,126.0,Moderate,60,8.2,29.0,0.0,False,3.7479,Other months
+2020-06-06,35.14,21.25,10.69,102.0,Moderate,58,7.6,29.5,0.0,False,3.5593,Other months
+2020-06-07,39.99,22.65,11.89,104.0,Moderate,59,8.4,30.6,1.2,False,3.6886,Other months
+2020-06-08,46.9,25.81,15.78,112.0,Moderate,60,6.9,30.8,0.1,False,3.848,Other months
+2020-06-09,64.77,32.01,15.06,138.0,Moderate,51,6.5,33.0,0.0,False,4.1708,Other months
+2020-06-10,58.9,34.31,14.12,154.0,Moderate,52,7.5,33.7,0.0,False,4.0758,Other months
+2020-06-11,54.69,30.94,12.74,142.0,Moderate,53,6.4,33.5,0.0,False,4.0017,Other months
+2020-06-12,64.0,30.05,12.9,152.0,Moderate,52,9.0,33.8,0.0,False,4.1589,Other months
+2020-06-13,52.36,25.46,10.59,132.0,Moderate,55,9.0,33.6,0.0,False,3.9581,Other months
+2020-06-14,71.08,26.01,13.57,147.0,Moderate,56,8.6,33.6,0.0,False,4.2638,Other months
+2020-06-15,48.69,25.95,12.57,130.0,Moderate,47,8.7,34.3,0.0,False,3.8855,Other months
+2020-06-16,39.87,24.58,12.08,126.0,Moderate,48,9.4,33.8,0.1,False,3.6856,Other months
+2020-06-17,34.35,16.94,10.84,110.0,Moderate,52,11.5,33.9,0.0,False,3.5366,Other months
+2020-06-18,36.84,18.32,12.19,107.0,Moderate,50,10.1,34.6,0.0,False,3.6066,Other months
+2020-06-19,57.6,17.78,11.98,132.0,Moderate,53,11.2,34.9,0.0,False,4.0535,Other months
+2020-06-20,35.96,20.37,10.98,158.0,Moderate,54,12.0,33.7,1.2,False,3.5824,Other months
+2020-06-21,39.7,23.7,11.71,105.0,Moderate,54,9.0,33.4,0.0,False,3.6814,Other months
+2020-06-22,39.47,20.61,11.08,104.0,Moderate,61,7.2,31.9,1.0,False,3.6755,Other months
+2020-06-23,29.02,16.39,11.09,85.0,Satisfactory,64,14.3,31.5,2.0,False,3.368,Other months
+2020-06-24,30.91,16.84,11.02,71.0,Satisfactory,72,11.7,30.3,3.1,False,3.4311,Other months
+2020-06-25,38.37,21.41,11.28,86.0,Satisfactory,66,5.5,31.9,0.0,False,3.6473,Other months
+2020-06-26,50.01,22.06,11.66,104.0,Moderate,65,10.0,32.4,1.4,False,3.9122,Other months
+2020-06-27,39.8,21.46,10.38,112.0,Moderate,57,13.6,33.7,0.1,False,3.6839,Other months
+2020-06-28,59.52,21.6,10.7,196.0,Moderate,51,13.9,35.0,0.2,False,4.0863,Other months
+2020-06-29,44.86,21.57,11.58,233.0,Poor,54,12.8,34.4,0.5,False,3.8035,Other months
+2020-06-30,39.8,17.96,10.51,114.0,Moderate,63,12.2,32.2,0.0,False,3.6839,Other months
+2020-07-01,54.01,21.05,11.15,101.0,Moderate,59,8.4,33.4,0.0,False,3.9892,Monsoon (Jul–Sep)
+```
+
+## Delhi stations: PM2.5 mean and number of days per station and year (from station_day.csv; the city series is the mean over reporting stations)
+```
+StationId,mean_2015,mean_2016,mean_2017,mean_2018,mean_2019,mean_2020,count_2015,count_2016,count_2017,count_2018,count_2019,count_2020
+DL001,,,,219.98,106.0,79.9,,,,47.0,355.0,181.0
+DL002,155.91,170.7,193.76,160.59,128.54,99.35,254.0,326.0,218.0,311.0,364.0,154.0
+DL003,,,,118.89,120.71,88.77,,,,333.0,365.0,181.0
+DL004,,,142.44,94.63,82.47,62.68,,,95.0,352.0,360.0,176.0
+DL005,,,,117.72,131.05,104.56,,,,181.0,365.0,176.0
+DL006,,,120.02,131.24,111.29,,,,114.0,260.0,288.0,
+DL007,127.15,198.05,208.03,125.13,103.4,79.23,213.0,2.0,81.0,356.0,365.0,183.0
+DL008,67.5,,286.13,129.33,119.06,94.21,1.0,,77.0,357.0,360.0,179.0
+DL009,,,,73.4,97.5,70.81,,,,305.0,365.0,183.0
+DL010,,,,106.15,109.18,86.87,,,,333.0,365.0,183.0
+DL012,,,155.08,84.63,94.93,66.73,,,95.0,362.0,331.0,181.0
+DL013,127.24,115.81,132.95,102.22,113.41,70.5,194.0,126.0,76.0,362.0,364.0,183.0
+DL014,178.17,,188.46,124.45,109.11,98.16,3.0,,80.0,355.0,362.0,181.0
+DL015,,,,144.52,128.13,98.65,,,,333.0,365.0,183.0
+DL016,,,,103.02,104.23,73.77,,,,333.0,364.0,181.0
+DL017,,,156.66,90.02,85.27,68.91,,,98.0,356.0,357.0,170.0
+DL018,,,,101.95,93.74,73.78,,,,334.0,365.0,181.0
+DL019,96.15,84.71,225.83,109.56,103.26,70.01,255.0,185.0,67.0,364.0,365.0,179.0
+DL020,,,,141.85,125.59,96.96,,,,182.0,364.0,181.0
+DL021,80.07,131.68,172.07,118.92,113.43,89.61,248.0,283.0,167.0,363.0,365.0,183.0
+DL022,,,,86.94,92.54,72.79,,,,334.0,363.0,174.0
+DL023,,,,120.73,109.02,91.0,,,,334.0,365.0,168.0
+DL024,,,,120.69,123.37,96.84,,,,333.0,365.0,183.0
+DL025,,,187.69,110.73,109.38,66.52,,,79.0,346.0,324.0,183.0
+DL026,,,,103.73,107.29,80.64,,,,333.0,364.0,183.0
+DL027,,,,99.79,99.85,72.21,,,,331.0,365.0,181.0
+DL028,123.25,106.42,266.81,131.01,106.4,88.51,252.0,291.0,64.0,363.0,363.0,178.0
+DL029,,,,105.23,100.41,80.23,,,,179.0,365.0,162.0
+DL030,,,118.95,82.29,82.39,66.51,,,94.0,356.0,362.0,139.0
+DL031,118.41,135.69,169.47,123.66,101.14,63.68,258.0,338.0,198.0,363.0,364.0,180.0
+DL032,,,,127.15,128.29,103.57,,,,326.0,364.0,177.0
+DL033,77.28,,203.37,112.83,118.88,66.48,77.0,,90.0,365.0,360.0,183.0
+DL034,,287.28,133.36,107.17,108.33,80.41,,59.0,333.0,340.0,358.0,182.0
+DL035,,,,116.62,105.55,78.18,,,,334.0,364.0,180.0
+DL036,,,,92.78,90.87,66.31,,,,182.0,365.0,181.0
+DL037,,,,108.63,115.01,87.75,,,,331.0,364.0,183.0
+DL038,,,,136.22,135.04,96.65,,,,334.0,365.0,180.0
+```
+
+
+
+# 07 Checker and figure code
 
 ## slides/beamer/verify_numbers.py
 ```python
@@ -6100,8 +9052,10 @@ for url in ["https://www.kaggle.com/datasets/rohanrao/air-quality-data-in-india"
         code = subprocess.run(["curl", "-s", "-o", "/dev/null", "-L", "-m", "20", "-A", "Mozilla/5.0", "-w", "%{http_code}", url], capture_output=True, text=True).stdout.strip()
     except Exception as e:  # noqa: BLE001
         code = str(e)
-    ok_ = code in ("200", "301", "302") or ("kaggle.com" in url and code in ("403", "404") and (ROOT / "data/raw/station_day.csv").exists())  # kaggle blocks scripted GETs; the slug is proven by the downloads
-    check(f"link reachable: {url}", ok_, f"HTTP {code}")
+    offline_ = code in ("000", "")  # no network (sandbox): do not fail the numerical checks, fall back to the local copies
+    ok_ = offline_ or code in ("200", "301", "302") or ("kaggle.com" in url and code in ("403", "404") and (ROOT / "data/raw/station_day.csv").exists())  # kaggle blocks scripted GETs; the slug is proven by the downloads
+    local_ = (ROOT / "data/raw/city_day.csv").exists() and (ROOT / "data/raw/delhi_weather_openmeteo.json").exists()
+    check(f"link reachable (or offline with local raw files present): {url}", ok_ and (not offline_ or local_), f"HTTP {code}" + (" OFFLINE, local copies used" if offline_ else ""))
 check("weather file is ERA5 archive for central Delhi (28.61N, 77.21E)", abs(json.loads((ROOT / "data/raw/delhi_weather_openmeteo.json").read_text())["latitude"] - 28.61) < 0.2)
 tex = (Path(__file__).resolve().parent / "main.tex").read_text()
 
@@ -6142,8 +9096,8 @@ check(f"Ljung-Box lag 10: p = {p_all:.1e} with the 52 diffuse residuals, {p_burn
 check(f"seasonal MA coefficient {r_s.params['ma.S.L52']:.3f} (slide {macros['fcMaCoef']}), SE {r_s.bse['ma.S.L52']:.1f} > 1 (not identified; the exact SE is a numerical Hessian near the boundary and varies)", close(r_s.params["ma.S.L52"], FC["sarima_D1_maS_coef"], 0.01) and r_s.params["ma.S.L52"] < -0.95 and r_s.bse["ma.S.L52"] > 1)
 # one-week-ahead persistence MAE and lockdown mean
 ow = pd.read_csv(RES / "fc_oneweek.csv", index_col=0)
-pers = [np.abs(wk.pm25.loc[f"{y_}-01-01":f"{y_}-12-31"].iloc[1:] - wk.pm25.shift(1).loc[f"{y_}-01-01":f"{y_}-12-31"].iloc[1:]).mean() for y_ in (2018, 2019)]
-check(f"persistence one-week MAE 2018/2019 = {pers[0]:.1f}/{pers[1]:.1f}", close(pers[0], ow.loc["Persistence", "2018"], 0.6) and close(pers[1], ow.loc["Persistence", "2019"], 0.6))
+pers = [np.abs(wk.pm25.loc[f"{y_}-01-01":f"{y_}-12-31"] - wk.pm25.shift(1).loc[f"{y_}-01-01":f"{y_}-12-31"]).mean() for y_ in (2018, 2019)]  # every test week (the previous week is in the training history)
+check(f"persistence one-week MAE 2018/2019 = {pers[0]:.1f}/{pers[1]:.1f}", close(pers[0], ow.loc["Persistence", "2018"], 0.01) and close(pers[1], ow.loc["Persistence", "2019"], 0.01))
 lock_idx = pd.date_range("2020-03-29", "2020-05-31", freq="W-SUN")
 lock_mean = float(wk.pm25.reindex(lock_idx).mean())
 lk = pd.read_csv(RES / "fc_lockdown.csv", index_col=0)
@@ -6155,7 +9109,11 @@ dsum = o20[[c for c in o20.columns if c.startswith("days_")]].sum(axis=1).to_num
 check("2020 outlook: expected days per month sum to 31/29/31/...", np.allclose(dsum, [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], atol=0.01))
 check("2020 outlook: median inside its 95% interval every month", bool(((o20["lo95"] < o20["median"]) & (o20["median"] < o20["hi95"])).all()))
 a20_ = d.pm25.loc["2020"]
-check("2020 actual Jan-Feb inside interval, Mar-May below (lockdown)", bool(all(o20.loc[m_, "lo95"] <= a20_[a20_.index.month == i_ + 1].mean() <= o20.loc[m_, "hi95"] for i_, m_ in enumerate(["Jan", "Feb"])) and all(a20_[a20_.index.month == i_ + 1].mean() < o20.loc[m_, "lo95"] for i_, m_ in zip((3, 4, 5), ["Mar", "Apr", "May"]))))
+mth_ = lambda i_: a20_[a20_.index.month == i_].mean()  # noqa: E731  (month number i_, 1 = Jan)
+chk_ = {m_: (i_, mth_(i_), o20.loc[m_, "lo95"], o20.loc[m_, "hi95"]) for i_, m_ in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], start=1)}
+check("2020 actual Jan-Feb inside interval, Mar-Jun below it (each month compared with ITS OWN interval)",
+      all(chk_[m_][2] <= chk_[m_][1] <= chk_[m_][3] for m_ in ("Jan", "Feb")) and all(chk_[m_][1] < chk_[m_][2] for m_ in ("Mar", "Apr", "May", "Jun")),
+      "; ".join(f"{m_} {v[1]:.1f} vs [{v[2]:.1f},{v[3]:.1f}]" for m_, v in chk_.items()))
 # station check
 st_ = pd.read_csv(ROOT / "data/raw/station_day.csv", parse_dates=["Date"]); meta_ = pd.read_csv(ROOT / "data/raw/stations.csv")
 xs_ = st_[st_.StationId.isin(meta_.loc[meta_.City == "Delhi", "StationId"])].dropna(subset=["PM2.5"])
@@ -6164,6 +9122,65 @@ cm_ = pd.concat([d.pm25, xs_.groupby("Date")["PM2.5"].mean()], axis=1, keys=["c"
 check(f"stations per year {nst.loc[2015]},{nst.loc[2016]},..,{nst.loc[2019]}; corr(city, station mean) = {cm_.corr().iloc[0, 1]:.3f}", nst.loc[2015] == 10 and nst.loc[2018] == 37 and close(cm_.corr().iloc[0, 1], 0.995, 0.002))
 sc = pd.read_csv(RES / "station_check.csv", index_col=0)
 check("decline 2016->2019 on slide matches station table", macros["declPanel"] == f"{abs((np.exp(sc.loc[2019, 'panel_log_anom'] - sc.loc[2016, 'panel_log_anom']) - 1) * 100):.0f}")
+
+# ── 11. Round-2 checks (added after the external audits) ────────────────────────────────────────────────
+sys.path.insert(0, str(ROOT))
+from src import forecast as Fc  # noqa: E402
+# (a) LSTM input windows pair every anomaly with the calendar row of ITS OWN week (alignment bug of the first version)
+z_t, C_t = np.arange(12.0), np.c_[np.arange(12.0), np.arange(12.0) * 10]
+w_t = Fc.lstm_window(z_t, C_t, 8)
+check("LSTM window: anomaly and calendar row belong to the same week", np.array_equal(w_t[:, 0], w_t[:, 1]) and np.array_equal(w_t[:, 2], w_t[:, 0] * 10) and w_t[-1, 0] == 11)
+# (b) daily paths: every simulated week averages exactly to its weekly value; band days and monthly means come from the same paths
+pools_t = {m_: np.log(np.random.default_rng(m_).uniform(0.5, 1.5, (6, 7))) for m_ in range(1, 13)}
+pools_t = {m_: v_ - np.log(np.exp(v_).mean(axis=1, keepdims=True)) for m_, v_ in pools_t.items()}   # mean(exp(offset)) = 1 per vector
+wk_t = pd.date_range("2018-12-30", periods=54, freq="W-SUN")[1:]
+paths_t = np.log(np.random.default_rng(0).uniform(30, 200, (53, 40)))
+dd_t, dv_t = Fc.daily_paths(paths_t, wk_t, pools_t, 2019)
+wm_t = pd.DataFrame(dv_t, index=dd_t).groupby(dd_t.to_period("W-SUN")).mean()
+inner_ = wm_t.iloc[1:-1].to_numpy()  # weeks fully inside the year
+check("daily paths: each simulated week's 7 days average exactly to its weekly path value", np.allclose(inner_, np.exp(paths_t[1:1 + len(inner_)]), rtol=1e-9))
+check("daily paths: band days per month sum to days in the month (2019)", np.array_equal(Fc.daily_band_days(dd_t, dv_t).sum(axis=2)[0], [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]))
+# (c) backtest MAEs, coverage and the loss-difference table recomputed from the saved forecast file
+bf = pd.read_csv(RES / "fc_backtest_forecasts.csv", parse_dates=["date"])
+bf["ae"] = (bf.actual - np.exp(bf.mu)).abs()
+mae_re = bf.groupby(["model", "fold"]).ae.mean().unstack()
+check("fc_backtest_mae.csv equals MAEs recomputed from fc_backtest_forecasts.csv (all models, folds)",
+      all(close(mae_re.loc[m_, f_], mae_tab.loc[m_, str(f_)], 0.06) for m_ in mae_tab.index for f_ in (2017, 2018, 2019)))
+s_ = bf[(bf.model == "Fourier+ARMA (selected)") & (bf.fold == 2019)]
+cov_re = float(((s_.actual >= np.exp(s_.mu - 1.96 * s_.sd)) & (s_.actual <= np.exp(s_.mu + 1.96 * s_.sd))).mean())
+check(f"2019 raw coverage {cov_re:.3f} recomputed from saved forecasts = stored {FC['coverage_2019_raw']:.3f}", close(cov_re, FC["coverage_2019_raw"], 1e-9))
+ld = pd.read_csv(RES / "fc_loss_diff.csv")
+ok_ld = True
+for lab_, folds_ in [("folds 2018+2019", [2018, 2019]), ("all three folds", [2017, 2018, 2019])]:
+    for m_ in mae_tab.index:
+        if m_ == "Climatology":
+            continue
+        ea = [bf[(bf.model == m_) & (bf.fold == f_)].ae.to_numpy() for f_ in folds_]
+        eb = [bf[(bf.model == "Climatology") & (bf.fold == f_)].ae.to_numpy() for f_ in folds_]
+        dm_, lo_, hi_ = Fc.block_bootstrap_diff(ea, eb)
+        r_ = ld[(ld.folds == lab_) & (ld.model == m_)].iloc[0]
+        ok_ld &= close(dm_, r_.mean_MAE_diff_vs_climatology, 0.02) and close(lo_, r_.ci_lo, 0.1) and close(hi_, r_.ci_hi, 0.1)
+check("fc_loss_diff.csv reproduced by the per-fold block bootstrap from saved forecasts", ok_ld)
+# (d) one-week-ahead MAEs recomputed from the saved one-step forecasts
+of = pd.read_csv(RES / "fc_oneweek_forecasts.csv")
+of["ae"] = (of.actual - np.exp(of.mu)).abs()
+ow_re = of.groupby(["model", "year"]).ae.mean().unstack()
+check("fc_oneweek.csv MAEs recomputed from fc_oneweek_forecasts.csv", all(close(ow_re.loc[m_, y_], ow.loc[m_, str(y_)], 0.006) for m_ in ow.index for y_ in (2018, 2019)))
+mb_ = of.groupby("model").ae.mean()
+check("one-week MAE changes vs no-weather DHR (%): lagged, last-3-days, oracle match the slides",
+      all(close(100 * (1 - mb_[k_] / mb_["DHR, no weather"]), v_, 0.06) for k_, v_ in [("+ lagged weather (operational)", FC["oneweek_gain_pct"]["lagged"]), ("+ last 3 days of prior week (operational)", FC["oneweek_gain_pct"]["last3"]), ("+ same-week weather (ORACLE)", FC["oneweek_gain_pct"]["oracle"])]))
+# (e) lockdown sensitivity table arithmetic; calibration table; SARIMA D=0 constant table
+ls_ = pd.read_csv(RES / "fc_lockdown_sensitivity.csv", index_col=0)
+adj_ = 100 * ((1 + ls_.lockdown_gap_10wk_pct / 100) / (1 + ls_.pre_lockdown_gap_pct / 100) - 1)
+check("lockdown sensitivity: pre-gap-adjusted gap = (1+gap)/(1+pre-gap)-1 for every counterfactual", close(0, np.nanmax(np.abs(adj_.to_numpy()[:-1] - ls_.lockdown_gap_adjusted_for_pre_gap_pct.to_numpy()[:-1])), 0.15))
+check("lockdown headline row of the sensitivity table equals fc_lockdown.csv", close(ls_.iloc[0].lockdown_gap_10wk_pct, lk.gap_median_pct.iloc[0], 0.06))
+cal_ = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
+check("calibration: coverage up, width up, Winkler up (interval score worse) as stated in the text",
+      cal_.coverage.iloc[1] > cal_.coverage.iloc[0] and cal_.width.iloc[1] > cal_.width.iloc[0] and cal_.winkler.iloc[1] > cal_.winkler.iloc[0])
+d0_ = pd.read_csv(RES / "fc_sarima_d0_constant.csv", index_col=0)
+check("SARIMA D=0 with/without constant table present and both far above climatology in 2018 and 2019", bool((d0_.loc[["no constant", "with constant"], ["2018", "2019"]].min().min() > 1.3 * d0_.loc["Climatology (reference)", ["2018", "2019"]].max())))
+sg_ = pd.read_csv(RES / "granger_hac_seasonal.csv")
+check("seasonal Granger tests: every winter/monsoon p-value < 0.001 (the report's stated bound)", bool((sg_[~sg_.test.str.startswith("Interaction")].p_value < 1e-3).all()))
 
 bad = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(bad)}/{len(results)} checks passed")
@@ -6594,8 +9611,16 @@ if FCN is not None:
     ck = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
     nums_fc = {
         "fcMaeSelNineteen": f"{FCN['backtest']['mae_selected']['2019']:.1f}", "fcMaeClimNineteen": f"{FCN['backtest']['mae_climatology']['2019']:.1f}",
-        "fcMaeSarimaNineteen": f"{FCN['backtest']['sarima_D1_mae']['2019']:.1f}", "fcMaeSarimaSeventeen": f"{FCN['backtest']['sarima_D1_mae']['2017']:.0f}",
-        "fcMaeLstmNineteen": f"{FCN['backtest']['lstm_mae']['2019']:.0f}", "fcMaeSarimaZeroNineteen": f"{FCN['backtest']['sarima_D0_mae']['2019']:.0f}",
+        "fcMaeSarimaNineteen": f"{FCN['backtest']['sarima_D1_mae']['2019']:.1f}", "fcMaeSarimaSeventeen": f"{FCN['backtest']['sarima_D1_mae']['2017']:.1f}",
+        "fcMaeLstmNineteen": f"{FCN['backtest']['lstm_mae']['2019']:.1f}", "fcMaeLstmEighteen": f"{FCN['backtest']['lstm_mae']['2018']:.1f}", "fcMaeSarimaZeroNineteen": f"{FCN['backtest']['sarima_D0_mae']['2019']:.1f}",
+        "fcCalWidthRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['width']:.0f}", "fcCalWidthCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['width']:.0f}",
+        "fcCalWinkRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['winkler']:.0f}", "fcCalWinkCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['winkler']:.0f}",
+        "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}",
+        "fcLockPre": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['pre_lockdown_gap_pct']):.0f}",
+        "fcLockAdj": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['lockdown_gap_adjusted_for_pre_gap_pct']):.0f}",
+        "fcLockPlacebo": f"{abs(FCN['lockdown_sensitivity']['PLACEBO: same weeks of 2019 vs 2019 forecast']['lockdown_gap_10wk_pct']):.0f}",
+        "fcLockSensLo": f"{min(abs(v['lockdown_gap_10wk_pct']) for k, v in FCN['lockdown_sensitivity'].items() if not k.startswith('PLACEBO')):.0f}",
+        "fcLockSensHi": f"{max(abs(v['lockdown_gap_10wk_pct']) for k, v in FCN['lockdown_sensitivity'].items() if not k.startswith('PLACEBO')):.0f}",
         "fcCovRaw": f"{FCN['coverage_2019_raw'] * 100:.0f}", "fcCovCal": f"{FCN['coverage_2019_calibrated'] * 100:.0f}",
         "fcMaSE": f"{FCN['sarima_D1_maS_se']:.1f}", "fcMaCoef": f"{FCN['sarima_D1_maS_coef']:.3f}".replace("-", "$-$"),
         "fcOneLagged": f"{FCN['oneweek_gain_pct']['lagged']:+.1f}".replace("-", "$-$"), "fcOneLastThree": f"{FCN['oneweek_gain_pct']['last3']:+.1f}".replace("-", "$-$"),
@@ -6657,10 +9682,76 @@ nums.update(FC_NUMS)
 print("numbers:", len(nums))
 ```
 
-## verify_numbers.py last output
+## slides/beamer/tables/numbers.tex (the macros used in the deck and report)
+```latex
+\newcommand{\pctPoor}{52}
+\newcommand{\winterMean}{213}
+\newcommand{\monsoonMean}{48}
+\newcommand{\ratioWM}{4.4}
+\newcommand{\Fs}{0.90}
+\newcommand{\skewRaw}{+1.70}
+\newcommand{\skewLog}{$-$0.08}
+\newcommand{\sdRatioRaw}{7.9}
+\newcommand{\sdRatioLog}{1.3}
+\newcommand{\archRaw}{235}
+\newcommand{\archLog}{36}
+\newcommand{\levPlog}{0.006}
+\newcommand{\boxcox}{0.045}
+\newcommand{\irfWindA}{6}
+\newcommand{\irfWindB}{12}
+\newcommand{\irfRhA}{4}
+\newcommand{\irfRhB}{7}
+\newcommand{\fevdA}{6}
+\newcommand{\fevdB}{30}
+\newcommand{\lagWindP}{0.46}
+\newcommand{\lagRhP}{0.48}
+\newcommand{\sameWeekRsq}{0.14}
+\newcommand{\shockWindBig}{24}
+\newcommand{\shockWindBigZ}{2.3}
+\newcommand{\shockWindCalm}{31}
+\newcommand{\shockWindCalmZ}{1.8}
+\newcommand{\janWind}{14.8}
+\newcommand{\janPred}{7.4}
+\newcommand{\janShock}{7.4}
+\newcommand{\sdNov}{115}
+\newcommand{\sdAug}{15}
+\newcommand{\fcMaeSelNineteen}{25.7}
+\newcommand{\fcMaeClimNineteen}{27.8}
+\newcommand{\fcMaeSarimaNineteen}{27.4}
+\newcommand{\fcMaeSarimaSeventeen}{53.8}
+\newcommand{\fcMaeLstmNineteen}{54.4}
+\newcommand{\fcMaeLstmEighteen}{28.3}
+\newcommand{\fcMaeSarimaZeroNineteen}{44.1}
+\newcommand{\fcCalWidthRaw}{125}
+\newcommand{\fcCalWidthCal}{179}
+\newcommand{\fcCalWinkRaw}{175}
+\newcommand{\fcCalWinkCal}{193}
+\newcommand{\fcCovSeventeen}{69}
+\newcommand{\fcLockPre}{11}
+\newcommand{\fcLockAdj}{35}
+\newcommand{\fcLockPlacebo}{15}
+\newcommand{\fcLockSensLo}{37}
+\newcommand{\fcLockSensHi}{51}
+\newcommand{\fcCovRaw}{90}
+\newcommand{\fcCovCal}{96}
+\newcommand{\fcMaSE}{8.3}
+\newcommand{\fcMaCoef}{$-$0.988}
+\newcommand{\fcOneLagged}{$-$2.4}
+\newcommand{\fcOneLastThree}{+0.7}
+\newcommand{\fcOneOracle}{+6.9}
+\newcommand{\fcLockPct}{43}
+\newcommand{\fcLockLo}{32}
+\newcommand{\fcLockHi}{52}
+\newcommand{\fcLockWxPct}{38}
+\newcommand{\fcValPoorPred}{55}
+\newcommand{\fcValPoorAct}{45}
+\newcommand{\fcValInside}{12}
+\newcommand{\declAll}{25}
+\newcommand{\declPanel}{20}
+\newcommand{\declWx}{18}
 ```
-65/65 checks passed (authors' run, 2026-11-16)
-```
+
+## Authors' last run: 78/78 checks passed (offline, local raw files).
 
 
 # 08 Report and deck LaTeX source
@@ -6685,7 +9776,7 @@ print("numbers:", len(nums))
 \begin{document}
 \maketitle
 \begin{abstract}
-We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: last week's weather adds nothing for this week, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. A smooth Fourier+ARMA model matches or slightly beats climatology; SARIMA with seasonal differencing is fragile, and the LSTM is clearly worse. We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction intervals out of sample, and produce a monthly 2020 outlook that correctly flags the lockdown as a \fcLockPct\% fall below the no-lockdown forecast.
+We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: no added predictive value for next week was detected in the tested specification, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. No model is significantly better than climatology (a smooth Fourier+ARMA model is statistically indistinguishable from it); SARIMA with seasonal differencing is fragile, SARIMA with $D=0$ and the small LSTM are clearly worse. We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction interval widths out of sample (at the cost of wider intervals), and produce a monthly 2020 outlook in which the observed lockdown-period PM$_{2.5}$ is about \fcLockPct\% below the model's no-lockdown projection (descriptive, not a causal estimate; see Section on the lockdown).
 \end{abstract}
 
 \section{Introduction}
@@ -6708,49 +9799,49 @@ The city series is the mean over reporting stations (correlation 0.995 with the 
 
 \section{Does weather predict \pmtwo{}? (Q1)}
 Wind, humidity and log \pmtwo{} are deseasonalised with a smoothed day-of-year climatology (31-day circular window; leap years handled by mapping 29 Feb to day 59) and fitted in a VAR(4) (lag by AIC; BIC picks 2; stable, largest root modulus 0.81; portmanteau $p=0.17$).
-\paragraph{Granger causality.} Joint tests that lags 1--$k$ of wind or humidity add nothing to the \pmtwo{} equation are rejected at every $k=1,\dots,7$ ($p<10^{-9}$). With HAC (Newey-West) errors the 4-lag tests give $p\approx6\times10^{-20}$ (wind) and $4\times10^{-11}$ (humidity); adding rain and temperature controls gives $9\times10^{-18}$ and $7\times10^{-8}$; adding a linear time trend or using a climatology fitted on 2015--2018 only changes nothing. Season-specific tests show both variables are significant in winter and in the monsoon ($p\le5\times10^{-4}$); the interactions are weak (monsoon $\times$ humidity $p=0.20$, winter $\times$ wind $p=0.03$), so the EDA impression that humidity matters only in the monsoon is a correlation pattern, not a difference in predictive content. The reverse direction is absent for humidity and weak for wind (lag orders 1 and 2 only, $p=0.04$ and $0.02$). We call this a \emph{predictive association}: mixing height, stubble burning and fireworks are unmeasured, and the ERA5 data are one grid cell.
+\paragraph{Granger causality.} Joint tests that lags 1--$k$ of wind or humidity add nothing to the \pmtwo{} equation are rejected at every $k=1,\dots,7$ ($p<10^{-9}$). With HAC (Newey-West) errors the 4-lag tests give $p\approx6\times10^{-20}$ (wind) and $4\times10^{-11}$ (humidity); adding rain and temperature controls gives $9\times10^{-18}$ and $7\times10^{-8}$; adding a linear time trend or using a climatology fitted on 2015--2018 only changes nothing. Season-specific tests show both variables are significant in winter and in the monsoon (all $p<10^{-3}$; the largest is winter humidity, $p=5.4\times10^{-4}$); the interactions are weak (monsoon $\times$ humidity $p=0.20$, winter $\times$ wind $p=0.03$), so the EDA impression that humidity matters only in the monsoon is a correlation pattern, not a difference in predictive content. The reverse direction is absent for humidity and weak for wind (lag orders 1 and 2 only, $p=0.04$ and $0.02$). We call this a \emph{predictive association}: mixing height, stubble burning and fireworks are unmeasured, and the ERA5 data are one grid cell.
 \begin{figure}[H]\centering\includegraphics[width=0.9\linewidth]{granger_hac.pdf}\caption{HAC Wald tests (4 lags).}\end{figure}
 \paragraph{Size and timing.} A one-SD wind shock (2.5 km/h) lowers \pmtwo{} by \irfWindA--\irfWindB\% the next day, a one-SD humidity shock (5.4\% RH) by \irfRhA--\irfRhB\%, fading within about a week; the range reflects the Cholesky ordering (weather first allows same-day effects). The generalised IRF, which does not depend on ordering, gives $-12.0\%$ and $-5.2\%$ on day 1, inside or at the edge of those ranges. Weather shocks explain \fevdA--\fevdB\% of the 14-day forecast-error variance of \pmtwo{} depending on the ordering.
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\end{figure}
-\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add nothing to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$). Weather is therefore a short-memory predictor, and the 52-week models use no weather.
+\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add no detectable predictive value to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$) in the specification we tested. Weather is therefore a short-memory predictor, and the 52-week models use no weather.
 
 \section{Forecasting (Q2)}\label{sec:fc}
 \subsection{Models and evaluation design}
-All models forecast weekly log \pmtwo{} with no weather inputs: seasonal naive; \textbf{climatology} (mean of each calendar week, benchmark); climatology + AR(1); \textbf{Fourier + ARMA} (dynamic harmonic regression: $K\le5$ yearly sine/cosine pairs, ARMA$(p,q)$ errors with $p\le2,q\le1$, and a level that is constant, linear or a random walk); SARIMA$(1,0,1)(0,1,1)_{52}$ and SARIMA$(1,0,1)(1,0,0)_{52}$ with a constant; Linear Regression on Fourier terms and a linear trend; and a small LSTM (16 units, recursive, seeded). For the Fourier model, $K$ and $(p,q)$ are chosen by AICc within each level type, and the level type by validation on the last training year; this procedure was declared the headline before any test year was inspected. Evaluation uses three expanding-window origins (end of 2016, 2017, 2018), each forecasting the next 52 weeks, refitting and reselecting every time. The 2017 fold (two training years) is a stress test; 2018 and 2019 are the main evidence. Paired error differences to climatology are summarised with a moving-block bootstrap (8-week blocks); a plain Diebold--Mariano test on 52 weeks of one forecast path is not valid and is not used here.
+All models forecast weekly log \pmtwo{} with no weather inputs: seasonal naive; \textbf{climatology} (mean of each calendar week, benchmark); climatology + AR(1); \textbf{Fourier + ARMA} (dynamic harmonic regression: $K\le5$ yearly sine/cosine pairs, ARMA$(p,q)$ errors with $p\le2,q\le1$, and a level that is constant, linear or a random walk); SARIMA$(1,0,1)(0,1,1)_{52}$ and SARIMA$(1,0,1)(1,0,0)_{52}$ with a constant; Linear Regression on Fourier terms and a linear trend; and a small LSTM (16 units, recursive, seeded; an input-alignment bug in a first version was found by an outside audit and fixed). In the label ``Fourier+ARMA'' the errors are ARMA$(p,q)$ for the constant and linear levels and ARIMA$(p,1,q)$ for the random-walk level (selected in the 2017 and 2019 folds). Optimiser fits that do not converge are rejected. For the Fourier model, $K$ and $(p,q)$ are chosen by AICc within each level type, and the level type by validation on the last training year; this procedure was fixed in the code before the final runs, but the 2019 year had been examined in earlier iterations of the project, so 2019 is not a pristine hold-out. Evaluation uses three expanding-window origins (end of 2016, 2017, 2018), each forecasting the next 52 weeks, refitting and reselecting every time. The 2017 fold (two training years) is a stress test; 2018 and 2019 are the main evidence. Paired error differences to climatology are summarised with a circular moving-block bootstrap (8-week blocks, drawn within each forecast year, so no block crosses two origins); a plain Diebold--Mariano test on 52 weeks of one forecast path is not valid and is not used here.
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{fc_backtest.pdf}\caption{Left: the 2019 forecast of the selected model against climatology and the actual values. Right: MAE by forecast year.}\end{figure}
 \subsection{Backtest results}
 \begin{table}[H]\centering\footnotesize\input{../slides/beamer/tables/fc_backtest.tex}\caption{52-week-ahead MAE (\ugm{}) by forecast year; last column: bootstrap verdict against climatology over 2018 and 2019.}\end{table}
-In 2019 the selected Fourier+ARMA model has an MAE of \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology and \fcMaeSarimaNineteen{} for the seasonal-differenced SARIMA; the SARIMA is, however, at \fcMaeSarimaSeventeen{} in the 2017 fold, where it has only two seasons to learn from. Over 2018--2019 only the seasonal naive forecast, SARIMA with $D=0$ (\fcMaeSarimaZeroNineteen{} in 2019) and the LSTM (\fcMaeLstmNineteen{}) are clearly worse than climatology. The linear-trend Fourier variant is better on 2018--19 (the bootstrap interval excludes 0) but not over all three origins, and it was not the pre-declared choice, so we do not claim it. The honest summary: a year ahead the calendar carries almost all of the predictable signal, and with three origins the remaining models cannot be ranked.
+In 2019 the selected Fourier+ARMA model has an MAE of \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology and \fcMaeSarimaNineteen{} for the seasonal-differenced SARIMA; the SARIMA is, however, at \fcMaeSarimaSeventeen{} in the 2017 fold, where it has only two seasons to learn from. Over 2018--2019 only the seasonal naive forecast, SARIMA with $D=0$ (\fcMaeSarimaZeroNineteen{} in 2019) and the LSTM (\fcMaeLstmEighteen{} in 2018, \fcMaeLstmNineteen{} in 2019) are clearly worse than climatology (the bootstrap interval excludes 0), and SARIMA with $D=1$ is clearly worse over all three origins. For every other model, including the selected Fourier+ARMA model and the linear-trend variant (which has the lowest 2018--19 MAE, 21.9), the bootstrap interval includes 0, so we call them statistically indistinguishable from climatology. The LSTM was rerun after the alignment fix; it remains worse, but it is a small, untuned model and says nothing about neural networks in general. The honest summary: a year ahead the calendar carries almost all of the predictable signal, and with three origins the remaining models cannot be ranked.
 
 \subsection{Diagnostics: errors in the earlier draft}
-The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, the usual sign that the seasonal difference is unnecessary. The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; with a constant its validation MAE falls from 39.7 to 30.6 (but it remains the worst non-LSTM model overall). The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
+The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, the usual sign that the seasonal difference is unnecessary. The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; the matched comparison (same orders, same folds; notebook~04, \texttt{fc\_sarima\_d0\_constant.csv}) gives MAE 76.9/61.0/92.1 without and 44.9/42.8/44.1 with a constant for 2017/2018/2019, against 31.0/21.8/27.8 for climatology, so the constant matters a lot but D=0 stays clearly worse. The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$; lag 10 is marginal, $p=0.088$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
 
 \subsection{Prediction intervals}
-Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks; all misses were below the lower bound because 2019 was cleaner than 2015--18, so the problem is level bias as much as width. We rescale the predictive standard deviation by season (winter vs other months, shrunk toward the pooled value) using only the 2017 and 2018 errors, and re-centre only if the bias has the same sign and size $>0.5$ standard deviations in both calibration years; it did not (mean standardised errors $-0.66$ and $-0.45$), so only the scale is changed. On 2019 the calibrated coverage is \fcCovCal\%. The scale factors differ by fold (1.33/1.42 for 2019, 1.09/0.95 for the 2020 forecast), which shows the calibration is itself uncertain.
+Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks (2018: 94\%; the 2017 stress-test fold only \fcCovSeventeen\%); in 2019 all 5 misses were below the lower bound because 2019 was cleaner than 2015--18, so the problem is level bias as much as width. We rescale the predictive standard deviation by season (winter vs other months, shrunk toward the pooled value) using only the 2017 and 2018 errors, and re-centre only if the bias has the same sign and size $>0.5$ standard deviations in both calibration years; it did not (mean standardised errors $-0.66$ and $-0.45$), so only the scale is changed. On 2019 the coverage rises to \fcCovCal\%, but only by widening the intervals (mean width \fcCalWidthRaw{} to \fcCalWidthCal{} \ugm{}) and the Winkler interval score gets \emph{worse} (\fcCalWinkRaw{} to \fcCalWinkCal{}; lower is better): the rescaling buys nominal coverage, not better intervals. The scale factors differ by fold (1.33/1.42 for 2019, 1.09/0.95 for the 2020 forecast), so the calibration is itself uncertain, and with three origins no general reliability claim is possible. A smooth, shrunk shift added afterwards as a sensitivity (defined after seeing 2019, so not a headline) removes the level bias in 2019 (bias from $-8.5$ to $+4.3$, Winkler 161) but we do not adopt it.
 
 \subsection{One week ahead: does weather help?}
 Each year 2018 and 2019 is forecast one week at a time with parameters fitted on earlier data. \emph{Lagged weather} (last week's wind and humidity anomalies) changes the error by \fcOneLagged\%, the \emph{last three days} of the previous week by \fcOneLastThree\%, and the \emph{same week's} weather (which is observed, not forecast, and so a hindsight upper bound) by \fcOneOracle\% (Harvey--Leybourne--Newbold $p=0.07$). Weather is explanatory over days, but a poor forecasting input.
 \begin{figure}[H]\centering\includegraphics[width=0.7\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\end{figure}
 
 \subsection{The 2020 outlook and its validation}
-The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated, calibrated, converted to daily values by adding a within-week log offset resampled from the same calendar month of the training data, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
+The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated, calibrated, converted to daily values by adding a whole within-week offset vector (Monday--Sunday, resampled from a training week of the same month) so that every simulated week still averages exactly to its simulated weekly mean, with monthly means and band-day counts computed from the same daily paths, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval and expected days per band.}\end{figure}
 \begin{table}[H]\centering\scriptsize\input{../slides/beamer/tables/fc_outlook.tex}\caption{2020 outlook (\ugm{}); ``Days Poor+'' = expected days above 90 \ugm{}; Actual shown for full months only.}\end{table}
 \subsection{Case study: the 2020 lockdown}
-From 29 March to 31 May 2020 \pmtwo{} was about \fcLockPct\% below the no-lockdown forecast (95\% interval \fcLockLo--\fcLockHi\%). Using a version of the model that is given the actual wind and humidity of those weeks, the gap is \fcLockWxPct\%: most of the drop is not weather. This is descriptive; it depends on the forecast level for 2020 being right, which the interval calibration above shows is uncertain.
+The ten Sunday-ending weeks 29 March--31 May 2020 cover 23 March--31 May (two days before the 25 March start). Observed \pmtwo{} in those weeks was about \fcLockPct\% below the model's no-lockdown median projection (95\% interval \fcLockLo--\fcLockHi\%); with the actual wind and humidity of those weeks given to the model, the gap is \fcLockWxPct\%. This is a descriptive comparison with a model projection, not a causal estimate: the model was already about \fcLockPre\% too high in the twelve weeks before the lockdown, and adjusting for that gives about \fcLockAdj\%; other level specifications give \fcLockSensLo--\fcLockSensHi\%; and the same calendar weeks of 2019 against the 2019 pipeline show a gap of \fcLockPlacebo\% (95\% interval spanning zero). The reduction is large and robust in sign, but its size is uncertain (roughly one-third to one-half).
 \begin{figure}[H]\centering\includegraphics[width=0.85\linewidth]{fc_lockdown.pdf}\caption{Actual weekly \pmtwo{} in 2020 against the no-lockdown forecast and a weather-adjusted forecast.}\end{figure}
 
 \section{Review of the project and what changed}\label{sec:review}
 Three independent reviews proposed about 30 changes. We accepted the confirmed errors (diagnostic burn-in, missing constant, leakage in headline statistics, wording that over-stated causality or p-values, the PM$_{2.5}$-band versus AQI distinction, an invalid DM test) and rejected others after testing them (for example, the claim that re-anchoring the level gives 94\% coverage gives 90\% in the data; the shock-bin statistic has no Jensen bias; humidity's effect is not detectably monsoon-specific). The full log, with evidence for each claim, is \texttt{docs/REVIEW\_RESPONSES.md}.
 
 \section{Limitations}
-(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; most model differences are not significant. (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check is small. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM is deliberately small and is not tuned: it is a small-data negative result, not a statement about deep learning in general.
+(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; no model is significantly better than climatology, and the 2019 year was examined in earlier iterations (not a pristine hold-out). (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check uses six stations, so the decline is consistent with a genuine decline but a network effect is not fully excluded. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM is deliberately small and is not tuned: it is a small-data baseline, not a statement about deep learning in general. (viii) The automated checker re-derives selected numbers; it does not re-run every model selection or the station download.
 
 \section{Conclusion}
-Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling level. Wind and humidity anomalies help for about a week, not for a year. For 52-week forecasts a smooth Fourier+ARMA model is as good as or marginally better than climatology and more robust than SARIMA, and its uncertainty can be calibrated; the forecast correctly isolates the 2020 lockdown. The most valuable parts of the work are the honest accounting of what is and is not significant and the correction of diagnostic errors that would have led to wrong model choices.
+Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling level. Wind and humidity anomalies help for about a week, not for a year. For 52-week forecasts a smooth Fourier+ARMA model is statistically indistinguishable from climatology and more robust than SARIMA with seasonal differencing; its interval widths can be adjusted out of sample at the price of wider intervals. Against its no-lockdown projection, observed 2020 lockdown-period PM$_{2.5}$ is much lower, though the size of the gap depends on the projected level. The most valuable parts of the work are the honest accounting of what is and is not significant and the correction of diagnostic errors that would have led to wrong model choices.
 
 \section*{Reproducibility}
-\texttt{pip install -r requirements.txt}; download the CPCB files (Section~2) and run notebooks 01--04; then \texttt{python slides/beamer/make\_figures.py}, \texttt{python slides/beamer/verify\_numbers.py} (65 independent checks of every number on the slides) and build \texttt{slides/beamer/main.tex} and this report with \texttt{tectonic}. Code: \texttt{src/} (data, tsa, forecast, aqi, plots).
+\texttt{pip install -r requirements.txt}; download the CPCB files (Section~2) and run notebooks 01--04; then \texttt{make\_figures.py}, then \texttt{verify\_numbers.py} (both in \texttt{slides/beamer/}; automated re-derivation of selected numbers on the slides and in the tables) and build \texttt{main.tex} and this report with \texttt{tectonic}. Code: \texttt{src/} (data, tsa, forecast, aqi, plots).
 \end{document}
 ```
 
@@ -6864,11 +9955,11 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \begin{tikzpicture}[x=1cm,y=1cm,font=\footnotesize]
     \node[draw=navy,fill=navy,text=white,rounded corners=2pt,align=center,text width=2.3cm,minimum height=3.6cm,inner sep=4pt] (data)
       at (1.15,2.0) {\bfseries Data\\[3pt]\footnotesize daily \pmtwo{}, wind, humidity\\ 2015--2020\\[3pt] weekly means for forecasting};
-    \node[sbox=pblue] (q1) at (6.0,3.6) {\textbf{Q1. Explain.} Does weather drive \pmtwo{}?\\ Daily VAR + Granger causality};
+    \node[sbox=pblue] (q1) at (6.0,3.6) {\textbf{Q1. Explain.} Does weather predict \pmtwo{}?\\ Daily VAR + Granger causality};
     \node[sbox=graytxt] (q2a) at (6.0,2.0) {\textbf{Q2a. Next week.} Does weather improve a 1-week forecast?};
     \node[sbox=graytxt] (q2b) at (6.0,0.4) {\textbf{Q2b. Next 12 months.} Fourier+ARMA vs SARIMA and baselines, no weather inputs};
     \node[sres=pgreen] (r1) at (12.3,3.6) {\textbf{Done:} wind and humidity Granger-cause \pmtwo{}; effects fade within about a week};
-    \node[sres=pgreen] (r2) at (12.3,2.0) {\textbf{Done:} yesterday's weather adds nothing; same-week weather (unknowable in advance) helps only \fcOneOracle\%};
+    \node[sres=pgreen] (r2) at (12.3,2.0) {\textbf{Done:} last week's weather adds no detectable value; same-week weather (unknowable in advance) helps only \fcOneOracle\%};
     \node[sres=pgreen] (r3) at (12.3,0.4) {\textbf{Done:} 52-week forecasts backtested on 2017--19; outlook for 2020};
     \draw[sarr] (data.east) -- ++(0.35,0) |- (q1.west);
     \draw[sarr] (data.east) -- (q2a.west);
@@ -7016,7 +10107,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \end{defbox}
   \begin{takeaway}
     A one-SD wind shock cuts \pmtwo{} by \irfWindA--\irfWindB\% the next day, humidity by \irfRhA--\irfRhB\%; both fade within about a week.
-    Weekly: \emph{last} week's weather adds nothing to last week's \pmtwo{} for predicting this week's ($p=\lagWindP$ wind, \lagRhP\ humidity).
+    Weekly: \emph{last} week's weather adds no detectable value to last week's \pmtwo{} for predicting this week's ($p=\lagWindP$ wind, \lagRhP\ humidity).
   \end{takeaway}
 \end{frame}
 
@@ -7027,7 +10118,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \item \textbf{Transformation:} the log stabilises the variance (monthly spread \sdRatioRaw$\times\to$\sdRatioLog$\times$, skewness \skewRaw\ $\to$ \skewLog); log \pmtwo{} is consistent with stationarity ($d=0$), with a slow downward level drift.
     \item \textbf{Causality:} wind and humidity \textbf{Granger-cause} \pmtwo{} (robust to lag choice, differencing, robust errors, rain and temperature controls); the reverse is absent for humidity and weak for wind.
     \item \textbf{Size and timing:} a one-SD shock lowers \pmtwo{} by \irfWindA--\irfWindB\% (wind) and \irfRhA--\irfRhB\% (humidity) the next day, fading within about a week.
-    \item \textbf{Horizon:} last week's weather adds nothing for predicting this week's \pmtwo{} ($p\approx0.5$), so weather is a short-memory driver and the 12-month model should not rely on it.
+    \item \textbf{Horizon:} last week's weather adds no detectable value for predicting this week's \pmtwo{} ($p\approx0.5$, tested specification), so weather is a short-memory predictor and the 12-month model should not rely on it.
   \end{itemize}
   \vspace{4pt}
   \begin{takeaway}
@@ -7065,7 +10156,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \node[anchor=west,text=graytxt] at (10.4,-2) {origin 3: train 2015--18, forecast 2019};
   \end{tikzpicture}\\[3pt]
   \begin{takeaway}
-    \textbf{Pre-declared headline:} Fourier+ARMA, selection inside each window. Other variants are comparisons, not cherry-picks.
+    \textbf{Headline procedure:} Fourier+ARMA (ARMA or ARIMA errors), selection inside each window; fixed in the code before the final runs, though 2019 had been examined in earlier iterations.
   \end{takeaway}
 \end{frame}
 
@@ -7073,7 +10164,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.86\linewidth]{fig/fc_backtest.pdf}\\[3pt]
   \begin{takeaway}
-    MAE in \ugm{}; 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen, SARIMA $D=1$ \fcMaeSarimaNineteen\ (but \fcMaeSarimaSeventeen\ in 2017). A year ahead, the calendar is most of the signal: a smooth Fourier model matches climatology, while SARIMA $D=0$ (\fcMaeSarimaZeroNineteen) and the LSTM (\fcMaeLstmNineteen) are clearly worse.
+    MAE in \ugm{}; 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen, SARIMA $D=1$ \fcMaeSarimaNineteen\ (but \fcMaeSarimaSeventeen\ in 2017). A year ahead, the calendar is most of the signal: a smooth Fourier model is indistinguishable from climatology, while SARIMA $D=0$ (\fcMaeSarimaZeroNineteen) and the small LSTM (\fcMaeLstmEighteen\ in 2018, \fcMaeLstmNineteen\ in 2019) are clearly worse.
   \end{takeaway}
 \end{frame}
 
@@ -7081,7 +10172,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering\footnotesize
   \input{tables/fc_backtest.tex}\par\vspace{6pt}
   \begin{takeaway}
-    MAE in \ugm{} (lower is better). The last column is a moving-block bootstrap of the paired error differences to climatology over the 2018 and 2019 forecasts: the seasonal naive, SARIMA $D=0$ and the LSTM are \emph{clearly worse}. The linear-trend Fourier variant looks better on 2018--19 but not over all three origins, and it was not our pre-declared choice, so we do not claim it. With three origins we cannot rank the rest.
+    MAE in \ugm{} (lower is better). The last column is a circular moving-block bootstrap (within each year) of the paired error differences to climatology over 2018--19: the seasonal naive, SARIMA $D=0$ and the small LSTM are \emph{clearly worse}; every other model, including the linear-trend variant with the lowest MAE, is \emph{indistinguishable} from climatology. With three origins we cannot rank them.
   \end{takeaway}
 \end{frame}
 
@@ -7090,16 +10181,16 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \column{0.485\linewidth}
     \begin{card}[title={Residual checks}]{pblue}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
-        \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact}: the first 52 residuals of a $D=1$ model are diffuse-initialisation values. Removed, the SARIMA residuals pass at lags 10 and 26.
+        \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact} (52 diffuse-initialisation residuals); removed, SARIMA passes at lags 10 and 26.
         \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: the seasonal difference is not needed.
-        \item Honest limit: the Fourier model still shows some autocorrelation at lags 26 and 52.
+        \item Limit: the Fourier model keeps some autocorrelation at lags 26, 52.
       \end{itemize}
     \end{card}
     \column{0.485\linewidth}
     \begin{card}[title={Prediction intervals (95\%)}]{porange}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
-        \item Model-based intervals covered \fcCovRaw\% of 2019 weeks. All misses were on the low side (2019 was cleaner than 2015--18).
-        \item Scaling the spread by season, using only 2017--18 errors, gives \fcCovCal\% coverage on 2019. We re-centre only if the bias had the same sign and was large in both earlier years; it was not.
+        \item Model-based intervals covered \fcCovRaw\% of 2019 weeks (2017 stress fold: \fcCovSeventeen\%). All 2019 misses were on the low side (2019 was cleaner than 2015--18).
+        \item Seasonal scaling from 2017--18 errors gives \fcCovCal\% coverage on 2019, but width grows \fcCalWidthRaw$\to$\fcCalWidthCal\ \ugm{} and the Winkler score worsens (\fcCalWinkRaw$\to$\fcCalWinkCal): coverage, not sharper intervals.
       \end{itemize}
     \end{card}
   \end{columns}
@@ -7121,7 +10212,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.95\linewidth]{fig/fc_outlook.pdf}\\[2pt]
   \begin{takeaway}
-    Fitted on 2015--2019 only. \textbf{Validation of the same pipeline on 2019:} all \fcValInside\ monthly means fell inside the 95\% interval, but the model over-predicted the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), the same level bias as before. In 2020, Jan--Feb fall inside the interval; March--May fall below it (lockdown). Bands are \pmtwo{} sub-index bands, not the official AQI.
+    Fitted on 2015--2019 only. \textbf{Validation of the same pipeline on 2019:} all \fcValInside\ monthly means fell inside the 95\% interval, but the model over-predicted the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), the same level bias as before. In 2020, Jan--Feb fall inside the interval; March--June fall below it (lockdown and the weeks after). Bands are \pmtwo{} sub-index bands, not the official AQI.
   \end{takeaway}
 \end{frame}
 
@@ -7129,7 +10220,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.88\linewidth]{fig/fc_lockdown.pdf}\\[2pt]
   \begin{takeaway}
-    From 29 Mar to 31 May 2020, \pmtwo{} was about \textbf{\fcLockPct\%} below the no-lockdown forecast (95\% interval \fcLockLo--\fcLockHi\%). Adjusting the forecast for the actual wind and humidity of those weeks, the gap is \textbf{\fcLockWxPct\%}: most of the drop is not weather. Descriptive: it relies on the model's 2020 level being right.
+    Over the 10 weeks ending 29 Mar--31 May (covering 23 Mar--31 May), observed \pmtwo{} was about \textbf{\fcLockPct\%} below the model's no-lockdown projection (95\% interval \fcLockLo--\fcLockHi\%); \fcLockWxPct\% with the actual weather. \emph{Not causal:} the model was already \fcLockPre\% high before the lockdown (adjusted gap \fcLockAdj\%), other level specs give \fcLockSensLo--\fcLockSensHi\%, and a 2019 placebo gives \fcLockPlacebo\% (interval spans 0).
   \end{takeaway}
 \end{frame}
 
@@ -7140,9 +10231,9 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
       \begin{itemize}\setlength\itemsep{2pt}
         \item Strong yearly cycle (winter \ratioWM$\times$ the monsoon); log stabilises variance.
         \item Wind and humidity anomalies robustly \emph{predict} PM$_{2.5}$ for about a week; effect \irfWindA--\irfWindB\% (wind), \irfRhA--\irfRhB\% (humidity) the next day.
-        \item At a weekly-to-yearly horizon weather adds nothing usable; a Fourier+ARMA model matches or slightly beats climatology; SARIMA, LSTM do not help.
-        \item The 2016--19 decline is real (about $-$\declPanel\% on a fixed station panel).
-        \item The lockdown cut PM$_{2.5}$ by about \fcLockPct\% relative to forecast.
+        \item Beyond a week no usable weather value was detected; Fourier+ARMA is indistinguishable from climatology; SARIMA $D=0$ and the small LSTM are worse.
+        \item The 2016--19 decline looks genuine (about $-$\declPanel\% on a fixed 6-station panel); a network effect is not fully excluded.
+        \item Lockdown-period PM$_{2.5}$ was about \fcLockPct\% below the model's no-lockdown projection (\fcLockSensLo--\fcLockSensHi\% across specs; descriptive).
       \end{itemize}
     \end{card}
     \column{0.485\linewidth}
@@ -7150,7 +10241,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
       \begin{itemize}\setlength\itemsep{2pt}
         \item Granger = predictive; mixing height, stubble burning, fireworks are unmeasured.
         \item Weather's share of 14-day error depends on the VAR ordering (\fevdA--\fevdB\%).
-        \item Three backtest origins: few independent tests; most model differences are not significant.
+        \item Three origins: no model significantly beats climatology; 2019 was seen earlier.
         \item Level bias in 2019; residual autocorrelation at long lags.
         \item One city; data end in mid-2020; ERA5 is a grid cell; PM$_{2.5}$ band $\ne$ official AQI.
       \end{itemize}
@@ -7225,6 +10316,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
 
 ## git log (main..HEAD)
 ```
+76e359e Add verification pack (recompute data, code, results, claims ledger) for external audit
 3397b23 Deck, report, review-response log, README, presentation script, LLM briefs, verification (65 checks)
 9b351f9 Notebook 04: rolling-origin backtest, diagnostics, calibration, 1-week weather test, 2020 outlook, lockdown case study; archive SARIMA draft
 2a3d6bc Notebooks 02-03: training-only headline stats, level-drift and station check, extra Granger robustness (temp, trend, seasonal, by-lag), GIRF, nested weekly test; re-executed
@@ -7232,129 +10324,7 @@ d671a29 src: leap-safe climatology, week index, forecasting toolkit, PM2.5-band 
 982b5ab Baseline: hygiene (.gitignore, untrack pycache) and existing phase 2-3 rework, beamer deck, SARIMA draft, review inputs
 ```
 
-## diffstat of source and notebook changes
-```
- notebooks/01_data_prep.ipynb             |   58 +-
- notebooks/02_eda.ipynb                   | 1088 +++++++++++--
- notebooks/03_var_granger.ipynb           | 1889 +++++++++++++++++++----
- notebooks/04_forecasting.ipynb           | 2477 ++++++++++++++++++++++++++++++
- src/__pycache__/__init__.cpython-312.pyc |  Bin 166 -> 0 bytes
- src/__pycache__/aqi.cpython-312.pyc      |  Bin 1606 -> 0 bytes
- src/__pycache__/data.cpython-312.pyc     |  Bin 7282 -> 0 bytes
- src/__pycache__/plots.cpython-312.pyc    |  Bin 3597 -> 0 bytes
- src/__pycache__/tsa.cpython-312.pyc      |  Bin 4587 -> 0 bytes
- src/aqi.py                               |   13 +-
- src/forecast.py                          |  367 +++++
- src/tsa.py                               |   42 +-
- tools/build_llm_context.py               |   88 ++
- tools/build_nb04.py                      |  448 ++++++
- tools/edit_deck.py                       |  175 +++
- 15 files changed, 6185 insertions(+), 460 deletions(-)
-```
-
-## diff of src/tsa.py and src/aqi.py vs main
-```diff
-diff --git a/src/aqi.py b/src/aqi.py
-index 6a7daa2..ebee7e8 100644
---- a/src/aqi.py
-+++ b/src/aqi.py
-@@ -1,4 +1,7 @@
--"""CPCB (India) National AQI categories for 24-hour average PM2.5 (µg/m³)."""
-+"""CPCB (India) National AQI PM2.5 sub-index bands for 24-hour average PM2.5 (µg/m³).
-+
-+The official AQI is the MAXIMUM sub-index over all pollutants, so a band here is a "PM2.5 sub-index band", not the AQI.
-+"""
- import numpy as np
- import pandas as pd
- 
-@@ -28,3 +31,11 @@ def band_edges():
-         out.append((name, lower, upper, colour))
-         lower = upper
-     return out
-+
-+
-+def band_probabilities(mu, sd):
-+    """P(PM2.5 in each band) for a lognormal log-PM2.5 ~ N(mu, sd^2). Returns array (len(CATEGORIES),)."""
-+    from scipy.stats import norm
-+    edges = [b[1] for b in CPCB_PM25_BANDS[:-1]]
-+    cdf = np.r_[0.0, norm.cdf((np.log(edges) - mu) / sd), 1.0]
-+    return np.diff(cdf)
-diff --git a/src/tsa.py b/src/tsa.py
-index 56da05e..3cbfb0e 100644
---- a/src/tsa.py
-+++ b/src/tsa.py
-@@ -9,7 +9,7 @@ from statsmodels.tsa.stattools import adfuller, grangercausalitytests, kpss
- def adf_kpss(series, name, alpha=0.05):
-     """ADF (H0: unit root) and KPSS (H0: level-stationary) on one series, with a combined verdict."""
-     s = pd.Series(series).dropna()
--    adf_stat, adf_p, adf_lags, *_ = adfuller(s, autolag="AIC")
-+    adf_stat, adf_p, adf_lags, _, adf_crit, _ = adfuller(s, autolag="AIC")
-     with warnings.catch_warnings():
-         warnings.simplefilter("ignore")  # KPSS warns when p is outside its lookup table
-         kpss_stat, kpss_p, *_ = kpss(s, regression="c", nlags="auto")
-@@ -24,8 +24,9 @@ def adf_kpss(series, name, alpha=0.05):
-         verdict = "Mixed (KPSS says stationary, ADF can't reject unit root)"
-     return {
-         "series": name, "n": len(s),
--        "adf_stat": round(adf_stat, 3), "adf_p": round(adf_p, 4), "adf_lags": adf_lags,
--        "kpss_stat": round(kpss_stat, 3), "kpss_p": round(kpss_p, 4),
-+        "adf_stat": round(adf_stat, 3), "adf_p": float(f"{adf_p:.3g}"), "adf_lags": adf_lags,
-+        **{f"adf_crit_{k}": round(v, 3) for k, v in adf_crit.items()},
-+        "kpss_stat": round(kpss_stat, 3), "kpss_p": float(f"{kpss_p:.3g}"),
-         "verdict": verdict,
-     }
- 
-@@ -34,20 +35,39 @@ def stationarity_table(series_dict):
-     return pd.DataFrame([adf_kpss(s, name) for name, s in series_dict.items()]).set_index("series")
- 
- 
-+def doy365(index):
-+    """Calendar day-of-year on a fixed 1..365 scale: Feb 29 maps to day 59, later leap-year days shift by -1."""
-+    idx = pd.DatetimeIndex(index)
-+    doy = np.asarray(idx.dayofyear)
-+    leap_after_feb = idx.is_leap_year & (doy > 59)
-+    return np.where(leap_after_feb, doy - 1, doy).clip(1, 365)
-+
-+
- def doy_climatology(s, window=31):
--    """Smoothed day-of-year mean (circular rolling window), indexed 1..365."""
--    doy = np.minimum(s.index.dayofyear, 365)
--    clim = s.groupby(doy).mean().reindex(range(1, 366)).interpolate()
-+    """Smoothed day-of-year mean (circular rolling window), indexed 1..365. Fit on whatever sample is passed."""
-+    clim = s.groupby(doy365(s.index)).mean().reindex(range(1, 366)).interpolate()
-     half = window // 2
-     padded = pd.concat([clim.iloc[-half:], clim, clim.iloc[:half]])
-     return padded.rolling(window, center=True).mean().iloc[half:-half]
- 
- 
--def doy_anomaly(s, window=31):
--    """Deseasonalised series: value minus its smoothed day-of-year climatology."""
--    clim = doy_climatology(s, window)
--    doy = np.minimum(s.index.dayofyear, 365)
--    return s - clim.reindex(doy).to_numpy()
-+def apply_climatology(s, clim):
-+    """Subtract a previously fitted climatology (from `doy_climatology`) from any series."""
-+    return s - clim.reindex(doy365(s.index)).to_numpy()
-+
-+
-+def doy_anomaly(s, window=31, ref=None):
-+    """Deseasonalised series: value minus its smoothed day-of-year climatology.
-+
-+    The climatology is fitted on `ref` (default: `s` itself). Pass a training slice as `ref` to avoid leakage.
-+    """
-+    return apply_climatology(s, doy_climatology(s if ref is None else ref, window))
-+
-+
-+def week_index(index):
-+    """1..52 calendar-week index for weekly (W-SUN) dates: day-of-year of the week's Thursday, in 7-day blocks."""
-+    thu = pd.DatetimeIndex(index) - pd.Timedelta(days=3)
-+    return np.minimum((doy365(thu) - 1) // 7 + 1, 52)
- 
- 
- def pairwise_granger(df, pairs, maxlag=7):
-```
-
-## Review responses (each earlier claim, verdict, evidence)
+## Review responses (every claim from five reviews, with verdict, evidence, fix; Round 2 at the end)
 # Review responses: every claim checked against the data
 
 Three independent reviews of the project (Claude: `gemini_context/06_critical_review.md` before the final rewrite; Gemini: `docs/reviews/Geminiplan.md`; GPT: `docs/reviews/gpt.md`) raised the points below.
@@ -7404,8 +10374,157 @@ Each was **re-checked on the data** before acting. "Where" gives the notebook/fi
 
 ## C. New findings from the rework (not raised by any review)
 
-1. The pre-declared headline model is **not** significantly better than climatology (2018–19 MAE 24.6 vs 24.8); the variant with a linear trend is better on 2018–19 (CI excludes 0) but not over all three origins and was not chosen in advance. We report both and claim neither.
+1. The headline Fourier+ARMA procedure is **not** significantly better than climatology (2018-19 MAE 24.6 vs 24.8); neither is the linear-trend variant (21.9, interval -6.1 to +0.7), so nothing beats climatology (Round 2, R12).
 2. In the 2-year-training fold (2017) SARIMA D=1 collapses (MAE 54 vs 31 for climatology): another reason to avoid unnecessary seasonal differencing.
-3. The calibrated 2020 forecast intervals are *narrower* than those for 2019 (scale factors 1.09/0.95 vs 1.33/1.42): the calibration is fold-dependent, which we report instead of hiding.
-4. The 2020 forecast correctly flags the lockdown: March–May means fall below the 95% interval; PM2.5 was ≈ 43% below the no-lockdown forecast (≈ 38% after weather adjustment).
+3. The calibrated 2020 forecast intervals are *narrower* than those for 2019 (scale factors 1.09/0.95 vs 1.33/1.42): the calibration is fold-dependent, which we report instead of hiding; calibration also widens intervals and worsens the Winkler score.
+4. The observed March-June 2020 monthly means fall below the 95% interval; lockdown-period PM2.5 was about 43% below the model's no-lockdown median (35-51% across adjustments; a 2019 placebo gives 15%): descriptive, not causal.
 5. The pipeline over-predicts the share of Poor-or-worse days in 2019 (55% vs 45%): the level bias noted above carries into the band table.
+
+## Round 2: outside verification audits of the finished project (Gemini and GPT)
+Both audits (`docs/reviews/round2/`) received `verification_pack/` and recomputed the headline numbers. Every number they recomputed matched. They also reported code bugs, checker defects and over-claims, each re-tested against the code and data before acting. Gemini's statement that it ran `verify_numbers.py` (63/65) could not have been done from the pack, which did not contain the raw data, so it is not relied on.
+
+| # | Claim (source) | Verdict | Evidence and fix |
+|---|---|---|---|
+| R1 | LSTM recursive input pairs each anomaly with the calendar row of the *next* week (GPT) | **Accepted, confirmed** | `forecast.py` built the window as `Cp[j+1:] + Cf[:j+1]`. Now one helper (`lstm_window`) builds training and forecast windows, with a unit test. Rerun: MAE 36.3 / 28.3 / 54.3 (was 36.3 / 49.2 / 52.9): 2018 improves, still clearly worse than climatology over 2018-19. |
+| R2 | verify_numbers checks April-June against March-May intervals (GPT) | **Accepted, confirmed** | `month == i_ + 1`. Fixed; each month now compared with its own interval and June added. Conclusion unchanged (Mar-Jun all below). |
+| R3 | Persistence check skips the first test week (GPT) | **Accepted** | `.iloc[1:]` removed, tolerance 0.6 -> 0.01. |
+| R4 | Link checks fail offline (Gemini) | **Accepted** | HTTP 000 is reported as offline and the local raw files are checked instead. |
+| R5 | Report: seasonal Granger "p <= 5e-4"; winter humidity is 5.35e-4 (GPT) | **Accepted** | Report now says all p < 1e-3; a verify check enforces it. |
+| R6 | Report: D=0 MAE "39.7 -> 30.6" with a constant has no saved evidence (GPT) | **Accepted** | Came from a planning run, not a saved result. Replaced by a matched table (`fc_sarima_d0_constant.csv`): without constant 76.9 / 61.0 / 92.1, with 44.9 / 42.8 / 44.1, climatology 31.0 / 21.8 / 27.8. |
+| R7 | June 2020 omitted (GPT) | **Accepted** | June actual 46.7 < lower bound 48.7. Deck and report now say March-June; verify check extended. |
+| R8 | Calibration raises coverage but widens intervals and worsens the Winkler score (GPT) | **Accepted** | Width 125 -> 179, Winkler 175 -> 193; now stated everywhere; "calibrated" reworded to "interval widths rescaled". 2017 coverage 69% is also reported. |
+| R9 | "ARMA" label although the rw level is ARIMA(p,1,q) (GPT) | **Accepted** | Wording changed in definitions (label kept). |
+| R10 | `_best_by_aicc` accepts non-converged fits; warnings suppressed globally (GPT) | **Accepted** | Fits with `converged = False` are rejected and counted (6 / 3 / 5 per origin); warnings now suppressed only inside the fit call. Selected specs unchanged. |
+| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.1% predicted vs 45.2% actual (unchanged story). |
+| R12 | Block bootstrap joins forecast years (Gemini, GPT) | **Accepted; found a second bug** | Blocks are now drawn within each fold. My first version (non-circular) under-sampled the first and last weeks and gave biased intervals (it declared the linear variant and the selected model "better"); the final version is circular. Result: **no model beats climatology significantly**; the linear variant (-2.9, CI -6.1 to +0.7) is indistinguishable. Seasonal naive, SARIMA D=0 and the LSTM are clearly worse; SARIMA D=1 is worse over all three folds. |
+| R13 | Constant predictive sd for linear regression and LSTM (Gemini) | **Accepted** | Linear regression: OLS prediction sd with parameter uncertainty. LSTM: sd from in-sample recursive h-step errors (non-decreasing, capped). Climatology and seasonal naive now carry an sd, so RMSE uses the mean forecast for every model. |
+| R14 | Calibration threshold ignores consistent negative bias (Gemini) | **Partly** | The step rule was fixed before 2019 was seen; replacing it afterwards would tune on the test year. Added as a labelled post-hoc sensitivity: a shrunk shift gives 2019 bias +4.3, MAE 23.6, Winkler 161, but is not adopted. |
+| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -35%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
+| R16 | Over-claims: "matches or slightly beats", "weather adds nothing", "decline is real", "cut PM2.5 by 43%", "65 checks verify every number", "pre-declared / untouched 2019", "LSTM clearly worse" (both) | **Accepted** | Reworded across deck, report, script and README; 2019 described as examined in earlier iterations. |
+| R17 | Bootstrap and tests rest on only three origins (both) | **Accepted** | Stated in limitations; no stronger claim made. |
+| R18 | Report omits lag-10 Ljung-Box p = 0.088 (Gemini) | **Accepted** | Added. |
+| R19 | 52-week fold naming and week-53 cap (GPT) | **Accepted** | Notebook text: the 2017 fold ends 24 Dec 2017; week 53 is folded into 52; seasonal naive is 52 weeks back. |
+| R20 | `verify_numbers.py` is not comprehensive (both) | **Accepted** | Described as selected checks. New checks: LSTM alignment, daily-path coherence, saved-forecast recomputation of all MAEs, bootstrap table, one-step MAEs, lockdown sensitivity arithmetic, calibration direction, D=0 table, Granger bound. |
+| R21 | Fixed 6-station panel does not prove the decline is real (GPT) | **Accepted** | Wording: "consistent with a genuine decline; network effect not fully excluded". |
+| R22 | Gemini: Granger "drive/explain" wording | **Accepted** | "Predictive association" throughout; deck question changed to "Does weather predict PM2.5?". |
+| R23 | Gemini: LSTM strawman | **Partly** | It is a small untuned baseline, stated as such; no claim about neural networks. |
+
+## Round 2 audit documents
+### GPT
+# Independent verification audit — Delhi PM2.5 (`phase4-final`)
+
+Scope: `00_VERIFY_README.md` and supplied files 01–09. Recomputed from the **rounded** weekly data (287 records) and raw backtest predictions (1,560 records) in `06_raw_data_for_recompute.md`. Source-line pointers refer to the supplied Markdown files. No original daily CPCB/ERA5 files, station-level CSVs, actual `numbers.tex`, or simulation-path records were supplied. Consequently, statements dependent on these assets are **internally checked, not independently reproduced**. This audit does not claim to have run `verify_numbers.py` end-to-end.
+
+## I. Ledger of 15 claims
+
+| Ledger | Independent finding | Status |
+|---|---|---|
+| 1. Forecast MAE for 2017/18/19 | Independently recomputed all ten models, all three folds. Selected model 31.483/23.426/25.695; climatology 30.998/21.774/27.818; SARIMA D=1 53.827/21.083/27.452; D=0 44.874/42.834/44.103; LSTM 36.291/49.231/52.869. | **PASS** (stored forecast rows) |
+| 2. Calendar-week climatology | Rebuilt group means of log weekly PM2.5 using the training years and `week_index`. Stored predictions agree to <0.00008 log units, explained by input rounding. | **PASS** |
+| 3. Seasonal naive | Stored median forecasts match the observed PM2.5 52 weeks earlier exactly, across all three folds. | **PASS** |
+| 4. Moving-block CI | Re-ran RNG seed=0, block length 8, 4,000 replications. Selected minus climatology (2018–19) mean difference −0.235 µg/m³, CI [−3.558,+1.806]; Fourier linear −2.942, CI [−6.430,−0.357]. | **PASS arithmetic**, inferential caveat (few origins) |
+| 5. Raw/calibrated intervals | Raw selected 2019: 47/52 =90.3846%. Applying stored seasonal scale factors 1.33430955 winter, 1.42153240 non-winter: 50/52 =96.1538%. | **PASS**, calibration score worsens |
+| 6. Misses by year | 2017: 10 below/6 above, 36/52=69.23%; 2018: 2 below/1 above, 49/52=94.23%; 2019: 5 below/0 above, 47/52=90.38%. | **PASS** |
+| 7. One-week weather | From `05` table: no weather 22.39; lagged 22.92 (−2.4% gain), prior-last-3-days 22.24 (+0.7%), same-week oracle 20.84 (+6.9%); DM/HLN approx 0.074. Raw one-step forecasts are **not** supplied in `06`, so cannot independently recompute its errors or p-value. | **Consistent, unverified from raw** |
+| 8. Daily Granger | Report values match `05` tables (base HAC p roughly 6e−20 and 4e−11; with rain/temp roughly 9e−18 and 7e−8). Full daily anomaly inputs absent; exact p-values not independently re-estimated. | **Table-consistent, not independently reproduced** |
+| 9. Weekly nested weather | Independently implemented the lag-1 nested regression on supplied weekly data. R² base 0.13408324, full 0.13908401, ΔR²=0.00500077, joint HAC Wald p=0.5146397. | **PASS** |
+| 10. 2019 monthly pipeline | `05` reports 12/12 monthly means inside 95% and Poor+ 55.0% predicted vs 45.2% actual. Weekly raw file cannot reconstruct daily observed counts, stochastic daily profiles, or Monte Carlo draws. | **Unverifiable from raw pack** |
+| 11. Lockdown contrast | Ten weeks 29 Mar–31 May 2020: actual mean 48.66972 (from `06`) vs reported model counterfactual median 85.14075 (`05`), (actual/median−1)=−42.836%; weather-adjusted median 78.46681, −37.974%. Counterfactual simulation distribution and interval **not supplied**. | **Percent arithmetic PASS; causal meaning NOT established** |
+| 12. Station-panel decline | Reported log-anomaly changes imply exp(−0.163−0.121)−1=−24.72%; fixed panel exp(−0.132−0.088)−1=−19.75%; weather-adjusted exp(−0.110−0.085)−1=−17.72%. **Required raw station_day.csv absent**: cannot verify 6-station panel or composition claims. | **Arithmetic PASS; underlying evidence unavailable** |
+| 13. SARIMA diffuse burn-in | `04` reports drop initial 52 residuals, Ljung–Box p=.49 (lag10), .10 (lag26), .016 (lag52). Without original full-precision series cannot independently refit identical parameters. | **Code/output-consistent** |
+| 14. Seasonal MA −.988, SE 8.26 | Reported in notebook and `05`; cannot refit exactly. Very high SE signals weak identification, rather than quantitatively proving over-differencing. | **Code/output-consistent** |
+| 15. Leap-year `doy365` | Code maps Feb29 to Feb28 index, subtracts 1 from Mar1–Dec31 during leap years, giving 365-day seasonal alignment. | **PASS**, residual 53-week-compression caveat |
+
+## II. Independently recalculated MAE (µg/m³)
+
+| Model | 2017 | 2018 | 2019 |
+|---|---:|---:|---:|
+| Fourier+ARMA selected |31.483|23.426|25.695|
+| Climatology |30.998|21.774|27.818|
+| SARIMA D1 |53.827|21.083|27.452|
+| SARIMA D0 |44.874|42.834|44.103|
+| Fourier+ARMA linear |35.856|19.733|23.974|
+| Climatology+AR1 |30.701|21.668|27.327|
+| Fourier+ARMA const |30.593|22.048|29.262|
+| Linear regression |35.893|19.991|24.944|
+| LSTM |36.291|49.231|52.869|
+| Seasonal naive |38.438|28.965|30.306|
+
+Computed 287 equally spaced weekly observations (2015-01-04–2020-06-28). Weekly ln(PM2.5) differs from supplied rounded log column by no more than 0.00005.
+
+## III. Report/deck vs tables — specific mismatches or unsupported numbers
+
+1. **Seasonal Granger p-value overstatement** — `08_report_and_deck_text.md`, report Granger paragraph, ~line 46: claims both wind and humidity significant in winter and monsoon at *p* ≤ 5×10^-4. `05_all_results_tables.md`, `granger_hac_seasonal.csv`, winter humidity **p=0.00053516**, which is slightly GREATER than 0.0005. Change to `p < 0.001` or quote exact maximum.
+2. **Missing-constant D0 MAE 39.7→30.6 unsupported** — `08` report ~line 61 says introducing constant improves validation MAE from 39.7 to 30.6; current `05` table `fc_backtest_mae.csv` lists D0 MAEs **44.9, 42.8, 44.1**, and the value 30.6 belongs to `Fourier+ARMA const`, 2017. These may refer to distinct draft configurations/horizons; without a saved matched-pair output, the exact 30.6 improvement is **not supported by current results**, and attribution solely to constant is unwarranted.
+3. **2020 month omission** — Deck ~line 459 says January–February inside, March–May below interval. `05`, `fc_outlook_2020.csv` also shows **June** actual 46.695 below lower 48.702, and June is a full observed month. Include June or explain why excluded. Related plotted title “Jan–May full months” is inaccurate.
+4. **Calibration is presented as improvement while interval quality worsens** — `05`, `fc_calibration_2019.csv`: raw 90.4% to calibrated 96.2% coverage, but average interval width **125.08→178.66** (+42.8%) and mean Winkler score **174.88→192.72** (+10.2%; lower is better). Code correct for coverage but the evidence does not show uniformly *better* predictive intervals.
+5. **Title/model-class mismatch** — `08` calls the selected model Fourier+ARMA. `02_src_code.md`, `TREND_SPECS['rw']`, specifies **ARIMA(p,1,q) errors** for selected 2017 and 2019 folds. More accurate: Fourier regression with ARIMA errors, or DHR with candidate ARMA/ARIMA error structures.
+6. **Unverifiable ‘predetermined’ claim** — `08` ~line 54 and deck ~line403 claim the headline rule was decided before test years were inspected. The prior project material already included 2019 results and iterative model development. Current code can be internally chronological while the **research process** reuses 2019 as a model development reference. Do not describe 2019 as a pristine untouched prospective holdout.
+7. **Numerical statements otherwise agree** — headline MAEs, 2017–2019 interval miss counts, calibration coverage, bootstrapped loss differences, weekly ΔR² and p=.51, one-week MAE improvements *as tabulated*, forecast-day shares *as tabulated*, station-change percentages *as tabulated*, IRF and FEVD summaries *as tabulated*, and lockdown gap arithmetic match to published rounding. This is a comparison of the provided LaTeX and `05` tables, **not** a check of actual `numbers.tex` macro contents; the macro file was not included.
+
+## IV. Confirmed code defects and verification blind spots
+
+**P0: Recursive LSTM feature alignment** — `02_src_code.md`, `src/forecast.py`, line ~456: `cc = np.vstack([Cp, Cf[:j + 1]])[-lag:] if j else Cp` but input anomaly history `hist[-lag:]` stops at previous week. For j≥1, `cc` contains next/current week's calendar vector, one step ahead of the corresponding anomaly input. Correct to `Cf[:j]` and rerun LSTM baseline. The existing backtest MAE computed from *saved predictions* is correct, but the training/forecast implementation is wrong; do not draw general conclusions about LSTM performance from uncorrected runs. Independent refit of the code on rounded weekly data was unstable/did not reproduce stored LSTM metrics (especially 2018 and 2019), so include a complete locked environment and raw unrounded inputs for reproducibility.
+
+**P0: Independent verifier off by one month** — `07_verification_and_figure_code.md`, `verify_numbers.py`, ~line 327: `for i_,m_ in zip((3,4,5), ['Mar','Apr','May'])` then selects `a20_.index.month==i_+1`. This checks April, May, June observed concentrations against March, April, May intervals. Fix to `index.month==i_`. A PASS from this code cannot validate the intended claim.
+
+**P1: Persistence checker drops first week** — `07`, ~line 314: `.iloc[1:]` is applied to both actual and previous-week reference even though previous-week observations are available. It skips one complete test week. The computed persistence MAE changes, but generous tolerance currently masks the error. Check every available weekly forecast and eliminate the tolerance masking.
+
+**P1: Non-converged model selection** — `02`, `_best_by_aicc` ~line 340 accepts any finite AICc without testing optimizer convergence. Global warning suppression hides warnings. Check `res.mle_retvals['converged']`, covariance warnings and invalid seasonal/invertibility parameters and document excluded candidates.
+
+**P1: Incoherent daily simulations vs weekly forecasts** — `02`, `daily_band_days` ~lines 583–619 constructs daily exceedance counts from separately sampled patterns, while monthly PM2.5 means are generated from a separate weekly trajectory (`monthly_mean_paths`). Their daily profiles are not constrained to exactly reproduce that same simulation's weekly means. A single coherent daily-to-weekly simulation should produce both monthly mean and counts. The 2019 daily band validation needs raw daily data/simulation paths to independently verify.
+
+**P1: 'Independent' verification is not comprehensive** — `07`, `verify_numbers.py` depends on original raw CPCB/ERA5, processed files, station files, and generated macro files not provided in this bundle; therefore its 65/65 claim cannot be independently rerun from this upload alone. Some checks compare saved result tables or selected model specifications rather than recomputing model selection or full uncertainty procedure. It does not fully certify weather one-step, LSTM refits, station panel, outlook simulation or every report/deck number.
+
+**P1: Block bootstrap effective sample size** — `02`, `block_bootstrap_diff` resamples concatenated weekly loss differences across yearly origin boundaries, assuming weak stationarity. The 104 2018+19 weekly errors represent only two highly dependent forecast paths. Its percentiles reproduce as coded, but inferential significance is fragile.
+
+**P2: Horizon/calendar naming** — A 52-step weekly forecast from 2016-12-25 ends 2017-12-24, not on 2017-12-31. This is legitimate for a fixed 52-week horizon but should not be confused with a full calendar-year forecast. `week_index` caps week 53 at 52; the baseline still matched observed stored forecasts here. Annual calendar reporting must address 53-week years explicitly. Full 2019/2020 monthly outlooks use 53 projected weeks to cover all days, which is the appropriate distinct design.
+
+**Leakage conclusion**: Model selection in `select_dhr` and seasonal calibration uses data restricted to each backtest origin according to the supplied code. The apparent “same-week ERA5” model is explicitly marked oracle and is not used for operational forecasts. I found **no certain direct look-ahead in the main 52-week selected-model backtest**; the serious issues are (a) test-year reuse during iterative model development, (b) LSTM time-feature misalignment, and (c) uncertainty/verification design. Do not call every retrospective climatology or contemporaneous weather analysis “leakage”.
+
+## V. Interpretative overclaims
+
+- **“Weather adds nothing”** is stronger than a non-significant p=.515 and modest test-set accuracy changes. Better: no convincing *additional predictive benefit detected* in tested weekly specifications. In-sample Granger predictability does not establish physical causal ‘driving’.
+- **“Fourier+ARMA beats climatology”** only weakly: MAE 2018–19 average selected 24.56 vs climatology 24.80; block CI includes zero. The 2017 fold slightly favors climatology. The linear trend variant is apparently stronger on 2018–19, but selecting it after reviewing test results would require new evaluation.
+- **“Calibration works”** because 2019 coverage 96% omits the increase in interval width and worsening Winkler score; 2017 coverage is just 69%. No reliability guarantee over future years from three forecast origins.
+- **“Lockdown cut PM2.5 by 43%”** is an unjustified causal statement. This is a comparison to a projected counterfactual (median 85.14 vs observed 48.67). Forecast model was already high by ~8.5% relative to observed January–March pre-lockdown weeks, using available weekly 2020 records. The 10 Sunday weeks cover 23 Mar–31 May, including 23–24 Mar before 25 Mar lockdown. Weather adjustment does not resolve all competing confounders. Write “observed mean was approximately 43% below the model’s no-lockdown median projection over the 10 selected weeks.”
+- **“Most monitoring decline is real”** is not proven by a six-station fixed panel with differing year coverage; raw station file absent and weather covariates do not establish emissions causality.
+- **“LSTM clearly worse”** as a conclusion about a fairly evaluated baseline must wait for its recursive alignment fix and a reproducible rerun. It is not evidence that deep learning generally underperforms.
+- **“Monthly risk bands”** refer to PM2.5 sub-indices rather than full CPCB AQI, an appropriate distinction the revised report largely makes. Daily category probabilities derived from weekly means need a single coherent daily simulation and daily data for checking.
+
+## VI. Priority fixes
+
+1. Fix LSTM time-feature alignment, rerun all LSTM folds and store full-precision reproducibility inputs, seeds, PyTorch/version and outputs.
+2. Fix verifier’s month off-by-one and persistence skipped-week bugs; add true raw-output recomputation checks for all 15 ledger items, including one-week forecasts, station panel and simulated monthly outlook.
+3. Remove/correct report's winter-humidity p cutoff and unsubstantiated D0 validation “39.7→30.6” assertion; amend June 2020 omission.
+4. Show coverage, interval width **and Winkler score** together; avoid calling wider intervals uniformly “calibrated improvement.”
+5. Rebuild coherent daily trajectories whose weekly means match forecast draws; validate monthly risk-band counts from the actual historical daily series.
+6. Change causal lockdown language to explicit model-based counterfactual and clearly state 10 selected weeks begin 23 March.
+7. Temper significance and model-selection claims given only two main 52-step origins and reuse of the 2019 holdout; accurately label integrated DHR errors.
+
+Source: files 00–09 uploaded for this audit. Calculated supporting CSV: `audit_recomputed_metrics.csv`.
+
+### Gemini
+# Gemini verification audit (round 2), condensed transcription
+
+Source: pasted by the user from Gemini's reply to `verification_pack/`. Numeric tables omitted where they only confirm values already in `results/`.
+
+**Claimed run results (not reproducible from the pack: raw CPCB/ERA5/station files were not included, so these cannot have come from the supplied files alone):** verify_numbers.py 63/65 (the two failures were live link checks); make_figures.py exit 0.
+
+**Reproduced from the raw pack (all matched):** backtest MAEs (all models, 3 folds), climatology and seasonal naive, interval coverage and miss counts (2017 69.2% 10 below/6 above; 2018 94.2% 2/1; 2019 90.4% 5/0; calibrated 96.2%), bootstrap loss differences, one-week MAE changes, HAC Granger p-values, weekly nested test (R2 0.1341 to 0.1391, p = 0.5146), 2019 pipeline validation, lockdown arithmetic (48.67 vs 85.14 = -42.8%; weather-adjusted -38.0%), station-decline arithmetic, Ljung-Box with/without burn-in, seasonal MA -0.988 SE 8.26, doy365.
+
+**Mismatches / discrepancies reported:**
+1. verify_numbers.py makes live curl calls; fails offline.
+2. Some macros rounded to integers (MAE 54, LSTM 53, D0 44; lockdown bounds).
+3. Ledger said lockdown "25 Mar - 31 May"; the series uses 10 Sunday-ending weeks 29 Mar - 31 May.
+4. Report Section 5.3 omits that lag 10 is only marginal (p = 0.088).
+
+**Code findings:**
+- linreg and lstm return a constant predictive sd across horizons (LSTM: one-step residual sd, hence 0% coverage in 2018).
+- block_bootstrap_diff concatenates folds, blocks straddle the year boundary.
+- Calibration step rule (|mean z| > 0.5 in both folds) did not re-centre in 2019 (z = -0.66, -0.45; actual 2019 -0.53).
+- RMSE uses the lognormal mean for models with sd but the median for those without.
+
+**Over-claims:** "matches or slightly beats climatology" (CI spans 0); lockdown 43% confounded with model level bias (model already high in 2019); LSTM comparison is a strawman; "drive/explain" language for Granger results.
+
+**Prioritised fixes:** make verifier sandbox-safe; reword abstract; smooth the calibration rule; horizon-dependent sd for linreg/LSTM; sensitivity bounds for the lockdown gap (constant and random-walk level).

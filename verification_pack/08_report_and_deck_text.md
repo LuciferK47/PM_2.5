@@ -20,7 +20,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: last week's weather adds nothing for this week, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. A smooth Fourier+ARMA model matches or slightly beats climatology; SARIMA with seasonal differencing is fragile, and the LSTM is clearly worse. We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction intervals out of sample, and produce a monthly 2020 outlook that correctly flags the lockdown as a \fcLockPct\% fall below the no-lockdown forecast.
+We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: no added predictive value for next week was detected in the tested specification, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. No model is significantly better than climatology (a smooth Fourier+ARMA model is statistically indistinguishable from it); SARIMA with seasonal differencing is fragile, SARIMA with $D=0$ and the small LSTM are clearly worse. We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction interval widths out of sample (at the cost of wider intervals), and produce a monthly 2020 outlook in which the observed lockdown-period PM$_{2.5}$ is about \fcLockPct\% below the model's no-lockdown projection (descriptive, not a causal estimate; see Section on the lockdown).
 \end{abstract}
 
 \section{Introduction}
@@ -43,49 +43,49 @@ The city series is the mean over reporting stations (correlation 0.995 with the 
 
 \section{Does weather predict \pmtwo{}? (Q1)}
 Wind, humidity and log \pmtwo{} are deseasonalised with a smoothed day-of-year climatology (31-day circular window; leap years handled by mapping 29 Feb to day 59) and fitted in a VAR(4) (lag by AIC; BIC picks 2; stable, largest root modulus 0.81; portmanteau $p=0.17$).
-\paragraph{Granger causality.} Joint tests that lags 1--$k$ of wind or humidity add nothing to the \pmtwo{} equation are rejected at every $k=1,\dots,7$ ($p<10^{-9}$). With HAC (Newey-West) errors the 4-lag tests give $p\approx6\times10^{-20}$ (wind) and $4\times10^{-11}$ (humidity); adding rain and temperature controls gives $9\times10^{-18}$ and $7\times10^{-8}$; adding a linear time trend or using a climatology fitted on 2015--2018 only changes nothing. Season-specific tests show both variables are significant in winter and in the monsoon ($p\le5\times10^{-4}$); the interactions are weak (monsoon $\times$ humidity $p=0.20$, winter $\times$ wind $p=0.03$), so the EDA impression that humidity matters only in the monsoon is a correlation pattern, not a difference in predictive content. The reverse direction is absent for humidity and weak for wind (lag orders 1 and 2 only, $p=0.04$ and $0.02$). We call this a \emph{predictive association}: mixing height, stubble burning and fireworks are unmeasured, and the ERA5 data are one grid cell.
+\paragraph{Granger causality.} Joint tests that lags 1--$k$ of wind or humidity add nothing to the \pmtwo{} equation are rejected at every $k=1,\dots,7$ ($p<10^{-9}$). With HAC (Newey-West) errors the 4-lag tests give $p\approx6\times10^{-20}$ (wind) and $4\times10^{-11}$ (humidity); adding rain and temperature controls gives $9\times10^{-18}$ and $7\times10^{-8}$; adding a linear time trend or using a climatology fitted on 2015--2018 only changes nothing. Season-specific tests show both variables are significant in winter and in the monsoon (all $p<10^{-3}$; the largest is winter humidity, $p=5.4\times10^{-4}$); the interactions are weak (monsoon $\times$ humidity $p=0.20$, winter $\times$ wind $p=0.03$), so the EDA impression that humidity matters only in the monsoon is a correlation pattern, not a difference in predictive content. The reverse direction is absent for humidity and weak for wind (lag orders 1 and 2 only, $p=0.04$ and $0.02$). We call this a \emph{predictive association}: mixing height, stubble burning and fireworks are unmeasured, and the ERA5 data are one grid cell.
 \begin{figure}[H]\centering\includegraphics[width=0.9\linewidth]{granger_hac.pdf}\caption{HAC Wald tests (4 lags).}\end{figure}
 \paragraph{Size and timing.} A one-SD wind shock (2.5 km/h) lowers \pmtwo{} by \irfWindA--\irfWindB\% the next day, a one-SD humidity shock (5.4\% RH) by \irfRhA--\irfRhB\%, fading within about a week; the range reflects the Cholesky ordering (weather first allows same-day effects). The generalised IRF, which does not depend on ordering, gives $-12.0\%$ and $-5.2\%$ on day 1, inside or at the edge of those ranges. Weather shocks explain \fevdA--\fevdB\% of the 14-day forecast-error variance of \pmtwo{} depending on the ordering.
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\end{figure}
-\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add nothing to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$). Weather is therefore a short-memory predictor, and the 52-week models use no weather.
+\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add no detectable predictive value to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$) in the specification we tested. Weather is therefore a short-memory predictor, and the 52-week models use no weather.
 
 \section{Forecasting (Q2)}\label{sec:fc}
 \subsection{Models and evaluation design}
-All models forecast weekly log \pmtwo{} with no weather inputs: seasonal naive; \textbf{climatology} (mean of each calendar week, benchmark); climatology + AR(1); \textbf{Fourier + ARMA} (dynamic harmonic regression: $K\le5$ yearly sine/cosine pairs, ARMA$(p,q)$ errors with $p\le2,q\le1$, and a level that is constant, linear or a random walk); SARIMA$(1,0,1)(0,1,1)_{52}$ and SARIMA$(1,0,1)(1,0,0)_{52}$ with a constant; Linear Regression on Fourier terms and a linear trend; and a small LSTM (16 units, recursive, seeded). For the Fourier model, $K$ and $(p,q)$ are chosen by AICc within each level type, and the level type by validation on the last training year; this procedure was declared the headline before any test year was inspected. Evaluation uses three expanding-window origins (end of 2016, 2017, 2018), each forecasting the next 52 weeks, refitting and reselecting every time. The 2017 fold (two training years) is a stress test; 2018 and 2019 are the main evidence. Paired error differences to climatology are summarised with a moving-block bootstrap (8-week blocks); a plain Diebold--Mariano test on 52 weeks of one forecast path is not valid and is not used here.
+All models forecast weekly log \pmtwo{} with no weather inputs: seasonal naive; \textbf{climatology} (mean of each calendar week, benchmark); climatology + AR(1); \textbf{Fourier + ARMA} (dynamic harmonic regression: $K\le5$ yearly sine/cosine pairs, ARMA$(p,q)$ errors with $p\le2,q\le1$, and a level that is constant, linear or a random walk); SARIMA$(1,0,1)(0,1,1)_{52}$ and SARIMA$(1,0,1)(1,0,0)_{52}$ with a constant; Linear Regression on Fourier terms and a linear trend; and a small LSTM (16 units, recursive, seeded; an input-alignment bug in a first version was found by an outside audit and fixed). In the label ``Fourier+ARMA'' the errors are ARMA$(p,q)$ for the constant and linear levels and ARIMA$(p,1,q)$ for the random-walk level (selected in the 2017 and 2019 folds). Optimiser fits that do not converge are rejected. For the Fourier model, $K$ and $(p,q)$ are chosen by AICc within each level type, and the level type by validation on the last training year; this procedure was fixed in the code before the final runs, but the 2019 year had been examined in earlier iterations of the project, so 2019 is not a pristine hold-out. Evaluation uses three expanding-window origins (end of 2016, 2017, 2018), each forecasting the next 52 weeks, refitting and reselecting every time. The 2017 fold (two training years) is a stress test; 2018 and 2019 are the main evidence. Paired error differences to climatology are summarised with a circular moving-block bootstrap (8-week blocks, drawn within each forecast year, so no block crosses two origins); a plain Diebold--Mariano test on 52 weeks of one forecast path is not valid and is not used here.
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{fc_backtest.pdf}\caption{Left: the 2019 forecast of the selected model against climatology and the actual values. Right: MAE by forecast year.}\end{figure}
 \subsection{Backtest results}
 \begin{table}[H]\centering\footnotesize\input{../slides/beamer/tables/fc_backtest.tex}\caption{52-week-ahead MAE (\ugm{}) by forecast year; last column: bootstrap verdict against climatology over 2018 and 2019.}\end{table}
-In 2019 the selected Fourier+ARMA model has an MAE of \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology and \fcMaeSarimaNineteen{} for the seasonal-differenced SARIMA; the SARIMA is, however, at \fcMaeSarimaSeventeen{} in the 2017 fold, where it has only two seasons to learn from. Over 2018--2019 only the seasonal naive forecast, SARIMA with $D=0$ (\fcMaeSarimaZeroNineteen{} in 2019) and the LSTM (\fcMaeLstmNineteen{}) are clearly worse than climatology. The linear-trend Fourier variant is better on 2018--19 (the bootstrap interval excludes 0) but not over all three origins, and it was not the pre-declared choice, so we do not claim it. The honest summary: a year ahead the calendar carries almost all of the predictable signal, and with three origins the remaining models cannot be ranked.
+In 2019 the selected Fourier+ARMA model has an MAE of \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology and \fcMaeSarimaNineteen{} for the seasonal-differenced SARIMA; the SARIMA is, however, at \fcMaeSarimaSeventeen{} in the 2017 fold, where it has only two seasons to learn from. Over 2018--2019 only the seasonal naive forecast, SARIMA with $D=0$ (\fcMaeSarimaZeroNineteen{} in 2019) and the LSTM (\fcMaeLstmEighteen{} in 2018, \fcMaeLstmNineteen{} in 2019) are clearly worse than climatology (the bootstrap interval excludes 0), and SARIMA with $D=1$ is clearly worse over all three origins. For every other model, including the selected Fourier+ARMA model and the linear-trend variant (which has the lowest 2018--19 MAE, 21.9), the bootstrap interval includes 0, so we call them statistically indistinguishable from climatology. The LSTM was rerun after the alignment fix; it remains worse, but it is a small, untuned model and says nothing about neural networks in general. The honest summary: a year ahead the calendar carries almost all of the predictable signal, and with three origins the remaining models cannot be ranked.
 
 \subsection{Diagnostics: errors in the earlier draft}
-The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, the usual sign that the seasonal difference is unnecessary. The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; with a constant its validation MAE falls from 39.7 to 30.6 (but it remains the worst non-LSTM model overall). The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
+The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, the usual sign that the seasonal difference is unnecessary. The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; the matched comparison (same orders, same folds; notebook~04, \texttt{fc\_sarima\_d0\_constant.csv}) gives MAE 76.9/61.0/92.1 without and 44.9/42.8/44.1 with a constant for 2017/2018/2019, against 31.0/21.8/27.8 for climatology, so the constant matters a lot but D=0 stays clearly worse. The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$; lag 10 is marginal, $p=0.088$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
 
 \subsection{Prediction intervals}
-Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks; all misses were below the lower bound because 2019 was cleaner than 2015--18, so the problem is level bias as much as width. We rescale the predictive standard deviation by season (winter vs other months, shrunk toward the pooled value) using only the 2017 and 2018 errors, and re-centre only if the bias has the same sign and size $>0.5$ standard deviations in both calibration years; it did not (mean standardised errors $-0.66$ and $-0.45$), so only the scale is changed. On 2019 the calibrated coverage is \fcCovCal\%. The scale factors differ by fold (1.33/1.42 for 2019, 1.09/0.95 for the 2020 forecast), which shows the calibration is itself uncertain.
+Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks (2018: 94\%; the 2017 stress-test fold only \fcCovSeventeen\%); in 2019 all 5 misses were below the lower bound because 2019 was cleaner than 2015--18, so the problem is level bias as much as width. We rescale the predictive standard deviation by season (winter vs other months, shrunk toward the pooled value) using only the 2017 and 2018 errors, and re-centre only if the bias has the same sign and size $>0.5$ standard deviations in both calibration years; it did not (mean standardised errors $-0.66$ and $-0.45$), so only the scale is changed. On 2019 the coverage rises to \fcCovCal\%, but only by widening the intervals (mean width \fcCalWidthRaw{} to \fcCalWidthCal{} \ugm{}) and the Winkler interval score gets \emph{worse} (\fcCalWinkRaw{} to \fcCalWinkCal{}; lower is better): the rescaling buys nominal coverage, not better intervals. The scale factors differ by fold (1.33/1.42 for 2019, 1.09/0.95 for the 2020 forecast), so the calibration is itself uncertain, and with three origins no general reliability claim is possible. A smooth, shrunk shift added afterwards as a sensitivity (defined after seeing 2019, so not a headline) removes the level bias in 2019 (bias from $-8.5$ to $+4.3$, Winkler 161) but we do not adopt it.
 
 \subsection{One week ahead: does weather help?}
 Each year 2018 and 2019 is forecast one week at a time with parameters fitted on earlier data. \emph{Lagged weather} (last week's wind and humidity anomalies) changes the error by \fcOneLagged\%, the \emph{last three days} of the previous week by \fcOneLastThree\%, and the \emph{same week's} weather (which is observed, not forecast, and so a hindsight upper bound) by \fcOneOracle\% (Harvey--Leybourne--Newbold $p=0.07$). Weather is explanatory over days, but a poor forecasting input.
 \begin{figure}[H]\centering\includegraphics[width=0.7\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\end{figure}
 
 \subsection{The 2020 outlook and its validation}
-The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated, calibrated, converted to daily values by adding a within-week log offset resampled from the same calendar month of the training data, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
+The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated, calibrated, converted to daily values by adding a whole within-week offset vector (Monday--Sunday, resampled from a training week of the same month) so that every simulated week still averages exactly to its simulated weekly mean, with monthly means and band-day counts computed from the same daily paths, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval and expected days per band.}\end{figure}
 \begin{table}[H]\centering\scriptsize\input{../slides/beamer/tables/fc_outlook.tex}\caption{2020 outlook (\ugm{}); ``Days Poor+'' = expected days above 90 \ugm{}; Actual shown for full months only.}\end{table}
 \subsection{Case study: the 2020 lockdown}
-From 29 March to 31 May 2020 \pmtwo{} was about \fcLockPct\% below the no-lockdown forecast (95\% interval \fcLockLo--\fcLockHi\%). Using a version of the model that is given the actual wind and humidity of those weeks, the gap is \fcLockWxPct\%: most of the drop is not weather. This is descriptive; it depends on the forecast level for 2020 being right, which the interval calibration above shows is uncertain.
+The ten Sunday-ending weeks 29 March--31 May 2020 cover 23 March--31 May (two days before the 25 March start). Observed \pmtwo{} in those weeks was about \fcLockPct\% below the model's no-lockdown median projection (95\% interval \fcLockLo--\fcLockHi\%); with the actual wind and humidity of those weeks given to the model, the gap is \fcLockWxPct\%. This is a descriptive comparison with a model projection, not a causal estimate: the model was already about \fcLockPre\% too high in the twelve weeks before the lockdown, and adjusting for that gives about \fcLockAdj\%; other level specifications give \fcLockSensLo--\fcLockSensHi\%; and the same calendar weeks of 2019 against the 2019 pipeline show a gap of \fcLockPlacebo\% (95\% interval spanning zero). The reduction is large and robust in sign, but its size is uncertain (roughly one-third to one-half).
 \begin{figure}[H]\centering\includegraphics[width=0.85\linewidth]{fc_lockdown.pdf}\caption{Actual weekly \pmtwo{} in 2020 against the no-lockdown forecast and a weather-adjusted forecast.}\end{figure}
 
 \section{Review of the project and what changed}\label{sec:review}
 Three independent reviews proposed about 30 changes. We accepted the confirmed errors (diagnostic burn-in, missing constant, leakage in headline statistics, wording that over-stated causality or p-values, the PM$_{2.5}$-band versus AQI distinction, an invalid DM test) and rejected others after testing them (for example, the claim that re-anchoring the level gives 94\% coverage gives 90\% in the data; the shock-bin statistic has no Jensen bias; humidity's effect is not detectably monsoon-specific). The full log, with evidence for each claim, is \texttt{docs/REVIEW\_RESPONSES.md}.
 
 \section{Limitations}
-(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; most model differences are not significant. (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check is small. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM is deliberately small and is not tuned: it is a small-data negative result, not a statement about deep learning in general.
+(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; no model is significantly better than climatology, and the 2019 year was examined in earlier iterations (not a pristine hold-out). (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check uses six stations, so the decline is consistent with a genuine decline but a network effect is not fully excluded. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM is deliberately small and is not tuned: it is a small-data baseline, not a statement about deep learning in general. (viii) The automated checker re-derives selected numbers; it does not re-run every model selection or the station download.
 
 \section{Conclusion}
-Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling level. Wind and humidity anomalies help for about a week, not for a year. For 52-week forecasts a smooth Fourier+ARMA model is as good as or marginally better than climatology and more robust than SARIMA, and its uncertainty can be calibrated; the forecast correctly isolates the 2020 lockdown. The most valuable parts of the work are the honest accounting of what is and is not significant and the correction of diagnostic errors that would have led to wrong model choices.
+Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling level. Wind and humidity anomalies help for about a week, not for a year. For 52-week forecasts a smooth Fourier+ARMA model is statistically indistinguishable from climatology and more robust than SARIMA with seasonal differencing; its interval widths can be adjusted out of sample at the price of wider intervals. Against its no-lockdown projection, observed 2020 lockdown-period PM$_{2.5}$ is much lower, though the size of the gap depends on the projected level. The most valuable parts of the work are the honest accounting of what is and is not significant and the correction of diagnostic errors that would have led to wrong model choices.
 
 \section*{Reproducibility}
-\texttt{pip install -r requirements.txt}; download the CPCB files (Section~2) and run notebooks 01--04; then \texttt{python slides/beamer/make\_figures.py}, \texttt{python slides/beamer/verify\_numbers.py} (65 independent checks of every number on the slides) and build \texttt{slides/beamer/main.tex} and this report with \texttt{tectonic}. Code: \texttt{src/} (data, tsa, forecast, aqi, plots).
+\texttt{pip install -r requirements.txt}; download the CPCB files (Section~2) and run notebooks 01--04; then \texttt{make\_figures.py}, then \texttt{verify\_numbers.py} (both in \texttt{slides/beamer/}; automated re-derivation of selected numbers on the slides and in the tables) and build \texttt{main.tex} and this report with \texttt{tectonic}. Code: \texttt{src/} (data, tsa, forecast, aqi, plots).
 \end{document}
 ```
 
@@ -199,11 +199,11 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \begin{tikzpicture}[x=1cm,y=1cm,font=\footnotesize]
     \node[draw=navy,fill=navy,text=white,rounded corners=2pt,align=center,text width=2.3cm,minimum height=3.6cm,inner sep=4pt] (data)
       at (1.15,2.0) {\bfseries Data\\[3pt]\footnotesize daily \pmtwo{}, wind, humidity\\ 2015--2020\\[3pt] weekly means for forecasting};
-    \node[sbox=pblue] (q1) at (6.0,3.6) {\textbf{Q1. Explain.} Does weather drive \pmtwo{}?\\ Daily VAR + Granger causality};
+    \node[sbox=pblue] (q1) at (6.0,3.6) {\textbf{Q1. Explain.} Does weather predict \pmtwo{}?\\ Daily VAR + Granger causality};
     \node[sbox=graytxt] (q2a) at (6.0,2.0) {\textbf{Q2a. Next week.} Does weather improve a 1-week forecast?};
     \node[sbox=graytxt] (q2b) at (6.0,0.4) {\textbf{Q2b. Next 12 months.} Fourier+ARMA vs SARIMA and baselines, no weather inputs};
     \node[sres=pgreen] (r1) at (12.3,3.6) {\textbf{Done:} wind and humidity Granger-cause \pmtwo{}; effects fade within about a week};
-    \node[sres=pgreen] (r2) at (12.3,2.0) {\textbf{Done:} yesterday's weather adds nothing; same-week weather (unknowable in advance) helps only \fcOneOracle\%};
+    \node[sres=pgreen] (r2) at (12.3,2.0) {\textbf{Done:} last week's weather adds no detectable value; same-week weather (unknowable in advance) helps only \fcOneOracle\%};
     \node[sres=pgreen] (r3) at (12.3,0.4) {\textbf{Done:} 52-week forecasts backtested on 2017--19; outlook for 2020};
     \draw[sarr] (data.east) -- ++(0.35,0) |- (q1.west);
     \draw[sarr] (data.east) -- (q2a.west);
@@ -351,7 +351,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \end{defbox}
   \begin{takeaway}
     A one-SD wind shock cuts \pmtwo{} by \irfWindA--\irfWindB\% the next day, humidity by \irfRhA--\irfRhB\%; both fade within about a week.
-    Weekly: \emph{last} week's weather adds nothing to last week's \pmtwo{} for predicting this week's ($p=\lagWindP$ wind, \lagRhP\ humidity).
+    Weekly: \emph{last} week's weather adds no detectable value to last week's \pmtwo{} for predicting this week's ($p=\lagWindP$ wind, \lagRhP\ humidity).
   \end{takeaway}
 \end{frame}
 
@@ -362,7 +362,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \item \textbf{Transformation:} the log stabilises the variance (monthly spread \sdRatioRaw$\times\to$\sdRatioLog$\times$, skewness \skewRaw\ $\to$ \skewLog); log \pmtwo{} is consistent with stationarity ($d=0$), with a slow downward level drift.
     \item \textbf{Causality:} wind and humidity \textbf{Granger-cause} \pmtwo{} (robust to lag choice, differencing, robust errors, rain and temperature controls); the reverse is absent for humidity and weak for wind.
     \item \textbf{Size and timing:} a one-SD shock lowers \pmtwo{} by \irfWindA--\irfWindB\% (wind) and \irfRhA--\irfRhB\% (humidity) the next day, fading within about a week.
-    \item \textbf{Horizon:} last week's weather adds nothing for predicting this week's \pmtwo{} ($p\approx0.5$), so weather is a short-memory driver and the 12-month model should not rely on it.
+    \item \textbf{Horizon:} last week's weather adds no detectable value for predicting this week's \pmtwo{} ($p\approx0.5$, tested specification), so weather is a short-memory predictor and the 12-month model should not rely on it.
   \end{itemize}
   \vspace{4pt}
   \begin{takeaway}
@@ -400,7 +400,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \node[anchor=west,text=graytxt] at (10.4,-2) {origin 3: train 2015--18, forecast 2019};
   \end{tikzpicture}\\[3pt]
   \begin{takeaway}
-    \textbf{Pre-declared headline:} Fourier+ARMA, selection inside each window. Other variants are comparisons, not cherry-picks.
+    \textbf{Headline procedure:} Fourier+ARMA (ARMA or ARIMA errors), selection inside each window; fixed in the code before the final runs, though 2019 had been examined in earlier iterations.
   \end{takeaway}
 \end{frame}
 
@@ -408,7 +408,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.86\linewidth]{fig/fc_backtest.pdf}\\[3pt]
   \begin{takeaway}
-    MAE in \ugm{}; 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen, SARIMA $D=1$ \fcMaeSarimaNineteen\ (but \fcMaeSarimaSeventeen\ in 2017). A year ahead, the calendar is most of the signal: a smooth Fourier model matches climatology, while SARIMA $D=0$ (\fcMaeSarimaZeroNineteen) and the LSTM (\fcMaeLstmNineteen) are clearly worse.
+    MAE in \ugm{}; 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen, SARIMA $D=1$ \fcMaeSarimaNineteen\ (but \fcMaeSarimaSeventeen\ in 2017). A year ahead, the calendar is most of the signal: a smooth Fourier model is indistinguishable from climatology, while SARIMA $D=0$ (\fcMaeSarimaZeroNineteen) and the small LSTM (\fcMaeLstmEighteen\ in 2018, \fcMaeLstmNineteen\ in 2019) are clearly worse.
   \end{takeaway}
 \end{frame}
 
@@ -416,7 +416,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering\footnotesize
   \input{tables/fc_backtest.tex}\par\vspace{6pt}
   \begin{takeaway}
-    MAE in \ugm{} (lower is better). The last column is a moving-block bootstrap of the paired error differences to climatology over the 2018 and 2019 forecasts: the seasonal naive, SARIMA $D=0$ and the LSTM are \emph{clearly worse}. The linear-trend Fourier variant looks better on 2018--19 but not over all three origins, and it was not our pre-declared choice, so we do not claim it. With three origins we cannot rank the rest.
+    MAE in \ugm{} (lower is better). The last column is a circular moving-block bootstrap (within each year) of the paired error differences to climatology over 2018--19: the seasonal naive, SARIMA $D=0$ and the small LSTM are \emph{clearly worse}; every other model, including the linear-trend variant with the lowest MAE, is \emph{indistinguishable} from climatology. With three origins we cannot rank them.
   \end{takeaway}
 \end{frame}
 
@@ -425,16 +425,16 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \column{0.485\linewidth}
     \begin{card}[title={Residual checks}]{pblue}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
-        \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact}: the first 52 residuals of a $D=1$ model are diffuse-initialisation values. Removed, the SARIMA residuals pass at lags 10 and 26.
+        \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact} (52 diffuse-initialisation residuals); removed, SARIMA passes at lags 10 and 26.
         \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: the seasonal difference is not needed.
-        \item Honest limit: the Fourier model still shows some autocorrelation at lags 26 and 52.
+        \item Limit: the Fourier model keeps some autocorrelation at lags 26, 52.
       \end{itemize}
     \end{card}
     \column{0.485\linewidth}
     \begin{card}[title={Prediction intervals (95\%)}]{porange}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
-        \item Model-based intervals covered \fcCovRaw\% of 2019 weeks. All misses were on the low side (2019 was cleaner than 2015--18).
-        \item Scaling the spread by season, using only 2017--18 errors, gives \fcCovCal\% coverage on 2019. We re-centre only if the bias had the same sign and was large in both earlier years; it was not.
+        \item Model-based intervals covered \fcCovRaw\% of 2019 weeks (2017 stress fold: \fcCovSeventeen\%). All 2019 misses were on the low side (2019 was cleaner than 2015--18).
+        \item Seasonal scaling from 2017--18 errors gives \fcCovCal\% coverage on 2019, but width grows \fcCalWidthRaw$\to$\fcCalWidthCal\ \ugm{} and the Winkler score worsens (\fcCalWinkRaw$\to$\fcCalWinkCal): coverage, not sharper intervals.
       \end{itemize}
     \end{card}
   \end{columns}
@@ -456,7 +456,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.95\linewidth]{fig/fc_outlook.pdf}\\[2pt]
   \begin{takeaway}
-    Fitted on 2015--2019 only. \textbf{Validation of the same pipeline on 2019:} all \fcValInside\ monthly means fell inside the 95\% interval, but the model over-predicted the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), the same level bias as before. In 2020, Jan--Feb fall inside the interval; March--May fall below it (lockdown). Bands are \pmtwo{} sub-index bands, not the official AQI.
+    Fitted on 2015--2019 only. \textbf{Validation of the same pipeline on 2019:} all \fcValInside\ monthly means fell inside the 95\% interval, but the model over-predicted the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), the same level bias as before. In 2020, Jan--Feb fall inside the interval; March--June fall below it (lockdown and the weeks after). Bands are \pmtwo{} sub-index bands, not the official AQI.
   \end{takeaway}
 \end{frame}
 
@@ -464,7 +464,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.88\linewidth]{fig/fc_lockdown.pdf}\\[2pt]
   \begin{takeaway}
-    From 29 Mar to 31 May 2020, \pmtwo{} was about \textbf{\fcLockPct\%} below the no-lockdown forecast (95\% interval \fcLockLo--\fcLockHi\%). Adjusting the forecast for the actual wind and humidity of those weeks, the gap is \textbf{\fcLockWxPct\%}: most of the drop is not weather. Descriptive: it relies on the model's 2020 level being right.
+    Over the 10 weeks ending 29 Mar--31 May (covering 23 Mar--31 May), observed \pmtwo{} was about \textbf{\fcLockPct\%} below the model's no-lockdown projection (95\% interval \fcLockLo--\fcLockHi\%); \fcLockWxPct\% with the actual weather. \emph{Not causal:} the model was already \fcLockPre\% high before the lockdown (adjusted gap \fcLockAdj\%), other level specs give \fcLockSensLo--\fcLockSensHi\%, and a 2019 placebo gives \fcLockPlacebo\% (interval spans 0).
   \end{takeaway}
 \end{frame}
 
@@ -475,9 +475,9 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
       \begin{itemize}\setlength\itemsep{2pt}
         \item Strong yearly cycle (winter \ratioWM$\times$ the monsoon); log stabilises variance.
         \item Wind and humidity anomalies robustly \emph{predict} PM$_{2.5}$ for about a week; effect \irfWindA--\irfWindB\% (wind), \irfRhA--\irfRhB\% (humidity) the next day.
-        \item At a weekly-to-yearly horizon weather adds nothing usable; a Fourier+ARMA model matches or slightly beats climatology; SARIMA, LSTM do not help.
-        \item The 2016--19 decline is real (about $-$\declPanel\% on a fixed station panel).
-        \item The lockdown cut PM$_{2.5}$ by about \fcLockPct\% relative to forecast.
+        \item Beyond a week no usable weather value was detected; Fourier+ARMA is indistinguishable from climatology; SARIMA $D=0$ and the small LSTM are worse.
+        \item The 2016--19 decline looks genuine (about $-$\declPanel\% on a fixed 6-station panel); a network effect is not fully excluded.
+        \item Lockdown-period PM$_{2.5}$ was about \fcLockPct\% below the model's no-lockdown projection (\fcLockSensLo--\fcLockSensHi\% across specs; descriptive).
       \end{itemize}
     \end{card}
     \column{0.485\linewidth}
@@ -485,7 +485,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
       \begin{itemize}\setlength\itemsep{2pt}
         \item Granger = predictive; mixing height, stubble burning, fireworks are unmeasured.
         \item Weather's share of 14-day error depends on the VAR ordering (\fevdA--\fevdB\%).
-        \item Three backtest origins: few independent tests; most model differences are not significant.
+        \item Three origins: no model significantly beats climatology; 2019 was seen earlier.
         \item Level bias in 2019; residual autocorrelation at long lags.
         \item One city; data end in mid-2020; ERA5 is a grid cell; PM$_{2.5}$ band $\ne$ official AQI.
       \end{itemize}
