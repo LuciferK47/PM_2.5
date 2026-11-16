@@ -53,13 +53,13 @@ print(F.ORIGINS)''')
 md("""## 1. Models
 | Model | What it is |
 |---|---|
-| Seasonal naive | the value 52 weeks earlier |
+| Seasonal naive | the value 52 weeks earlier (52 weeks, not the same calendar week in 53-week years) |
 | Climatology | mean log PM2.5 of the same calendar week over the training years |
 | Climatology + AR(1) | climatology plus an AR(1) on the weekly anomalies |
-| Linear regression | OLS on 3 Fourier harmonics + a linear time trend (constant-variance intervals) |
-| LSTM (small) | 1 layer, 16 units, seeded, recursive one-step on anomalies (no intervals of its own; training-residual sd) |
-| Fourier+ARMA const / linear | dynamic harmonic regression: K=3 harmonics, AR(1) errors, constant or linear-trend level |
-| **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. **Declared as the headline procedure before looking at the test folds.** |
+| Linear regression | OLS on 3 Fourier harmonics + a linear time trend (prediction interval includes parameter uncertainty, so it widens with the horizon) |
+| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only |
+| Fourier+ARMA const / linear | dynamic harmonic regression (DHR): K=3 harmonics, AR(1) errors, constant or linear-trend level |
+| **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. The random-walk option makes the errors **ARIMA(p,1,q)**, so "ARMA" in the label covers both. Non-converged fits are rejected and counted. The procedure was fixed in the code before the final runs, but 2019 had been looked at in earlier iterations of the project, so it is not a pristine hold-out. |
 | SARIMA D=1 / D=0 | the benchmark from the draft: (1,0,1)(0,1,1)₅₂, and (1,0,1)(1,0,0)₅₂ **with a constant** (the draft omitted it) |""")
 
 code('''models = {
@@ -78,7 +78,7 @@ specs = {f: fcs[f][SEL]["spec"] for f in fcs}
 print("Selected specification per origin:"); display(pd.DataFrame(specs).T[["trend", "K", "p", "q", "inner_mae"]])''')
 
 md("""## 2. Backtest results (52 weeks ahead, MAE in µg/m³ on the original scale)
-Folds 2018 and 2019 are the main evidence (3 and 4 training seasons); 2017 (only 2 training years) is a stress test. Climatology is the model to beat.""")
+Folds 2018 and 2019 are the main evidence (3 and 4 training seasons); 2017 (only 2 training years) is a stress test. Climatology is the model to beat. Each fold is 52 weeks starting the week after the origin (the 2017 fold ends 24 Dec 2017, not 31 Dec).""")
 
 code('''tab = bt.pivot(index="model", columns="fold", values="MAE")
 tab["mean 2018-19"] = tab[[2018, 2019]].mean(axis=1)
@@ -93,7 +93,7 @@ display(extra.round(2))''')
 
 code('''# Paired loss differences against climatology: moving-block bootstrap (8-week blocks) of the weekly absolute-error differences.
 def abs_err(model, folds):
-    return np.concatenate([np.abs(fcs[f][model]["actual"] - np.exp(fcs[f][model]["mu"])) for f in folds])
+    return [np.abs(fcs[f][model]["actual"] - np.exp(fcs[f][model]["mu"])) for f in folds]   # one array per fold: blocks never cross folds
 
 ld = []
 for label, folds in [("folds 2018+2019", [2018, 2019]), ("all three folds", [2017, 2018, 2019])]:
@@ -131,6 +131,17 @@ ax.set_xticks(x, [s.replace("Fourier+ARMA (selected)", "Fourier+ARMA\\n(selected
 ax.set_ylabel("MAE (µg/m³)"); ax.legend(title="fold", fontsize=8); ax.set_title("MAE by fold")
 savefig(fig, "13_backtest"); plt.show()''')
 
+code('''# SARIMA D=0 with vs without a constant, same orders, same three folds (replaces the unsupported "39.7 -> 30.6" remark of the first write-up)
+d0 = {"no constant": F.sarima((1, 0, 1), (1, 0, 0, 52), trend="n"), "with constant": F.sarima((1, 0, 1), (1, 0, 0, 52), trend="c")}
+bt0, _ = F.backtest(y, raw, d0, n_jobs=6, verbose=False)
+d0tab = bt0.pivot(index="model", columns="fold", values="MAE")
+for f in (2017, 2018, 2019):
+    d0tab.loc["Climatology (reference)", f] = bt[(bt.model == "Climatology") & (bt.fold == f)]["MAE"].iloc[0]
+d0tab.round(1).to_csv(RESULTS / "fc_sarima_d0_constant.csv"); display(d0tab.round(1))
+key["sarima_d0_const"] = d0tab.round(2).to_dict()''')
+
+md("""**Reading it.** Adding the constant changes the SARIMA D=0 error by the amounts above (same orders, same folds); D=0 stays clearly worse than climatology either way.""")
+
 md("""## 3. Residual diagnostics (the draft's Ljung–Box result was an artifact)
 `SARIMAX` with `D=1` initialises the first 52 seasonal states diffusely, so the first 52 in-sample residuals are as large as the series level
 (about 5 on the log scale) and must be excluded (`res.loglikelihood_burn`). The draft ran Ljung–Box on all residuals and got p ≈ 0 at every lag.
@@ -150,6 +161,7 @@ diag["LB_p_lag10_ALL_residuals (draft's mistake)"] = [np.nan, float(naive.loc[10
 diag.to_csv(RESULTS / "fc_diagnostics.csv")
 display(diag.T.round(4))
 par = pd.DataFrame({"coef": res_s1.params, "se": res_s1.bse}).round(3)
+key["nonconverged_rejected_per_origin"] = {int(f): int(specs[f]["n_rejected_nonconverged"]) for f in specs}
 key["sarima_D1_maS_coef"], key["sarima_D1_maS_se"] = float(par.loc["ma.S.L52", "coef"]), float(par.loc["ma.S.L52", "se"])
 display(par)''')
 
@@ -187,10 +199,17 @@ def calibrated_sd_mu(mu, sd, idx, rule):
     f = np.where(wint, rule["f"][True], rule["f"][False])
     return mu + rule["shift"] * sd, sd * f
 
+def shrunk_shift(folds, k=26):
+    """POST-HOC sensitivity (defined after seeing 2019): continuous shrinkage of the mean z toward 0, in place of the step rule."""
+    z = pd.concat([standardized(f) for f in folds])["z"]
+    return float(z.sum() / (len(z) + k))
+
 rule19 = calibration_rule([2017, 2018])
 o = fcs[2019][SEL]; mu_c, sd_c = calibrated_sd_mu(o["mu"], o["sd"], o["idx"], rule19)
+sh19 = shrunk_shift([2017, 2018]); mu_s = o["mu"] + sh19 * o["sd"]
 cal_tab = pd.DataFrame({"Model-based Gaussian": F.metrics(o["actual"], o["mu"], o["sd"], o["idx"]),
-                        "Calibrated (season scale" + (", re-centred)" if rule19["recentre"] else ")"): F.metrics(o["actual"], mu_c, sd_c, o["idx"])}).T
+                        "Calibrated (season scale" + (", re-centred)" if rule19["recentre"] else ")"): F.metrics(o["actual"], mu_c, sd_c, o["idx"]),
+                        "Season scale + shrunk shift (post-hoc sensitivity)": F.metrics(o["actual"], mu_s, sd_c, o["idx"])}).T
 cal_tab = cal_tab[["MAE", "coverage", "width", "winkler", "bias"]]
 cal_tab.round(3).to_csv(RESULTS / "fc_calibration_2019.csv")
 print("calibration rule from 2017+2018:", rule19)
@@ -198,7 +217,13 @@ display(cal_tab.round(3))
 # same table for the other models that carry an sd, for context
 ctx = bt[bt.fold == 2019].set_index("model")[["MAE", "coverage", "width", "winkler"]].dropna()
 display(ctx.round(3))
-key["calibration_rule_2019"] = rule19; key["coverage_2019_raw"] = float(cal_tab.iloc[0]["coverage"]); key["coverage_2019_calibrated"] = float(cal_tab.iloc[1]["coverage"])''')
+key["calibration_rule_2019"] = rule19; key["coverage_2019_raw"] = float(cal_tab.iloc[0]["coverage"]); key["coverage_2019_calibrated"] = float(cal_tab.iloc[1]["coverage"])
+key["calibration_2019_all"] = cal_tab.round(3).to_dict("index"); key["shrunk_shift_2019"] = sh19''')
+
+md("""**Reading it.** The season scale raises 2019 coverage from about 90% to 96%, but it does so by making the intervals about 43% wider and the Winkler interval score *worse*
+(the proper score penalises width). So calibration here buys nominal coverage, not sharper or better intervals. The 2017 fold's coverage is only about 69%, so three origins do not
+support a general reliability claim. The step rule did not re-centre in 2019 because the 2018 mean z (-0.45) missed the 0.5 cut-off; the last column (a smooth shrunk shift defined *after* seeing 2019)
+is a sensitivity, not the headline.""")
 
 md("""## 5. One week ahead: does weather help when tested fairly?
 Each test year (2018, 2019) is forecast one week at a time. Parameters are fitted once, on all data before that year; each week the model sees all earlier
@@ -243,7 +268,7 @@ def one_step(year, wx_cols):
 variants = {"DHR, no weather": [], "+ lagged weather (operational)": ["wind_lag1", "rh_lag1"],
             "+ last 3 days of prior week (operational)": ["wind_last3", "rh_last3"],
             "+ same-week weather (ORACLE)": ["wind_same", "rh_same"]}
-rows, errs = [], {}
+rows, errs, onestep_store = [], {}, {}
 for year in (2018, 2019):
     origin = F.ORIGINS[year]; tr_ = y.loc[:origin]
     test_idx = y.loc[f"{year}-01-01":f"{year}-12-31"].index
@@ -261,8 +286,11 @@ for year in (2018, 2019):
     for name, mu_ in preds.items():
         e = act - np.exp(mu_)
         errs[(year, name)] = e
+        onestep_store[(year, name)] = (test_idx, act, mu_)
         rows.append({"year": year, "model": name, "MAE": np.abs(e).mean(), "logMAE": np.abs(np.log(act) - mu_).mean(), "n": len(e)})
 os_tab = pd.DataFrame(rows)
+pd.DataFrame([{"year": yr, "model": nm, "date": d_, "actual": a_, "mu": m_}
+              for (yr, nm), (dd_, aa_, mm_) in onestep_store.items() for d_, a_, m_ in zip(dd_, aa_, mm_)]).to_csv(RESULTS / "fc_oneweek_forecasts.csv", index=False)
 piv = os_tab.pivot(index="model", columns="year", values="MAE")
 piv["both years"] = [np.mean(np.concatenate([np.abs(errs[(2018, m)]), np.abs(errs[(2019, m)])])) for m in piv.index]
 order_ = ["Persistence", "Climatology", "Climatology + AR(1)", *variants]
@@ -304,8 +332,8 @@ code(fig_cell)
 md("""## 6. Final outlook for 2020 and validation of the method on 2019
 **Procedure (identical for both).** Fit the headline procedure on the years before the target year; simulate 5,000 weekly paths from the fitted model
 (53 weeks so every calendar day is covered); apply the calibration rule (fitted only on earlier folds); convert weekly paths to daily PM2.5 by adding a
-resampled within-week offset `log(daily) − log(weekly mean)` drawn from the same calendar month of the training data; classify each day into the CPCB
-PM2.5 sub-index bands. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
+whole within-week offset vector (Mon–Sun, `log(daily) − log(weekly mean)`, from a training week of the same month), so each simulated week still averages exactly to its simulated weekly mean and day-to-day dependence is kept; classify each day into the CPCB
+PM2.5 sub-index bands. Monthly means and band-day counts are computed from the same daily paths. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
 **This is a PM2.5 band, not the official AQI** (the AQI is the maximum sub-index over all pollutants).
 2019 is a genuine out-of-sample test of the whole pipeline; 2020 is the deliverable.""")
 
@@ -321,8 +349,9 @@ code('''def pipeline(origin, year, folds_for_cal, n=5000):
     f = np.where(pd.DatetimeIndex(idx).month.isin(F.WINTER), rule["f"][True], rule["f"][False])
     paths_c = (mu_ + rule["shift"] * sd_)[:, None] + f[:, None] * (paths - mu_[:, None])
     pools = F.week_offsets_by_month(daily["pm25"].loc[:origin])
-    bands = F.daily_band_days(paths_c, idx, pools, year)           # (paths, 12, 6)
-    monthly = F.monthly_mean_paths(paths_c, idx, year)             # (12, paths)
+    dd, dv = F.daily_paths(paths_c, idx, pools, year)               # daily values whose weekly means equal the weekly paths
+    bands = F.daily_band_days(dd, dv)                                # (paths, 12, 6)  band days and monthly means come from the SAME daily paths
+    monthly = F.monthly_mean_paths(dd, dv)                           # (12, paths)
     return {"idx": idx, "mu": mu_, "sd": sd_, "paths": paths_c, "bands": bands, "monthly": monthly, "spec": out["spec"], "rule": rule, "res": res_}
 
 month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -372,8 +401,8 @@ code('''fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ra
 ax = axes[0]; xs = np.arange(12)
 ax.fill_between(xs, mt20["lo95"], mt20["hi95"], color=BLUE, alpha=0.18, lw=0, label="95% prediction interval")
 ax.plot(xs, mt20["median"], color=BLUE, lw=2, marker="o", ms=4, label="Forecast median (made Dec 2019)")
-ok = mt20["actual_days_covered"] >= 20
-ax.plot(xs[ok], mt20.loc[ok, "actual_mean_2020"], color=ORANGE, lw=1.6, marker="s", ms=4, label="Actual 2020 (Jan-May full months)")
+ok = mt20["actual_days_covered"] >= 28
+ax.plot(xs[ok], mt20.loc[ok, "actual_mean_2020"], color=ORANGE, lw=1.6, marker="s", ms=4, label="Actual 2020 (full months)")
 for yv, lab in [(60, "Satisfactory limit"), (90, "Moderate limit"), (120, "Poor limit")]:
     ax.axhline(yv, color=MUTED, lw=0.7, ls=":"); ax.text(11.4, yv, lab, fontsize=7, va="bottom", ha="right", color=INK_2)
 ax.set_xticks(xs, month_names); ax.set_ylabel("Monthly mean PM2.5 (µg/m³)"); ax.legend(fontsize=8, loc="upper center")
@@ -388,9 +417,9 @@ ax.legend(fontsize=7, ncols=2, loc="lower right")
 savefig(fig, "15_outlook_2020"); plt.show()''')
 
 md("""## 7. Case study: the 2020 lockdown
-Delhi's lockdown began on 25 March 2020. We compare the actual weekly PM2.5 of the ten weeks ending 29 March – 31 May with the no-lockdown forecast made on
+Delhi's lockdown began on 25 March 2020. We compare the actual weekly PM2.5 of the ten Sunday-ending weeks 29 March – 31 May (these cover 23 March – 31 May, so two pre-lockdown days are included) with the no-lockdown forecast made on
 29 Dec 2019 (calibrated, as above). A second counterfactual uses a version of the same model *with the actual 2020 same-week wind and humidity* (fitted on 2015–2019),
-to separate the weather contribution from the rest. Both are descriptive: they rely on the model being right about the level for 2020 (see §4).""")
+to separate the weather contribution from the rest. Both are descriptive, not causal: they rely on the model being right about the level for 2020, and the model was already about 9% too high in the weeks before the lockdown (sensitivities below).""")
 
 code('''lock_idx = pd.date_range("2020-03-29", "2020-05-31", freq="W-SUN")
 act_l = raw.loc[lock_idx].to_numpy()
@@ -430,6 +459,44 @@ ax.plot(show_idx, raw.loc[show_idx], color=ORANGE, lw=1.6, marker="o", ms=3, lab
 ax.axvspan(pd.Timestamp("2020-03-25"), pd.Timestamp("2020-05-31"), color=NEUTRAL, alpha=0.2, lw=0)
 ax.set_ylabel("Weekly mean PM2.5 (µg/m³)"); ax.legend(fontsize=8); ax.set_title("2020 lockdown: actual vs forecast made in Dec 2019")
 savefig(fig, "16_lockdown"); plt.show()''')
+
+md("""### Sensitivity of the lockdown gap
+The gap to a forecast is only as good as the forecast's level. Checks: (a) the same model's gap in the 12 weeks *before* the lockdown (5 Jan – 22 Mar), and the lockdown gap adjusted for it;
+(b) a 9-week window starting 5 April (no pre-lockdown days); (c) other level specifications (constant, random-walk); (d) a mean-bias shift shrunk from the 2018–19 errors (post-hoc);
+(e) a placebo: the same calendar weeks of 2019 against the 2019 forecast pipeline.""")
+
+code('''def gap_stats(paths, idx_, weeks):
+    pos_ = pd.DatetimeIndex(idx_).get_indexer(weeks); assert (pos_ >= 0).all()
+    cf_ = np.exp(paths[pos_]).mean(axis=0); g = raw.reindex(weeks).mean() / cf_ - 1
+    return float(100 * np.median(g)), float(100 * np.percentile(g, 2.5)), float(100 * np.percentile(g, 97.5))
+
+wk_pre = pd.date_range("2020-01-05", "2020-03-22", freq="W-SUN")
+wk_9 = pd.date_range("2020-04-05", "2020-05-31", freq="W-SUN")
+rule20 = P20["rule"]; f20 = np.where(pd.DatetimeIndex(P20["idx"]).month.isin(F.WINTER), rule20["f"][True], rule20["f"][False])
+def spec_paths(trend, K, p_, q_):
+    r_ = F._fit_dhr(y.loc[:"2019-12-29"], K, p_, q_, trend)
+    pa = F.simulate_paths(r_, P20["idx"], exog=F.fourier(P20["idx"], K), n=5000)
+    fc_ = r_.get_forecast(len(P20["idx"]), exog=F.fourier(P20["idx"], K)); mu_ = fc_.predicted_mean.to_numpy()
+    return mu_[:, None] + f20[:, None] * (pa - mu_[:, None]), mu_, np.sqrt(fc_.var_pred_mean.to_numpy())
+
+rows = []
+def add(name, paths, idx_=P20["idx"]):
+    pre = gap_stats(paths, idx_, wk_pre); l10 = gap_stats(paths, idx_, lock_idx); l9 = gap_stats(paths, idx_, wk_9)
+    adj = 100 * ((1 + l10[0] / 100) / (1 + pre[0] / 100) - 1)
+    rows.append({"counterfactual": name, "pre_lockdown_gap_pct": pre[0], "lockdown_gap_10wk_pct": l10[0], "lo95": l10[1], "hi95": l10[2],
+                 "gap_9wk_from_5Apr_pct": l9[0], "lockdown_gap_adjusted_for_pre_gap_pct": adj})
+add("selected spec (linear, K=5, AR1), headline", P20["paths"])
+for nm, (tr_, K_, p_, q_) in {"constant level": ("const", 5, 1, 0), "random-walk level (ARIMA errors)": ("rw", 5, 1, 1)}.items():
+    pa_, _, _ = spec_paths(tr_, K_, p_, q_); add(nm, pa_)
+sh20 = shrunk_shift([2018, 2019])
+add("headline + shrunk mean-bias shift (post-hoc)", P20["paths"] + sh20 * P20["sd"][:, None])
+# placebo: 2019 pipeline, same calendar weeks of 2019
+wk_pl = pd.date_range("2019-03-31", "2019-06-02", freq="W-SUN")
+pl = gap_stats(P19["paths"], P19["idx"], wk_pl)
+rows.append({"counterfactual": "PLACEBO: same weeks of 2019 vs 2019 forecast", "pre_lockdown_gap_pct": gap_stats(P19["paths"], P19["idx"], pd.date_range("2019-01-06", "2019-03-24", freq="W-SUN"))[0],
+             "lockdown_gap_10wk_pct": pl[0], "lo95": pl[1], "hi95": pl[2], "gap_9wk_from_5Apr_pct": np.nan, "lockdown_gap_adjusted_for_pre_gap_pct": np.nan})
+sens = pd.DataFrame(rows); sens.round(1).to_csv(RESULTS / "fc_lockdown_sensitivity.csv", index=False); display(sens.round(1))
+key["lockdown_sensitivity"] = sens.round(2).set_index("counterfactual").to_dict("index")''')
 
 md("""## 8. Summary numbers""")
 code('''m_sel = bt[bt.model == SEL].set_index("fold"); m_clim = bt[bt.model == "Climatology"].set_index("fold")

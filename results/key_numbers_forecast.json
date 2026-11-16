@@ -1,4 +1,26 @@
 {
+  "sarima_d0_const": {
+    "2017": {
+      "no constant": 76.92,
+      "with constant": 44.87,
+      "Climatology (reference)": 31.0
+    },
+    "2018": {
+      "no constant": 60.98,
+      "with constant": 42.84,
+      "Climatology (reference)": 21.77
+    },
+    "2019": {
+      "no constant": 92.11,
+      "with constant": 44.1,
+      "Climatology (reference)": 27.82
+    }
+  },
+  "nonconverged_rejected_per_origin": {
+    "2017": 6,
+    "2018": 3,
+    "2019": 5
+  },
   "sarima_D1_maS_coef": -0.988,
   "sarima_D1_maS_se": 8.259,
   "calibration_rule_2019": {
@@ -15,6 +37,30 @@
   },
   "coverage_2019_raw": 0.9038461538461539,
   "coverage_2019_calibrated": 0.9615384615384616,
+  "calibration_2019_all": {
+    "Model-based Gaussian": {
+      "MAE": 25.694,
+      "coverage": 0.904,
+      "width": 125.08,
+      "winkler": 174.878,
+      "bias": -8.492
+    },
+    "Calibrated (season scale)": {
+      "MAE": 25.694,
+      "coverage": 0.962,
+      "width": 178.655,
+      "winkler": 192.721,
+      "bias": -8.492
+    },
+    "Season scale + shrunk shift (post-hoc sensitivity)": {
+      "MAE": 23.598,
+      "coverage": 0.962,
+      "width": 158.878,
+      "winkler": 161.033,
+      "bias": 4.328
+    }
+  },
+  "shrunk_shift_2019": -0.445110367609404,
   "oneweek_mae": {
     "Persistence": 30.69,
     "Climatology": 24.79,
@@ -34,9 +80,9 @@
     "annual_days_pred": {
       "Good": 21.0,
       "Satisfactory": 75.0,
-      "Moderate": 67.0,
+      "Moderate": 68.0,
       "Poor": 53.0,
-      "Very Poor": 113.0,
+      "Very Poor": 114.0,
       "Severe": 35.0
     },
     "annual_days_actual": {
@@ -47,15 +93,16 @@
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.88,
-    "poor_or_worse_pred_pct": 55.0,
+    "mean_abs_days_error_per_band_month": 1.9,
+    "poor_or_worse_pred_pct": 55.1,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
     "trend": "linear",
     "K": 5,
     "p": 1,
-    "q": 0
+    "q": 0,
+    "n_rejected_nonconverged": 13
   },
   "outlook_2020_rule": {
     "f": {
@@ -72,16 +119,58 @@
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.140752539336,
-      "gap_median_pct": -42.83617088073022,
-      "gap_lo95_pct": -52.21475468260452,
-      "gap_hi95_pct": -31.53328399642168
+      "cf_median": 85.04899262695417,
+      "gap_median_pct": -42.77449646078571,
+      "gap_lo95_pct": -52.11359900861902,
+      "gap_hi95_pct": -31.819259395224652
     },
     "weather_adjusted": {
-      "cf_median": 78.46680894643731,
-      "gap_median_pct": -37.97413844184731,
-      "gap_lo95_pct": -47.76977454856694,
-      "gap_hi95_pct": -26.19979951798827
+      "cf_median": 78.5752915693168,
+      "gap_median_pct": -38.059772562764856,
+      "gap_lo95_pct": -47.516118559968525,
+      "gap_hi95_pct": -26.675729977641215
+    }
+  },
+  "lockdown_sensitivity": {
+    "selected spec (linear, K=5, AR1), headline": {
+      "pre_lockdown_gap_pct": -11.32,
+      "lockdown_gap_10wk_pct": -42.77,
+      "lo95": -52.11,
+      "hi95": -31.82,
+      "gap_9wk_from_5Apr_pct": -41.49,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+    },
+    "constant level": {
+      "pre_lockdown_gap_pct": -22.6,
+      "lockdown_gap_10wk_pct": -50.84,
+      "lo95": -59.58,
+      "hi95": -40.01,
+      "gap_9wk_from_5Apr_pct": -49.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+    },
+    "random-walk level (ARIMA errors)": {
+      "pre_lockdown_gap_pct": -9.87,
+      "lockdown_gap_10wk_pct": -43.11,
+      "lo95": -54.55,
+      "hi95": -28.55,
+      "gap_9wk_from_5Apr_pct": -41.74,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+    },
+    "headline + shrunk mean-bias shift (post-hoc)": {
+      "pre_lockdown_gap_pct": -2.43,
+      "lockdown_gap_10wk_pct": -37.02,
+      "lo95": -47.3,
+      "hi95": -24.97,
+      "gap_9wk_from_5Apr_pct": -35.61,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+    },
+    "PLACEBO: same weeks of 2019 vs 2019 forecast": {
+      "pre_lockdown_gap_pct": -8.88,
+      "lockdown_gap_10wk_pct": -14.87,
+      "lo95": -43.9,
+      "hi95": 28.17,
+      "gap_9wk_from_5Apr_pct": NaN,
+      "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }
   },
   "backtest": {
@@ -111,28 +200,31 @@
       "2019": 44.1
     },
     "lstm_mae": {
-      "2017": 36.29,
-      "2018": 49.23,
-      "2019": 52.87
+      "2017": 36.34,
+      "2018": 28.32,
+      "2019": 54.35
     },
     "specs": {
       "2017": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 6
       },
       "2018": {
         "trend": "const",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 3
       },
       "2019": {
         "trend": "rw",
         "K": 5,
         "p": 1,
-        "q": 1
+        "q": 1,
+        "n_rejected_nonconverged": 5
       }
     }
   },
