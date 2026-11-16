@@ -1,0 +1,7 @@
+ordering,variable,share_h1_pct,share_h14_pct
+"weather first (wind, rh, pm25)",Wind,13.2,20.4
+"weather first (wind, rh, pm25)",Humidity,3.0,9.5
+"weather first (wind, rh, pm25)",PM2.5,83.7,70.1
+"PM2.5 first (pm25, wind, rh)",PM2.5,100.0,93.6
+"PM2.5 first (pm25, wind, rh)",Wind,0.0,3.0
+"PM2.5 first (pm25, wind, rh)",Humidity,0.0,3.3

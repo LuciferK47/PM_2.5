@@ -1,0 +1,5 @@
+series,n,adf_stat,adf_p,adf_lags,adf_crit_1%,adf_crit_5%,adf_crit_10%,kpss_stat,kpss_p,verdict,lag1_acf
+Weekly log PM2.5 (train),209,-4.28,0.00048,9,-3.464,-2.876,-2.575,0.058,0.1,Stationary,0.87
+Weekly Δ log PM2.5 (d=1),208,-5.364,4.02e-06,5,-3.463,-2.876,-2.574,0.082,0.1,Stationary,-0.28
+Weekly Δ₅₂ log PM2.5 (D=1),157,-4.534,0.000171,2,-3.474,-2.88,-2.577,0.341,0.1,Stationary,0.29
+"Weekly Δ Δ₅₂ log PM2.5 (d=1, D=1)",156,-7.298,1.36e-10,5,-3.475,-2.881,-2.577,0.075,0.1,Stationary,-0.46

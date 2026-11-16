@@ -28,5 +28,14 @@
     "Wind + Humidity → PM2.5": 3.98e-33,
     "PM2.5 → Wind": 0.127,
     "PM2.5 → Humidity": 0.615
+  },
+  "granger_hac": {
+    "Wind → PM2.5 | PM2.5, wind, humidity": 8.38e-20,
+    "Humidity → PM2.5 | PM2.5, wind, humidity": 2.94e-11,
+    "Wind → PM2.5 | + rain control": 4.17e-19,
+    "Humidity → PM2.5 | + rain control": 2.79e-08,
+    "Rain → PM2.5 | + rain control": 0.856,
+    "PM2.5 → Wind | PM2.5, wind, humidity": 0.101,
+    "PM2.5 → Humidity | PM2.5, wind, humidity": 0.547
   }
 }

@@ -9,7 +9,7 @@ from statsmodels.tsa.stattools import adfuller, grangercausalitytests, kpss
 def adf_kpss(series, name, alpha=0.05):
     """ADF (H0: unit root) and KPSS (H0: level-stationary) on one series, with a combined verdict."""
     s = pd.Series(series).dropna()
-    adf_stat, adf_p, adf_lags, *_ = adfuller(s, autolag="AIC")
+    adf_stat, adf_p, adf_lags, _, adf_crit, _ = adfuller(s, autolag="AIC")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # KPSS warns when p is outside its lookup table
         kpss_stat, kpss_p, *_ = kpss(s, regression="c", nlags="auto")
@@ -24,8 +24,9 @@ def adf_kpss(series, name, alpha=0.05):
         verdict = "Mixed (KPSS says stationary, ADF can't reject unit root)"
     return {
         "series": name, "n": len(s),
-        "adf_stat": round(adf_stat, 3), "adf_p": round(adf_p, 4), "adf_lags": adf_lags,
-        "kpss_stat": round(kpss_stat, 3), "kpss_p": round(kpss_p, 4),
+        "adf_stat": round(adf_stat, 3), "adf_p": float(f"{adf_p:.3g}"), "adf_lags": adf_lags,
+        **{f"adf_crit_{k}": round(v, 3) for k, v in adf_crit.items()},
+        "kpss_stat": round(kpss_stat, 3), "kpss_p": float(f"{kpss_p:.3g}"),
         "verdict": verdict,
     }
 

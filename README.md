@@ -1,84 +1,66 @@
-# Delhi PM2.5 / AQI Forecasting: SARIMAX, VAR and Granger Causality
+# Delhi PM2.5 Analysis: Seasonality, Stationarity, VAR and Granger Causality
 
-Time Series Analysis course project. We forecast urban PM2.5 for Delhi and test whether weather
-(wind speed, humidity) causally drives it. The final goal is a 12-month AQI forecast with 95%
-confidence intervals for public-health advisory planning.
+Time Series Analysis course project (MATH F428). Goal: understand what drives Delhi's PM2.5 and prepare a 12-month
+forecast with 95% intervals for AQI advisory planning.
 
 ## Status
 
 | Phase | Work | Status |
 |---|---|---|
-| 0 | Environment setup | Done |
 | 1 | Data acquisition, merging, cleaning | Done |
-| 2 | EDA, seasonality, stationarity tests | Done |
-| 3 | VAR and Granger causality | Done |
-| 4 | SARIMAX (AIC/BIC grid, Ljung-Box diagnostics) | Not started |
-| 5 | Baselines: seasonal naive, Linear Regression, LSTM (test MAE) | Not started |
-| 6 | 12-month forecast with 95% CI and AQI advisory table | Not started |
+| 2 | EDA: seasonality (STL), log transform, volatility tests, stationarity | Done |
+| 3 | VAR and Granger causality, shocks and impulse responses | Done |
+| 4 | SARIMA(X) models, baselines (seasonal naive, climatology, LR, LSTM), final forecast | Next phase |
 
 ## Data
 
 | Source | Content | Period |
 |---|---|---|
-| CPCB via Kaggle [`rohanrao/air-quality-data-in-india`](https://www.kaggle.com/datasets/rohanrao/air-quality-data-in-india) (`city_day.csv`) | Delhi daily PM2.5, NO2, SO2, AQI | 2015-01-01 to 2020-07-01 (2,009 days) |
-| Open-Meteo Historical API (ERA5 reanalysis, 28.61N 77.21E) | Daily mean humidity, wind speed, temperature, precipitation | same |
+| CPCB via Kaggle [`rohanrao/air-quality-data-in-india`](https://www.kaggle.com/datasets/rohanrao/air-quality-data-in-india) (`city_day.csv`) | Delhi daily PM2.5, NO2, SO2 | 2015-01-01 to 2020-07-01 (2,009 days) |
+| [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (ERA5 reanalysis, 28.61N 77.21E) | Daily wind speed, relative humidity, temperature, rain | same |
 
-Cleaning: only 2 PM2.5 days were missing, filled by time interpolation (gaps of 3 days or less).
-SO2 has long gaps (28 and 81 days), so it is used only descriptively. PM2.5 is log-transformed.
-Weekly means (weeks ending Sunday, 287 weeks) are prepared for the forecasting models (period 52).
+Only 2 PM2.5 values were missing (interpolated). Weekly means (287 weeks, period 52) are prepared for forecasting.
+Split: train 2015-2018, test 2019; the 2020 lockdown is excluded.
 
-## What has been done and the main results
+## Main results
 
-**EDA and stationarity** ([notebooks/02_eda.ipynb](notebooks/02_eda.ipynb))
-- Strong annual cycle: winter (Nov-Jan) mean PM2.5 is 213 ug/m3 vs 48 in the monsoon (Jul-Sep), about 4.4x.
-  The November median is 4.9x the August median. 52% of days are rated Poor or worse (CPCB bands).
-- STL seasonal strength is 0.89, which justifies a seasonal model with period 52 weeks.
-- ADF and KPSS: log PM2.5 levels are stationary. The weekly seasonal difference alone is borderline
-  (KPSS), so SARIMAX will compare D=0 and D=1 using held-out error and residual checks.
-- Wind is negatively correlated with PM2.5 in every season. Humidity is negatively correlated only in the monsoon.
-
-**VAR and Granger causality** ([notebooks/03_var_granger.ipynb](notebooks/03_var_granger.ipynb))
-- Daily data 2015-2019 (the 2020 lockdown is excluded), with the seasonal cycle removed first
-  (otherwise the shared calendar creates spurious causality).
-- VAR(4) chosen by AIC. It is stable (max |eigenvalue| = 0.81) and the residuals pass the Portmanteau test (p = 0.17).
-- Wind to PM2.5: p ~ 1.7e-29. Humidity to PM2.5: p ~ 1.1e-11. The reverse directions are not significant
-  (p = 0.13 and 0.61). Results hold with the BIC lag and with first differences.
-- Impulse response: a +1 SD wind shock (2.5 km/h) lowers PM2.5 by about 12% the next day. A +1 SD
-  humidity shock (5.4% RH) lowers it by about 7%.
-- Weather shocks explain about 30% of 14-day PM2.5 forecast-error variance (depends on the Cholesky ordering).
-- Caveat: Granger causality is predictive, not proof of a physical cause. Mixing height and stubble burning are not measured.
-
-## Planned next
-
-- **SARIMAX:** weekly log PM2.5, s = 52, wind and humidity as exogenous inputs, order grid by AIC/BIC, Ljung-Box plots.
-- **Comparison:** seasonal naive, Linear Regression and LSTM. Train 2015-2018, test 2019, compare test MAE.
-- **Forecast:** refit on all data, 52-week forecast with 95% CI, monthly AQI advisory table. 2020 as a lockdown case study.
+- **Seasonality:** winter (Nov-Jan) mean 213 vs monsoon (Jul-Sep) 48 ug/m3 (4.4x); STL seasonal strength 0.89.
+- **Log transform:** monthly spread 7.9x to 1.3x, skewness 1.70 to -0.08, Box-Cox lambda 0.045. Some volatility
+  clustering remains (ARCH-LM 235 to 36, still significant): to be re-checked on model residuals.
+- **Stationarity (training years):** log PM2.5 and its seasonal difference pass ADF and KPSS, so d = 0; a further
+  difference over-differences (lag-1 ACF -0.46). The seasonal difference D is chosen in the next phase on a validation year.
+- **Granger causality** (daily, deseasonalised, VAR(4), HAC errors): wind and humidity predict PM2.5 at every lag from
+  1 to 7 days (p < 1e-9) and humidity still does after controlling for rain; the reverse is absent for humidity and
+  weak for wind (lags 1-2 only).
+- **Shocks:** a +1 SD wind shock (2.5 km/h) lowers PM2.5 by 6-12% the next day, humidity (5.4% RH) by 4-7%,
+  fading within about a week (range over the VAR ordering). Weather's share of 14-day forecast error: 6-30%.
+- **Horizon:** last week's weather does not predict this week's PM2.5 (p about 0.5), so the 12-month model should not rely on weather.
+- Caveat: Granger causality is predictive, not proof of a physical cause.
 
 ## Project layout
 
 ```
 data/raw/          city_day.csv, delhi_weather_openmeteo.json
 data/processed/    delhi_daily.csv, delhi_weekly.csv
-src/               data.py (load/clean/merge), aqi.py (CPCB bands), tsa.py (ADF/KPSS, Granger), plots.py (style)
+src/               data.py, aqi.py, tsa.py (ADF/KPSS, deseasonalising), plots.py
 notebooks/         01_data_prep, 02_eda, 03_var_granger
-figures/           PNG figures (used in the slides)
-results/           CSV/JSON tables (stationarity, Granger p-values, FEVD, key numbers)
-slides/            Delhi_PM25_progress.pptx / .pdf (4-slide progress deck)
-make_slides.py     builds the slide deck from the figures
+results/           CSV/JSON result tables
+figures/           PNG figures from the notebooks
+slides/            Delhi_PM25_presentation.pdf; slides/beamer/ = main.tex, make_figures.py, verify_numbers.py
+next_phase/        SARIMA draft (notebook, grid, forecast outputs): not part of the current deliverable
+PRESENTATION_SCRIPT.md   talking points and Q&A
 ```
 
 ## Reproduce
 
 ```bash
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements.txt python-pptx
-# get the CPCB file (needs Kaggle credentials)
-kaggle datasets download rohanrao/air-quality-data-in-india -f city_day.csv -p data/raw
-unzip data/raw/city_day.csv.zip -d data/raw
-# run the notebooks in order (the weather file downloads automatically)
-cd notebooks && ../.venv/bin/jupyter nbconvert --to notebook --execute --inplace 01_data_prep.ipynb 02_eda.ipynb 03_var_granger.ipynb
+uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
+kaggle datasets download rohanrao/air-quality-data-in-india -f city_day.csv -p data/raw && unzip data/raw/city_day.csv.zip -d data/raw
+# run notebooks 01, 02, 03 (jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb)
+python slides/beamer/make_figures.py && cd slides/beamer && tectonic main.tex    # build the slides
+python slides/beamer/verify_numbers.py                                           # independent audit of every slide number
 ```
 
 ## Authors
 
-Kushagra Singh (LuciferK47)
+Kushagra Singh, Yatin JM, Aryan Choudhary (BITS Pilani, Goa)

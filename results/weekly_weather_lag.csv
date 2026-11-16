@@ -1,0 +1,6 @@
+model,term,coef,p_value,r2_model
+same-week weather,wind,-0.0402,0.0013,0.1403
+same-week weather,humidity,-0.0105,0.0,0.1403
+last-week predictors,PM2.5 (last week),0.3621,0.0,0.1391
+last-week predictors,wind (last week),0.0066,0.4576,0.1391
+last-week predictors,humidity (last week),-0.0013,0.4799,0.1391

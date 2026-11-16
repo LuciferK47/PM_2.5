@@ -7,5 +7,7 @@
   "seasonal_strength": 0.89,
   "trend_strength": 0.34,
   "spearman_pm25_wind": -0.24,
-  "spearman_pm25_rh": -0.2
+  "spearman_pm25_rh": -0.2,
+  "boxcox_lambda_daily": 0.045,
+  "boxcox_lambda_weekly": 0.028
 }
