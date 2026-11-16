@@ -2,6 +2,7 @@
 
 ## git log (main..HEAD)
 ```
+e7256a8 Round 3 fixes: unrounded MAE macros and checker for every MAE macro (86 checks), band days to one decimal, D=0 fit details, LSTM interval labelled heuristic, softened station/SARIMA/short-memory wording, generated ledger
 d5d5e26 Verification pack v3 (full-precision data, daily table, station summary, claims ledger) and refreshed LLM briefs
 1a93049 Deck, report, script, README, review log: round-2 corrections and softened claims; file both audits
 5f1fb42 verify_numbers: fix month off-by-one and persistence week, offline-safe link checks, 13 new checks (78 total)
@@ -86,11 +87,11 @@ Both audits (`docs/reviews/round2/`) received `verification_pack/` and recompute
 | R8 | Calibration raises coverage but widens intervals and worsens the Winkler score (GPT) | **Accepted** | Width 125 -> 179, Winkler 175 -> 193; now stated everywhere; "calibrated" reworded to "interval widths rescaled". 2017 coverage 69% is also reported. |
 | R9 | "ARMA" label although the rw level is ARIMA(p,1,q) (GPT) | **Accepted** | Wording changed in definitions (label kept). |
 | R10 | `_best_by_aicc` accepts non-converged fits; warnings suppressed globally (GPT) | **Accepted** | Fits with `converged = False` are rejected and counted (6 / 3 / 5 per origin); warnings now suppressed only inside the fit call. Selected specs unchanged. |
-| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.1% predicted vs 45.2% actual (unchanged story). |
+| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.0% predicted vs 45.2% actual (unchanged story). |
 | R12 | Block bootstrap joins forecast years (Gemini, GPT) | **Accepted; found a second bug** | Blocks are now drawn within each fold. My first version (non-circular) under-sampled the first and last weeks and gave biased intervals (it declared the linear variant and the selected model "better"); the final version is circular. Result: **no model beats climatology significantly**; the linear variant (-2.9, CI -6.1 to +0.7) is indistinguishable. Seasonal naive, SARIMA D=0 and the LSTM are clearly worse; SARIMA D=1 is worse over all three folds. |
 | R13 | Constant predictive sd for linear regression and LSTM (Gemini) | **Accepted** | Linear regression: OLS prediction sd with parameter uncertainty. LSTM: sd from in-sample recursive h-step errors (non-decreasing, capped). Climatology and seasonal naive now carry an sd, so RMSE uses the mean forecast for every model. |
 | R14 | Calibration threshold ignores consistent negative bias (Gemini) | **Partly** | The step rule was fixed before 2019 was seen; replacing it afterwards would tune on the test year. Added as a labelled post-hoc sensitivity: a shrunk shift gives 2019 bias +4.3, MAE 23.6, Winkler 161, but is not adopted. |
-| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -35%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
+| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -36%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
 | R16 | Over-claims: "matches or slightly beats", "weather adds nothing", "decline is real", "cut PM2.5 by 43%", "65 checks verify every number", "pre-declared / untouched 2019", "LSTM clearly worse" (both) | **Accepted** | Reworded across deck, report, script and README; 2019 described as examined in earlier iterations. |
 | R17 | Bootstrap and tests rest on only three origins (both) | **Accepted** | Stated in limitations; no stronger claim made. |
 | R18 | Report omits lag-10 Ljung-Box p = 0.088 (Gemini) | **Accepted** | Added. |
@@ -99,6 +100,23 @@ Both audits (`docs/reviews/round2/`) received `verification_pack/` and recompute
 | R21 | Fixed 6-station panel does not prove the decline is real (GPT) | **Accepted** | Wording: "consistent with a genuine decline; network effect not fully excluded". |
 | R22 | Gemini: Granger "drive/explain" wording | **Accepted** | "Predictive association" throughout; deck question changed to "Does weather predict PM2.5?". |
 | R23 | Gemini: LSTM strawman | **Partly** | It is a small untuned baseline, stated as such; no claim about neural networks. |
+
+## Round 3: final verification audits (Gemini and GPT)
+Gemini found nothing to correct (78/78, all claims reproduced; optional: Makefile fallback, archive legacy PDF). GPT reproduced the core numbers and found the following, all re-tested:
+
+| # | Claim (source) | Verdict | Fix |
+|---|---|---|---|
+| S1 | Macros `fcMaeSarimaNineteen` 27.4 and `fcMaeLstmNineteen` 54.4 are double-rounded (true 27.5, 54.3) (GPT) | **Accepted, confirmed** | `make_figures.py` now reads unrounded MAEs from `fc_backtest_metrics.csv`; `verify_numbers.py` checks every MAE macro against the unrounded value (86 checks). |
+| S2 | README ledger: June lower bound 48.7 (true 47.9); lockdown median 85.1 vs 85.0 (GPT) | **Accepted** | The ledger is now generated from `results/` at build time. |
+| S3 | 2019 predicted band days rounded to integers sum to 366 (GPT) | **Accepted** | Stored with one decimal (sum 365.0); a checker test enforces it. |
+| S4 | SARIMA D=0 without constant is numerically fragile (AR root 0.999; refit gave 64.8 and 81.5-92.1) (GPT) | **Accepted** | Fit details and software versions saved in `fc_sarima_d0_fit_details.csv`; text says "60-90, much worse than climatology"; with-constant result reproduces. |
+| S5 | LSTM interval uses in-sample recursive errors, so it is optimistic (GPT) | **Accepted** | Labelled a heuristic in the notebook, report and limits. Point MAEs unaffected. |
+| S6 | Seasonal MA near -1 does not prove differencing is unnecessary; SE unstable (GPT) | **Accepted** | Report and deck say "possible over-differencing, identification problem"; SE flagged as unstable. |
+| S7 | "Most of the decline is real" too strong (GPT) | **Accepted** | "Persists in a restricted panel and after weather adjustment; consistent with a genuine component; network effect not ruled out." |
+| S8 | "No model significantly better" should be tied to the design; "short-memory predictor" stronger than a non-significant test proves; first sentence says "air is Poor or worse" (GPT) | **Accepted** | Reworded (limited rolling-origin evaluation; "within the tested specification"; "PM2.5 sub-index band"). |
+| S9 | 12/12 monthly means inside is not proof of calibration (GPT) | **Already stated**; the 55% vs 45% over-prediction is reported next to it. |
+| S10 | Path-level simulation draws not preserved; lockdown quantiles not reconstructable (GPT) | **Noted** | Simulated quantities vary by about 0.3 percentage points between re-runs (Monte-Carlo noise: lockdown gap -42.8 to -43.1%); stated, not hidden. |
+| S11 | Gemini: Makefile fallback; legacy `Slides.pdf` at the repo root | **Optional; not done** |
 
 ## Round 2 audit documents
 ### GPT

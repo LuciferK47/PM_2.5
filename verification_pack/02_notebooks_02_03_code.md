@@ -605,7 +605,7 @@ output:
 **Reading it:** the city series equals the mean of the stations (corr 0.995), and the station count jumped from 8-10 (2015-16)
 to 37 (2018-19), so a mix effect is *possible*. But the fixed panel of six long-running stations shows a decline of the
 same sign and a similar size (see `decline_2016_2019_pct`: about -25% all stations, -20% fixed panel, -18% weather-adjusted), and so does the weather-adjusted city series. (The `all_mean_pm25` column averages only days with at least 3 reporting stations, so it is not directly comparable with the city-day annual means in section 6c; the log anomalies are the comparable quantity.)
-So most of the decline is a **real drift in the level**, partly (not fully) confirmed by consistent monitors; the 2017 panel
+So the decline persists in a restricted fixed-station sample and after weather adjustment, which is **consistent with a genuine drift in the level**; a network-composition effect is not ruled out; the 2017 panel
 is thin (about 125 days) and the panel is only six stations, so we do not claim a precise magnitude. Consequence for modelling:
 the level cannot be treated as constant; notebook 04 compares constant, linear and random-walk level handling on validation years.
 
@@ -1088,10 +1088,10 @@ output:
 
 ### [md 27]
 With robust errors, weather → PM2.5 is still overwhelmingly significant (wind p ≈ 1e-19; humidity p ≈ 3e-11, and 3e-8 once rain is a
-control) and the reverse is not.
+control); the reverse direction is absent for humidity and weak for wind (PM2.5 → wind appears only at lag orders 1-2 and not in the full VAR).
 **Humidity stays significant after controlling for rain, and rain itself adds nothing** once wind and humidity are
 in, so we do *not* claim the humidity effect is simply rain washout.
-We quote p-values as "p < 10⁻¹⁰": beyond that, extra digits are not meaningful.
+We quote exact p-values (the largest across the specifications is 3×10⁻⁸); beyond that, extra digits are not meaningful.
 
 ### [md 28]
 ### 7b. More robustness: temperature, a trend, a training-only climatology, season-specific effects, and lag order
@@ -1373,7 +1373,7 @@ output:
 
 ### [md 43]
 **Reading it:** *same-week* weather is significantly related to PM2.5 (the daily effect, averaged over a week),
-but **last week's weather adds nothing** once last week's PM2.5 is known: the nested comparison above shows ΔR² ≈ 0 and a
+but **last week's weather adds no detectable value** in this specification once last week's PM2.5 is known: the nested comparison above shows ΔR² ≈ 0 and a
 joint HAC Wald p-value far above 0.05. (The two R² values in the first table belong to different, non-nested models, so
 they are not compared with each other.) So weather helps explain and
 very-short-term-predict PM2.5, but it cannot be forecast a year ahead, so the 12-month model uses no weather

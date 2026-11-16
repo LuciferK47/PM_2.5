@@ -16,7 +16,7 @@ md("""# 04 · Forecasting weekly PM2.5: rolling-origin backtest, calibration, 1-
 
 **Design rules.** Target: weekly mean PM2.5, modelled as log (so the point forecast `exp(mu)` is a *median*; mean forecasts use
 `exp(mu + sd²/2)` with the horizon-specific sd). Season length 365.25/7 weeks. No weather in the 52-week models (notebook 03:
-last week's weather adds nothing at the weekly scale and future weather is unknown). The 2020 lockdown never enters model selection.""")
+no added value from last week's weather was detected at the weekly scale and future weather is unknown). The 2020 lockdown never enters model selection.""")
 
 code('''import os
 for v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
@@ -349,7 +349,7 @@ md("""## 6. Final outlook for 2020 and validation of the method on 2019
 whole within-week offset vector (Mon–Sun, `log(daily) − log(weekly mean)`, from a training week of the same month), so each simulated week still averages exactly to its simulated weekly mean and day-to-day dependence is kept; classify each day into the CPCB
 PM2.5 sub-index bands. Monthly means and band-day counts are computed from the same daily paths. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
 **This is a PM2.5 band, not the official AQI** (the AQI is the maximum sub-index over all pollutants).
-2019 is a genuine out-of-sample test of the whole pipeline; 2020 is the deliverable.""")
+2019 is chronologically held out (selection and calibration use only earlier data) but not pristine, since it was examined in earlier iterations of the project; 2020 is the deliverable.""")
 
 code('''def pipeline(origin, year, folds_for_cal, n=5000):
     tr_ = y.loc[:origin]

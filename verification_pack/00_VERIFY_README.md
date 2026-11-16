@@ -38,7 +38,7 @@ Weekly W-SUN series, 287 weeks 2015-01-04 to 2020-06-28 (log of weekly mean PM2.
 | 6 | One-week MAE vs no-weather DHR: lagged -2.4%, last-3-days +0.7%, same-week oracle +6.9% (p 0.075/0.585/0.074) | 04 fc_oneweek.csv | 05 one-step forecasts (fc_oneweek_forecasts) |
 | 7 | HAC Granger wind->PM2.5 p~6e-20, humidity ~4e-11 (4 lags, with rain+temp 9e-18, 7e-8); seasonal tests all p<1e-3; interactions p=0.20 (monsoon x humidity), 0.03 (winter x wind) | 04 granger_*.csv | 06 daily data (anomalies from doy climatology) |
 | 8 | Weekly nested test: R2 0.1341 -> 0.1391, p = 0.515 | 04 weekly_lag_nested.csv | 05 weekly table |
-| 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.1% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
+| 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.0% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
 | 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.5 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted = (1+gap)/(1+pre-gap)-1 = -36%; other level specs -51% to -37%; 2019 placebo -15% | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
 | 11 | June 2020 monthly mean 46.7 is below its lower bound 48.2; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
 | 12 | Station panel: city series 2016->2019 -25%, fixed 6-station panel -20%, weather-adjusted -18%; stations reporting 10, 8, 17, 37, 37 | 04 station_check.csv | 06 station summary (per station-year mean and days) |

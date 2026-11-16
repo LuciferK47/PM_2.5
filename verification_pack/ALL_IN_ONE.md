@@ -38,7 +38,7 @@ Weekly W-SUN series, 287 weeks 2015-01-04 to 2020-06-28 (log of weekly mean PM2.
 | 6 | One-week MAE vs no-weather DHR: lagged -2.4%, last-3-days +0.7%, same-week oracle +6.9% (p 0.075/0.585/0.074) | 04 fc_oneweek.csv | 05 one-step forecasts (fc_oneweek_forecasts) |
 | 7 | HAC Granger wind->PM2.5 p~6e-20, humidity ~4e-11 (4 lags, with rain+temp 9e-18, 7e-8); seasonal tests all p<1e-3; interactions p=0.20 (monsoon x humidity), 0.03 (winter x wind) | 04 granger_*.csv | 06 daily data (anomalies from doy climatology) |
 | 8 | Weekly nested test: R2 0.1341 -> 0.1391, p = 0.515 | 04 weekly_lag_nested.csv | 05 weekly table |
-| 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.1% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
+| 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.0% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
 | 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.5 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted = (1+gap)/(1+pre-gap)-1 = -36%; other level specs -51% to -37%; 2019 placebo -15% | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
 | 11 | June 2020 monthly mean 46.7 is below its lower bound 48.2; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
 | 12 | Station panel: city series 2016->2019 -25%, fixed 6-station panel -20%, weather-adjusted -18%; stations reporting 10, 8, 17, 37, 37 | 04 station_check.csv | 06 station summary (per station-year mean and days) |
@@ -1361,7 +1361,7 @@ output:
 **Reading it:** the city series equals the mean of the stations (corr 0.995), and the station count jumped from 8-10 (2015-16)
 to 37 (2018-19), so a mix effect is *possible*. But the fixed panel of six long-running stations shows a decline of the
 same sign and a similar size (see `decline_2016_2019_pct`: about -25% all stations, -20% fixed panel, -18% weather-adjusted), and so does the weather-adjusted city series. (The `all_mean_pm25` column averages only days with at least 3 reporting stations, so it is not directly comparable with the city-day annual means in section 6c; the log anomalies are the comparable quantity.)
-So most of the decline is a **real drift in the level**, partly (not fully) confirmed by consistent monitors; the 2017 panel
+So the decline persists in a restricted fixed-station sample and after weather adjustment, which is **consistent with a genuine drift in the level**; a network-composition effect is not ruled out; the 2017 panel
 is thin (about 125 days) and the panel is only six stations, so we do not claim a precise magnitude. Consequence for modelling:
 the level cannot be treated as constant; notebook 04 compares constant, linear and random-walk level handling on validation years.
 
@@ -1844,10 +1844,10 @@ output:
 
 ### [md 27]
 With robust errors, weather → PM2.5 is still overwhelmingly significant (wind p ≈ 1e-19; humidity p ≈ 3e-11, and 3e-8 once rain is a
-control) and the reverse is not.
+control); the reverse direction is absent for humidity and weak for wind (PM2.5 → wind appears only at lag orders 1-2 and not in the full VAR).
 **Humidity stays significant after controlling for rain, and rain itself adds nothing** once wind and humidity are
 in, so we do *not* claim the humidity effect is simply rain washout.
-We quote p-values as "p < 10⁻¹⁰": beyond that, extra digits are not meaningful.
+We quote exact p-values (the largest across the specifications is 3×10⁻⁸); beyond that, extra digits are not meaningful.
 
 ### [md 28]
 ### 7b. More robustness: temperature, a trend, a training-only climatology, season-specific effects, and lag order
@@ -2129,7 +2129,7 @@ output:
 
 ### [md 43]
 **Reading it:** *same-week* weather is significantly related to PM2.5 (the daily effect, averaged over a week),
-but **last week's weather adds nothing** once last week's PM2.5 is known: the nested comparison above shows ΔR² ≈ 0 and a
+but **last week's weather adds no detectable value** in this specification once last week's PM2.5 is known: the nested comparison above shows ΔR² ≈ 0 and a
 joint HAC Wald p-value far above 0.05. (The two R² values in the first table belong to different, non-nested models, so
 they are not compared with each other.) So weather helps explain and
 very-short-term-predict PM2.5, but it cannot be forecast a year ahead, so the 12-month model uses no weather
@@ -2203,7 +2203,7 @@ output:
 
 **Design rules.** Target: weekly mean PM2.5, modelled as log (so the point forecast `exp(mu)` is a *median*; mean forecasts use
 `exp(mu + sd²/2)` with the horizon-specific sd). Season length 365.25/7 weeks. No weather in the 52-week models (notebook 03:
-last week's weather adds nothing at the weekly scale and future weather is unknown). The 2020 lockdown never enters model selection.
+no added value from last week's weather was detected at the weekly scale and future weather is unknown). The 2020 lockdown never enters model selection.
 
 ### [code 1]
 ```python
@@ -2785,7 +2785,7 @@ output:
 whole within-week offset vector (Mon–Sun, `log(daily) − log(weekly mean)`, from a training week of the same month), so each simulated week still averages exactly to its simulated weekly mean and day-to-day dependence is kept; classify each day into the CPCB
 PM2.5 sub-index bands. Monthly means and band-day counts are computed from the same daily paths. This yields (a) the median and 95% interval of each month's mean PM2.5 and (b) the expected number of days per band.
 **This is a PM2.5 band, not the official AQI** (the AQI is the maximum sub-index over all pollutants).
-2019 is a genuine out-of-sample test of the whole pipeline; 2020 is the deliverable.
+2019 is chronologically held out (selection and calibration use only earlier data) but not pristine, since it was examined in earlier iterations of the project; 2020 is the deliverable.
 
 ### [code 25]
 ```python
@@ -9883,7 +9883,7 @@ Each year 2018 and 2019 is forecast one week at a time with parameters fitted on
 \begin{figure}[H]\centering\includegraphics[width=0.7\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\end{figure}
 
 \subsection{The 2020 outlook and its validation}
-The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated, calibrated, converted to daily values by adding a whole within-week offset vector (Monday--Sunday, resampled from a training week of the same month) so that every simulated week still averages exactly to its simulated weekly mean, with monthly means and band-day counts computed from the same daily paths, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
+The final model is fitted on 2015--2019 (selection again inside the window: linear level, $K=5$, AR(1) errors), 5{,}000 weekly paths are simulated (53 weeks, so that every calendar day of the year is covered; the backtest folds use 52), calibrated, converted to daily values by adding a whole within-week offset vector (Monday--Sunday, resampled from a training week of the same month) so that every simulated week still averages exactly to its simulated weekly mean, with monthly means and band-day counts computed from the same daily paths, and classified into the CPCB \pmtwo{} bands. The same pipeline run for 2019 (data to 2018 only) places all \fcValInside{} monthly means inside the 95\% interval, but over-predicts the share of Poor-or-worse days (\fcValPoorPred\% vs \fcValPoorAct\% actual), which is the level bias again. These bands are \pmtwo{} sub-index bands, not the official AQI (the maximum over all pollutants).
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval and expected days per band.}\end{figure}
 \begin{table}[H]\centering\scriptsize\input{../slides/beamer/tables/fc_outlook.tex}\caption{2020 outlook (\ugm{}); ``Days Poor+'' = expected days above 90 \ugm{}; Actual shown for full months only.}\end{table}
 \subsection{Case study: the 2020 lockdown}
@@ -10375,6 +10375,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
 
 ## git log (main..HEAD)
 ```
+e7256a8 Round 3 fixes: unrounded MAE macros and checker for every MAE macro (86 checks), band days to one decimal, D=0 fit details, LSTM interval labelled heuristic, softened station/SARIMA/short-memory wording, generated ledger
 d5d5e26 Verification pack v3 (full-precision data, daily table, station summary, claims ledger) and refreshed LLM briefs
 1a93049 Deck, report, script, README, review log: round-2 corrections and softened claims; file both audits
 5f1fb42 verify_numbers: fix month off-by-one and persistence week, offline-safe link checks, 13 new checks (78 total)
@@ -10459,11 +10460,11 @@ Both audits (`docs/reviews/round2/`) received `verification_pack/` and recompute
 | R8 | Calibration raises coverage but widens intervals and worsens the Winkler score (GPT) | **Accepted** | Width 125 -> 179, Winkler 175 -> 193; now stated everywhere; "calibrated" reworded to "interval widths rescaled". 2017 coverage 69% is also reported. |
 | R9 | "ARMA" label although the rw level is ARIMA(p,1,q) (GPT) | **Accepted** | Wording changed in definitions (label kept). |
 | R10 | `_best_by_aicc` accepts non-converged fits; warnings suppressed globally (GPT) | **Accepted** | Fits with `converged = False` are rejected and counted (6 / 3 / 5 per origin); warnings now suppressed only inside the fit call. Selected specs unchanged. |
-| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.1% predicted vs 45.2% actual (unchanged story). |
+| R11 | Monthly means and band-day counts come from different draws (GPT) | **Accepted** | `daily_paths` draws a whole Mon-Sun offset vector per simulated week (mean(exp(offset)) = 1), so every week averages exactly to its simulated weekly mean; both outputs derive from the same daily paths. 2019 validation: 12/12 months inside; Poor+ 55.0% predicted vs 45.2% actual (unchanged story). |
 | R12 | Block bootstrap joins forecast years (Gemini, GPT) | **Accepted; found a second bug** | Blocks are now drawn within each fold. My first version (non-circular) under-sampled the first and last weeks and gave biased intervals (it declared the linear variant and the selected model "better"); the final version is circular. Result: **no model beats climatology significantly**; the linear variant (-2.9, CI -6.1 to +0.7) is indistinguishable. Seasonal naive, SARIMA D=0 and the LSTM are clearly worse; SARIMA D=1 is worse over all three folds. |
 | R13 | Constant predictive sd for linear regression and LSTM (Gemini) | **Accepted** | Linear regression: OLS prediction sd with parameter uncertainty. LSTM: sd from in-sample recursive h-step errors (non-decreasing, capped). Climatology and seasonal naive now carry an sd, so RMSE uses the mean forecast for every model. |
 | R14 | Calibration threshold ignores consistent negative bias (Gemini) | **Partly** | The step rule was fixed before 2019 was seen; replacing it afterwards would tune on the test year. Added as a labelled post-hoc sensitivity: a shrunk shift gives 2019 bias +4.3, MAE 23.6, Winkler 161, but is not adopted. |
-| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -35%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
+| R15 | Lockdown gap confounded by model level bias; window starts 23 Mar (both) | **Accepted** | The model was already 11% high in the 12 weeks before the lockdown. New sensitivity table: adjusted gap -36%; constant level -51%; random-walk -43%; 9-week window -42%; post-hoc shift -37%; 2019 placebo -15% (interval spans 0). Wording now "observed PM2.5 was about 43% below the model's no-lockdown median", range 37-51%, not causal. |
 | R16 | Over-claims: "matches or slightly beats", "weather adds nothing", "decline is real", "cut PM2.5 by 43%", "65 checks verify every number", "pre-declared / untouched 2019", "LSTM clearly worse" (both) | **Accepted** | Reworded across deck, report, script and README; 2019 described as examined in earlier iterations. |
 | R17 | Bootstrap and tests rest on only three origins (both) | **Accepted** | Stated in limitations; no stronger claim made. |
 | R18 | Report omits lag-10 Ljung-Box p = 0.088 (Gemini) | **Accepted** | Added. |
@@ -10472,6 +10473,23 @@ Both audits (`docs/reviews/round2/`) received `verification_pack/` and recompute
 | R21 | Fixed 6-station panel does not prove the decline is real (GPT) | **Accepted** | Wording: "consistent with a genuine decline; network effect not fully excluded". |
 | R22 | Gemini: Granger "drive/explain" wording | **Accepted** | "Predictive association" throughout; deck question changed to "Does weather predict PM2.5?". |
 | R23 | Gemini: LSTM strawman | **Partly** | It is a small untuned baseline, stated as such; no claim about neural networks. |
+
+## Round 3: final verification audits (Gemini and GPT)
+Gemini found nothing to correct (78/78, all claims reproduced; optional: Makefile fallback, archive legacy PDF). GPT reproduced the core numbers and found the following, all re-tested:
+
+| # | Claim (source) | Verdict | Fix |
+|---|---|---|---|
+| S1 | Macros `fcMaeSarimaNineteen` 27.4 and `fcMaeLstmNineteen` 54.4 are double-rounded (true 27.5, 54.3) (GPT) | **Accepted, confirmed** | `make_figures.py` now reads unrounded MAEs from `fc_backtest_metrics.csv`; `verify_numbers.py` checks every MAE macro against the unrounded value (86 checks). |
+| S2 | README ledger: June lower bound 48.7 (true 47.9); lockdown median 85.1 vs 85.0 (GPT) | **Accepted** | The ledger is now generated from `results/` at build time. |
+| S3 | 2019 predicted band days rounded to integers sum to 366 (GPT) | **Accepted** | Stored with one decimal (sum 365.0); a checker test enforces it. |
+| S4 | SARIMA D=0 without constant is numerically fragile (AR root 0.999; refit gave 64.8 and 81.5-92.1) (GPT) | **Accepted** | Fit details and software versions saved in `fc_sarima_d0_fit_details.csv`; text says "60-90, much worse than climatology"; with-constant result reproduces. |
+| S5 | LSTM interval uses in-sample recursive errors, so it is optimistic (GPT) | **Accepted** | Labelled a heuristic in the notebook, report and limits. Point MAEs unaffected. |
+| S6 | Seasonal MA near -1 does not prove differencing is unnecessary; SE unstable (GPT) | **Accepted** | Report and deck say "possible over-differencing, identification problem"; SE flagged as unstable. |
+| S7 | "Most of the decline is real" too strong (GPT) | **Accepted** | "Persists in a restricted panel and after weather adjustment; consistent with a genuine component; network effect not ruled out." |
+| S8 | "No model significantly better" should be tied to the design; "short-memory predictor" stronger than a non-significant test proves; first sentence says "air is Poor or worse" (GPT) | **Accepted** | Reworded (limited rolling-origin evaluation; "within the tested specification"; "PM2.5 sub-index band"). |
+| S9 | 12/12 monthly means inside is not proof of calibration (GPT) | **Already stated**; the 55% vs 45% over-prediction is reported next to it. |
+| S10 | Path-level simulation draws not preserved; lockdown quantiles not reconstructable (GPT) | **Noted** | Simulated quantities vary by about 0.3 percentage points between re-runs (Monte-Carlo noise: lockdown gap -42.8 to -43.1%); stated, not hidden. |
+| S11 | Gemini: Makefile fallback; legacy `Slides.pdf` at the repo root | **Optional; not done** |
 
 ## Round 2 audit documents
 ### GPT
