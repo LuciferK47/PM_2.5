@@ -1,3 +1,3 @@
 ,actual_mean,cf_median,gap_median_pct,gap_lo95_pct,gap_hi95_pct
-no-lockdown forecast,48.7,85.0,-42.8,-52.1,-31.8
-weather-adjusted forecast (oracle weather),,78.6,-38.1,-47.5,-26.7
+no-lockdown forecast,48.7,85.5,-43.1,-52.3,-32.0
+weather-adjusted forecast (oracle weather),,78.4,-37.9,-47.8,-26.5

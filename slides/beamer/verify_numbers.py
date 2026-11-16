@@ -374,6 +374,13 @@ for lab_, folds_ in [("folds 2018+2019", [2018, 2019]), ("all three folds", [201
         r_ = ld[(ld.folds == lab_) & (ld.model == m_)].iloc[0]
         ok_ld &= close(dm_, r_.mean_MAE_diff_vs_climatology, 0.02) and close(lo_, r_.ci_lo, 0.1) and close(hi_, r_.ci_hi, 0.1)
 check("fc_loss_diff.csv reproduced by the per-fold block bootstrap from saved forecasts", ok_ld)
+for mac_, (m_, f_) in {"fcMaeSelNineteen": ("Fourier+ARMA (selected)", 2019), "fcMaeClimNineteen": ("Climatology", 2019), "fcMaeSarimaNineteen": ("SARIMA D=1", 2019),
+                       "fcMaeSarimaSeventeen": ("SARIMA D=1", 2017), "fcMaeLstmNineteen": ("LSTM (small)", 2019), "fcMaeLstmEighteen": ("LSTM (small)", 2018),
+                       "fcMaeSarimaZeroNineteen": ("SARIMA D=0", 2019)}.items():
+    exact_ = bf[(bf.model == m_) & (bf.fold == f_)].ae.mean()
+    check(f"slide macro {mac_} = {macros[mac_]} equals the unrounded MAE {exact_:.3f} to one decimal", macros[mac_] == f"{exact_:.1f}")
+ad_ = FC["validation_2019"]["annual_days_pred"]
+check(f"2019 predicted band days sum to 365 (sum = {sum(ad_.values()):.1f})", close(sum(ad_.values()), 365, 0.2))
 # (d) one-week-ahead MAEs recomputed from the saved one-step forecasts
 of = pd.read_csv(RES / "fc_oneweek_forecasts.csv")
 of["ae"] = (of.actual - np.exp(of.mu)).abs()

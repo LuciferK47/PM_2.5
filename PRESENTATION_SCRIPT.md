@@ -85,4 +85,4 @@ Deck: `slides/Delhi_PM25_presentation.pdf` (21 slides + 5 backup; source `slides
 - Granger (HAC, 4 lags): wind p ~ 6e-20, humidity ~ 4e-11 (with rain+temperature: 9e-18, 7e-8); IRF day 1: wind -6 to -12%, humidity -4 to -7%; FEVD 6-30%
 - Backtest MAE 2017/2018/2019: Fourier+ARMA 31.5/23.4/25.7; climatology 31.0/21.8/27.8; SARIMA D=1 53.8/21.1/27.5; LSTM 36.3/28.3/54.3; nothing significantly better than climatology
 - Coverage 2019: 90% raw, 96% rescaled (width +43%, Winkler 175 to 193); one week ahead: -2.4% / +0.7% / +6.9% (oracle)
-- Lockdown: -43% vs the model's no-lockdown median (95% -52 to -32), weather-adjusted -38%, pre-gap-adjusted -35%, across specs -37 to -51%, 2019 placebo -15% (interval spans 0): descriptive, not causal
+- Lockdown: -43% vs the model's no-lockdown median (95% -52 to -32), weather-adjusted -38%, pre-gap-adjusted -36%, across specs -37 to -51%, 2019 placebo -15% (interval spans 0): descriptive, not causal

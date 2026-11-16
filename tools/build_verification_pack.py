@@ -53,6 +53,11 @@ def tab(n):
 
 F = {}
 K = json.loads((R / "results/key_numbers_forecast.json").read_text())
+LK = K["lockdown"]["plain"]; _ls = K["lockdown_sensitivity"]; _h = _ls["selected spec (linear, K=5, AR1), headline"]
+PRE, ADJ, PLC = _h["pre_lockdown_gap_pct"], _h["lockdown_gap_adjusted_for_pre_gap_pct"], _ls["PLACEBO: same weeks of 2019 vs 2019 forecast"]["lockdown_gap_10wk_pct"]
+_o = [v["lockdown_gap_10wk_pct"] for k_, v in _ls.items() if not k_.startswith("PLACEBO")]
+SENS_LO, SENS_HI = min(_o), max(_o)
+_m = pd.read_csv(R / "results/fc_outlook_2020.csv", index_col=0); JUN_LO = _m.loc["Jun", "lo95"]; JUN_A = _m.loc["Jun", "actual_mean_2020"]
 LEDGER = f"""
 ## Claims ledger (round 2: statements as they now stand)
 | # | Claim | Evidence file | Recompute from |
@@ -66,12 +71,14 @@ LEDGER = f"""
 | 7 | HAC Granger wind->PM2.5 p~6e-20, humidity ~4e-11 (4 lags, with rain+temp 9e-18, 7e-8); seasonal tests all p<1e-3; interactions p=0.20 (monsoon x humidity), 0.03 (winter x wind) | 04 granger_*.csv | 06 daily data (anomalies from doy climatology) |
 | 8 | Weekly nested test: R2 0.1341 -> 0.1391, p = 0.515 | 04 weekly_lag_nested.csv | 05 weekly table |
 | 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.1% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
-| 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.1 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted -35%; other level specs -43% to -51%; 2019 placebo -15% (95% -44 to +28) | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
-| 11 | June 2020 monthly mean 46.7 below its lower bound 48.7; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
+| 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean {LK['actual_mean']:.1f} vs model median {LK['cf_median']:.1f} = {LK['gap_median_pct']:.0f}% (95% {LK['gap_lo95_pct']:.0f} to {LK['gap_hi95_pct']:.0f}); weather-adjusted {K['lockdown']['weather_adjusted']['gap_median_pct']:.0f}%; pre-lockdown (5 Jan-22 Mar) model gap {PRE:.0f}%; adjusted = (1+gap)/(1+pre-gap)-1 = {ADJ:.0f}%; other level specs {SENS_LO:.0f}% to {SENS_HI:.0f}%; 2019 placebo {PLC:.0f}% | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
+| 11 | June 2020 monthly mean {JUN_A:.1f} is below its lower bound {JUN_LO:.1f}; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
 | 12 | Station panel: city series 2016->2019 -25%, fixed 6-station panel -20%, weather-adjusted -18%; stations reporting 10, 8, 17, 37, 37 | 04 station_check.csv | 06 station summary (per station-year mean and days) |
 | 13 | Ljung-Box on SARIMA D=1 residuals: p~0 with the 52 diffuse residuals; without them 0.49/0.10/0.016 (lags 10/26/52); seasonal MA -0.988, SE 8.26 | 03 nb04 output | needs full-precision refit |
 | 14 | SARIMA D=0 with/without constant (same orders/folds): 44.9/42.8/44.1 vs 76.9/61.0/92.1 | 04 fc_sarima_d0_constant.csv | refit |
 | 15 | doy365 maps 29 Feb to day 59 and shifts later leap-year days by -1 | 01 tsa.py | read code |
+
+Note: all numbers in this ledger are generated from results/ at build time.
 
 ## What the first-round audits already found and what was fixed (verify the fixes!)
 LSTM calendar/anomaly misalignment (now one helper `lstm_window`, deterministic torch); verifier checked April-June against March-May intervals and skipped a persistence week; non-converged fits accepted in AICc search; daily band days and monthly means from different draws (now one set of daily paths whose weekly means equal the weekly paths exactly); bootstrap joined forecast years (and a first fix without wrap-around biased the interval: now circular within each fold); constant predictive sd for linear regression/LSTM (now horizon-specific); report claims (winter humidity bound, D=0 '39.7 to 30.6', June omission, over-claims). See file 09 (Round 2 table R1-R23).

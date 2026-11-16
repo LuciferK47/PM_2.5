@@ -78,12 +78,12 @@
   "validation_2019": {
     "months_actual_inside_95": 12,
     "annual_days_pred": {
-      "Good": 21.0,
-      "Satisfactory": 75.0,
-      "Moderate": 68.0,
+      "Good": 21.5,
+      "Satisfactory": 75.2,
+      "Moderate": 67.4,
       "Poor": 53.0,
-      "Very Poor": 114.0,
-      "Severe": 35.0
+      "Very Poor": 113.2,
+      "Severe": 34.7
     },
     "annual_days_actual": {
       "Good": 25,
@@ -93,8 +93,8 @@
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.9,
-    "poor_or_worse_pred_pct": 55.1,
+    "mean_abs_days_error_per_band_month": 1.89,
+    "poor_or_worse_pred_pct": 55.0,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
@@ -119,56 +119,56 @@
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.04899262695417,
-      "gap_median_pct": -42.77449646078571,
-      "gap_lo95_pct": -52.11359900861902,
-      "gap_hi95_pct": -31.819259395224652
+      "cf_median": 85.46299198510313,
+      "gap_median_pct": -43.051707931100005,
+      "gap_lo95_pct": -52.341350673611394,
+      "gap_hi95_pct": -31.980318287029235
     },
     "weather_adjusted": {
-      "cf_median": 78.5752915693168,
-      "gap_median_pct": -38.059772562764856,
-      "gap_lo95_pct": -47.516118559968525,
-      "gap_hi95_pct": -26.675729977641215
+      "cf_median": 78.38583242809868,
+      "gap_median_pct": -37.910062528631435,
+      "gap_lo95_pct": -47.7503801997891,
+      "gap_hi95_pct": -26.53614923420981
     }
   },
   "lockdown_sensitivity": {
     "selected spec (linear, K=5, AR1), headline": {
-      "pre_lockdown_gap_pct": -11.32,
-      "lockdown_gap_10wk_pct": -42.77,
-      "lo95": -52.11,
-      "hi95": -31.82,
-      "gap_9wk_from_5Apr_pct": -41.49,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+      "pre_lockdown_gap_pct": -11.26,
+      "lockdown_gap_10wk_pct": -43.05,
+      "lo95": -52.34,
+      "hi95": -31.98,
+      "gap_9wk_from_5Apr_pct": -41.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.83
     },
     "constant level": {
-      "pre_lockdown_gap_pct": -22.6,
-      "lockdown_gap_10wk_pct": -50.84,
+      "pre_lockdown_gap_pct": -22.27,
+      "lockdown_gap_10wk_pct": -50.89,
       "lo95": -59.58,
-      "hi95": -40.01,
-      "gap_9wk_from_5Apr_pct": -49.78,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+      "hi95": -39.98,
+      "gap_9wk_from_5Apr_pct": -49.84,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.81
     },
     "random-walk level (ARIMA errors)": {
-      "pre_lockdown_gap_pct": -9.87,
-      "lockdown_gap_10wk_pct": -43.11,
-      "lo95": -54.55,
-      "hi95": -28.55,
-      "gap_9wk_from_5Apr_pct": -41.74,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+      "pre_lockdown_gap_pct": -9.74,
+      "lockdown_gap_10wk_pct": -43.19,
+      "lo95": -55.21,
+      "hi95": -28.79,
+      "gap_9wk_from_5Apr_pct": -41.96,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -37.06
     },
     "headline + shrunk mean-bias shift (post-hoc)": {
-      "pre_lockdown_gap_pct": -2.43,
-      "lockdown_gap_10wk_pct": -37.02,
-      "lo95": -47.3,
-      "hi95": -24.97,
-      "gap_9wk_from_5Apr_pct": -35.61,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+      "pre_lockdown_gap_pct": -2.37,
+      "lockdown_gap_10wk_pct": -37.33,
+      "lo95": -47.55,
+      "hi95": -25.14,
+      "gap_9wk_from_5Apr_pct": -35.92,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.81
     },
     "PLACEBO: same weeks of 2019 vs 2019 forecast": {
-      "pre_lockdown_gap_pct": -8.88,
-      "lockdown_gap_10wk_pct": -14.87,
-      "lo95": -43.9,
-      "hi95": 28.17,
+      "pre_lockdown_gap_pct": -9.04,
+      "lockdown_gap_10wk_pct": -15.01,
+      "lo95": -43.38,
+      "hi95": 28.14,
       "gap_9wk_from_5Apr_pct": NaN,
       "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }

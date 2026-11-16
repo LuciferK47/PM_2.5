@@ -39,12 +39,14 @@ Weekly W-SUN series, 287 weeks 2015-01-04 to 2020-06-28 (log of weekly mean PM2.
 | 7 | HAC Granger wind->PM2.5 p~6e-20, humidity ~4e-11 (4 lags, with rain+temp 9e-18, 7e-8); seasonal tests all p<1e-3; interactions p=0.20 (monsoon x humidity), 0.03 (winter x wind) | 04 granger_*.csv | 06 daily data (anomalies from doy climatology) |
 | 8 | Weekly nested test: R2 0.1341 -> 0.1391, p = 0.515 | 04 weekly_lag_nested.csv | 05 weekly table |
 | 9 | 2019 pipeline validation: 12/12 monthly means inside 95%; Poor-or-worse 55.1% predicted vs 45.2% actual | 04 fc_outlook_validation_2019_*.csv | 06 daily data (actual band counts) |
-| 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.1 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted -35%; other level specs -43% to -51%; 2019 placebo -15% (95% -44 to +28) | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
-| 11 | June 2020 monthly mean 46.7 below its lower bound 48.7; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
+| 10 | Lockdown: 10 Sunday-ending weeks 29 Mar-31 May (cover 23 Mar-31 May); actual mean 48.7 vs model median 85.5 = -43% (95% -52 to -32); weather-adjusted -38%; pre-lockdown (5 Jan-22 Mar) model gap -11%; adjusted = (1+gap)/(1+pre-gap)-1 = -36%; other level specs -51% to -37%; 2019 placebo -15% | 04 fc_lockdown*.csv | 05 lockdown weekly table (fc_weekly_2020) |
+| 11 | June 2020 monthly mean 46.7 is below its lower bound 48.2; Jan-Feb inside; Mar-Jun below | 04 fc_outlook_2020.csv | 06 daily data |
 | 12 | Station panel: city series 2016->2019 -25%, fixed 6-station panel -20%, weather-adjusted -18%; stations reporting 10, 8, 17, 37, 37 | 04 station_check.csv | 06 station summary (per station-year mean and days) |
 | 13 | Ljung-Box on SARIMA D=1 residuals: p~0 with the 52 diffuse residuals; without them 0.49/0.10/0.016 (lags 10/26/52); seasonal MA -0.988, SE 8.26 | 03 nb04 output | needs full-precision refit |
 | 14 | SARIMA D=0 with/without constant (same orders/folds): 44.9/42.8/44.1 vs 76.9/61.0/92.1 | 04 fc_sarima_d0_constant.csv | refit |
 | 15 | doy365 maps 29 Feb to day 59 and shifts later leap-year days by -1 | 01 tsa.py | read code |
+
+Note: all numbers in this ledger are generated from results/ at build time.
 
 ## What the first-round audits already found and what was fixed (verify the fixes!)
 LSTM calendar/anomaly misalignment (now one helper `lstm_window`, deterministic torch); verifier checked April-June against March-May intervals and skipped a persistence week; non-converged fits accepted in AICc search; daily band days and monthly means from different draws (now one set of daily paths whose weekly means equal the weekly paths exactly); bootstrap joined forecast years (and a first fix without wrap-around biased the interval: now circular within each fold); constant predictive sd for linear regression/LSTM (now horizon-specific); report claims (winter humidity bound, D=0 '39.7 to 30.6', June omission, over-claims). See file 09 (Round 2 table R1-R23).
@@ -2251,7 +2253,7 @@ output:
 | Climatology | mean log PM2.5 of the same calendar week over the training years |
 | Climatology + AR(1) | climatology plus an AR(1) on the weekly anomalies |
 | Linear regression | OLS on 3 Fourier harmonics + a linear time trend (prediction interval includes parameter uncertainty, so it widens with the horizon) |
-| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only |
+| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only. **Its interval is a heuristic** (the h-step error spread is estimated in-sample, so it is optimistic) |
 | Fourier+ARMA const / linear | dynamic harmonic regression (DHR): K=3 harmonics, AR(1) errors, constant or linear-trend level |
 | **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. The random-walk option makes the errors **ARIMA(p,1,q)**, so "ARMA" in the label covers both. Non-converged fits are rejected and counted. The procedure was fixed in the code before the final runs, but 2019 had been looked at in earlier iterations of the project, so it is not a pristine hold-out. |
 | SARIMA D=1 / D=0 | the benchmark from the draft: (1,0,1)(0,1,1)₅₂, and (1,0,1)(1,0,0)₅₂ **with a constant** (the draft omitted it) |
@@ -2440,16 +2442,53 @@ with constant            44.9  42.8  44.1
 Climatology (reference)  31.0  21.8  27.8
 ```
 
-### [md 10]
-**Reading it.** Adding the constant changes the SARIMA D=0 error by the amounts above (same orders, same folds); D=0 stays clearly worse than climatology either way.
+### [code 10]
+```python
+# Fit details of the D=0 candidates (the no-constant fit is numerically fragile: AR root near 1), so that the comparison can be audited
+import statsmodels, scipy, sys
+det = []
+for fold, origin in F.ORIGINS.items():
+    tr_ = y.loc[:origin]
+    for nm, tr_arg in (("no constant", "n"), ("with constant", "c")):
+        r_ = F._fit(SARIMAX(tr_, order=(1, 0, 1), seasonal_order=(1, 0, 0, 52), trend=tr_arg))
+        det.append({"fold": fold, "variant": nm, "converged": F.converged(r_), "loglik": float(r_.llf), "ar1": float(r_.params["ar.L1"]),
+                    "seasonal_ar52": float(r_.params["ar.S.L52"]), "n_params": len(r_.params)})
+det = pd.DataFrame(det); det["statsmodels"] = statsmodels.__version__; det["scipy"] = scipy.__version__; det["python"] = sys.version.split()[0]
+det.round(4).to_csv(RESULTS / "fc_sarima_d0_fit_details.csv", index=False); display(det.round(4))
+```
+
+output:
+```
+   fold        variant  converged   loglik     ar1  seasonal_ar52  n_params  \
+0  2017    no constant       True  -7.0451  0.9989         0.2636         4   
+1  2017  with constant       True  -2.5802  0.9156         0.2921         5   
+2  2018    no constant       True -28.6176  0.9988         0.2732         4   
+3  2018  with constant       True -23.3013  0.9217         0.3025         5   
+4  2019    no constant       True -33.2941  0.9995         0.3406         4   
+5  2019  with constant       True -26.9299  0.9216         0.3660         5   
+
+  statsmodels   scipy   python  
+0      0.15.0  1.18.1  3.12.16  
+1      0.15.0  1.18.1  3.12.16  
+2      0.15.0  1.18.1  3.12.16  
+3      0.15.0  1.18.1  3.12.16  
+4      0.15.0  1.18.1  3.12.16  
+5      0.15.0  1.18.1  3.12.16
+```
 
 ### [md 11]
+**Reading it.** Without a constant the AR coefficient sits at about 1 and the fit is fragile: an outside audit refitting with another statsmodels version and a log column computed in a slightly different way (differences below 1e-15) obtained 64.8 (2018) and 81.5-92.1 (2019) instead of 61.0 and 92.1. With a constant the three folds reproduce (44.9 / 42.8 / 44.1). The exact no-constant MAEs should therefore be read as "much worse than climatology, 60-90", not as precise values; the fitted parameters and software versions are saved above.
+
+### [md 12]
+**Reading it.** Adding the constant changes the SARIMA D=0 error by the amounts above (same orders, same folds); D=0 stays clearly worse than climatology either way.
+
+### [md 13]
 ## 3. Residual diagnostics (the draft's Ljung–Box result was an artifact)
 `SARIMAX` with `D=1` initialises the first 52 seasonal states diffusely, so the first 52 in-sample residuals are as large as the series level
 (about 5 on the log scale) and must be excluded (`res.loglikelihood_burn`). The draft ran Ljung–Box on all residuals and got p ≈ 0 at every lag.
 Below: the same model with and without the exclusion, next to the selected Fourier+ARMA model, all fitted on 2015–2018.
 
-### [code 12]
+### [code 14]
 ```python
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 tr19 = y.loc[:F.ORIGINS[2019]]
@@ -2499,13 +2538,13 @@ ma.S.L52 -0.988  8.259
 sigma2    0.046  0.374
 ```
 
-### [md 13]
+### [md 15]
 **Reading it.** With the burn-in removed the SARIMA residuals are fine at lags 10 and 26, but the seasonal parameter is not identified:
 the seasonal MA coefficient is near −1 with a standard error larger than its value, which is the signature of differencing a series that
 does not need it (a deterministic seasonal pattern). Residual structure at lag 52 and in the Fourier model is reported honestly in the table
 (see `LB_p_lag52`); no GARCH-type model is needed since ARCH-LM on the weekly residuals does not reject.
 
-### [md 14]
+### [md 16]
 ## 4. Interval calibration
 The draft's 95% interval covered only 85% of 2019 weeks and all misses were below the lower bound, so part of the problem is **level bias**
 (2019 was cleaner than the training years), not only width. We calibrate with a rule fixed in advance and tested out of sample:
@@ -2514,7 +2553,7 @@ The draft's 95% interval covered only 85% of 2019 weeks and all misses were belo
 * **re-centre only if** the bias has the same sign in both calibration folds and |mean z| > 0.5. Otherwise leave the centre alone, since a level
   shift that flips sign across years cannot be corrected by the past.
 
-### [code 15]
+### [code 17]
 ```python
 def standardized(fold, model=SEL):
     o = fcs[fold][model]
@@ -2584,13 +2623,13 @@ SARIMA D=1               27.452     0.846  132.997  205.876
 SARIMA D=0               44.103     0.904  240.505  262.603
 ```
 
-### [md 16]
+### [md 18]
 **Reading it.** The season scale raises 2019 coverage from about 90% to 96%, but it does so by making the intervals about 43% wider and the Winkler interval score *worse*
 (the proper score penalises width). So calibration here buys nominal coverage, not sharper or better intervals. The 2017 fold's coverage is only about 69%, so three origins do not
 support a general reliability claim. The step rule did not re-centre in 2019 because the 2018 mean z (-0.45) missed the 0.5 cut-off; the last column (a smooth shrunk shift defined *after* seeing 2019)
 is a sensitivity, not the headline.
 
-### [md 17]
+### [md 19]
 ## 5. One week ahead: does weather help when tested fairly?
 Each test year (2018, 2019) is forecast one week at a time. Parameters are fitted once, on all data before that year; each week the model sees all earlier
 observed PM2.5 (a true one-step forecast). The selected model for that origin (from §1) is the "no weather" version; weather variables are weekly anomalies from a
@@ -2602,7 +2641,7 @@ climatology fitted on data before the test year.
 | last 3 days | mean anomaly of the last 3 days (Fri–Sun) of the previous week | yes |
 | **same-week (oracle)** | the forecast week's own observed wind and humidity | **no**, hindsight upper bound (ERA5 reanalysis is not a forecast) |
 
-### [code 18]
+### [code 20]
 ```python
 def weather_frame(train_end):
     """Weekly wind/rh anomaly features, with climatology fitted on data up to train_end only."""
@@ -2697,7 +2736,7 @@ DHR, no weather                                               NaN
 + same-week weather (ORACLE)                                0.074
 ```
 
-### [code 19]
+### [code 21]
 ```python
 # coefficients of the oracle model on the 2019 origin, for interpretation
 _, fit_or = one_step(2019, ["wind_same", "rh_same"])
@@ -2716,12 +2755,12 @@ wind_same -0.0370  0.0033
 rh_same   -0.0099  0.0002{'lagged': np.float64(-2.4), 'last3': np.float64(0.7), 'oracle': np.float64(6.9)} (% MAE reduction vs no-weather DHR; positive = better)
 ```
 
-### [md 20]
+### [md 22]
 **Reading it.** The operational variants (lagged weather) are compared with the model that has no weather; the oracle variant shows how much
 accuracy would be available if the week's weather were known in advance. The Diebold–Mariano p-values use genuine one-step errors (Harvey–Leybourne–Newbold
 small-sample correction), so unlike the 52-step comparison the test is valid here.
 
-### [code 21]
+### [code 23]
 ```python
 fig, ax = plt.subplots(figsize=(8, 3.6))
 labs = [m.replace(" (operational)", "").replace(" (ORACLE)", "\n(oracle)") for m in order_]
@@ -2739,7 +2778,7 @@ output:
 <Figure size 880x396 with 1 Axes>
 ```
 
-### [md 22]
+### [md 24]
 ## 6. Final outlook for 2020 and validation of the method on 2019
 **Procedure (identical for both).** Fit the headline procedure on the years before the target year; simulate 5,000 weekly paths from the fitted model
 (53 weeks so every calendar day is covered); apply the calibration rule (fitted only on earlier folds); convert weekly paths to daily PM2.5 by adding a
@@ -2748,7 +2787,7 @@ PM2.5 sub-index bands. Monthly means and band-day counts are computed from the s
 **This is a PM2.5 band, not the official AQI** (the AQI is the maximum sub-index over all pollutants).
 2019 is a genuine out-of-sample test of the whole pipeline; 2020 is the deliverable.
 
-### [code 23]
+### [code 25]
 ```python
 def pipeline(origin, year, folds_for_cal, n=5000):
     tr_ = y.loc[:origin]
@@ -2792,7 +2831,7 @@ bands_pred = mt19[[f"days_{c}" for c in CATEGORIES]]; bands_pred.columns = CATEG
 err_days = (bands_pred - act_days).abs()
 val.round(1).to_csv(RESULTS / "fc_outlook_validation_2019_monthly.csv")
 pd.concat({"predicted": bands_pred.round(1), "actual": act_days}, axis=1).to_csv(RESULTS / "fc_outlook_validation_2019_days.csv")
-key["validation_2019"] = {"months_actual_inside_95": int(val.inside95.sum()), "annual_days_pred": bands_pred.sum().round(0).to_dict(),
+key["validation_2019"] = {"months_actual_inside_95": int(val.inside95.sum()), "annual_days_pred": bands_pred.sum().round(1).to_dict(),
                           "annual_days_actual": act_days.sum().to_dict(), "mean_abs_days_error_per_band_month": round(float(err_days.mean().mean()), 2),
                           "poor_or_worse_pred_pct": round(float(bands_pred[["Poor", "Very Poor", "Severe"]].sum().sum() / 365 * 100), 1),
                           "poor_or_worse_actual_pct": round(float(act_days[["Poor", "Very Poor", "Severe"]].sum().sum() / 365 * 100), 1)}
@@ -2802,23 +2841,23 @@ assert np.allclose(P19["bands"].sum(axis=2)[0], [31, 28, 31, 30, 31, 30, 31, 31,
 
 output:
 ```
-{'months_actual_inside_95': 12, 'annual_days_pred': {'Good': 21.0, 'Satisfactory': 75.0, 'Moderate': 68.0, 'Poor': 53.0, 'Very Poor': 114.0, 'Severe': 35.0}, 'annual_days_actual': {'Good': 25, 'Satisfactory': 97, 'Moderate': 78, 'Poor': 58, 'Very Poor': 73, 'Severe': 34}, 'mean_abs_days_error_per_band_month': 1.9, 'poor_or_worse_pred_pct': 55.1, 'poor_or_worse_actual_pct': 45.2}
+{'months_actual_inside_95': 12, 'annual_days_pred': {'Good': 21.5, 'Satisfactory': 75.2, 'Moderate': 67.4, 'Poor': 53.0, 'Very Poor': 113.2, 'Severe': 34.7}, 'annual_days_actual': {'Good': 25, 'Satisfactory': 97, 'Moderate': 78, 'Poor': 58, 'Very Poor': 73, 'Severe': 34}, 'mean_abs_days_error_per_band_month': 1.89, 'poor_or_worse_pred_pct': 55.0, 'poor_or_worse_actual_pct': 45.2}
      actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-Jan        204.3        209.8      147.0      301.4      True
-Feb        122.3        141.9       95.2      213.0      True
-Mar         84.2        101.7       65.5      156.9      True
-Apr         82.3        101.5       63.8      160.2      True
-May         89.7        100.2       61.5      163.3      True
-Jun         63.8         75.4       45.7      122.8      True
-Jul         46.7         46.2       27.3       77.3      True
-Aug         34.1         43.2       25.3       73.8      True
-Sep         40.1         57.3       32.7       99.3      True
-Oct        123.7        141.9       80.7      250.8      True
-Nov        205.4        234.6      133.6      403.4      True
-Dec        205.2        199.2      113.8      346.7      True
+Jan        204.3        210.3      146.2      299.4      True
+Feb        122.3        142.6       94.0      210.6      True
+Mar         84.2        101.2       65.7      157.1      True
+Apr         82.3        102.0       63.3      164.4      True
+May         89.7        100.0       62.4      161.7      True
+Jun         63.8         75.2       45.6      123.7      True
+Jul         46.7         46.1       27.1       76.8      True
+Aug         34.1         43.0       24.4       75.0      True
+Sep         40.1         57.0       31.8      101.6      True
+Oct        123.7        142.2       79.1      254.9      True
+Nov        205.4        232.2      130.2      417.3      True
+Dec        205.2        197.6      108.8      351.8      True
 ```
 
-### [code 24]
+### [code 26]
 ```python
 # 2020 deliverable: selection on data to 2019-12-29, calibration from folds 2018 and 2019
 P20 = pipeline("2019-12-29", 2020, [2018, 2019])
@@ -2836,45 +2875,45 @@ output:
 ```
        median    lo95    hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  \
 month                                                                           
-Jan    190.41  141.68  254.94        1.00        1.00         1.00       0.00   
-Feb    121.89   90.35  164.84        1.00        0.98         0.54       0.04   
-Mar     84.45   66.28  108.66        0.99        0.30         0.00       0.26   
-Apr     85.71   66.92  110.66        1.00        0.35         0.00       0.15   
-May     84.11   65.63  108.65        1.00        0.30         0.00       0.16   
-Jun     62.75   47.93   81.70        0.64        0.00         0.00       1.36   
-Jul     38.89   30.28   50.51        0.00        0.00         0.00       8.80   
-Aug     35.52   27.55   46.09        0.00        0.00         0.00      11.05   
-Sep     45.56   35.29   58.63        0.02        0.00         0.00       5.87   
-Oct    120.12   91.86  155.92        1.00        0.98         0.50       0.03   
-Nov    192.13  143.31  259.61        1.00        1.00         1.00       0.00   
-Dec    169.29  126.12  225.66        1.00        1.00         0.99       0.00   
+Jan    189.96  143.30  253.88        1.00        1.00         1.00       0.00   
+Feb    121.39   90.30  164.34        1.00        0.98         0.53       0.04   
+Mar     84.68   66.06  109.14        1.00        0.32         0.00       0.27   
+Apr     85.74   66.69  111.64        1.00        0.35         0.01       0.16   
+May     84.66   66.60  109.10        1.00        0.33         0.00       0.15   
+Jun     62.86   48.19   81.47        0.63        0.00         0.00       1.36   
+Jul     38.77   30.34   50.21        0.00        0.00         0.00       8.84   
+Aug     35.72   27.73   46.30        0.00        0.00         0.00      10.87   
+Sep     45.38   35.48   59.24        0.02        0.00         0.00       5.92   
+Oct    119.44   92.00  156.75        1.00        0.98         0.49       0.03   
+Nov    191.52  142.84  257.90        1.00        1.00         1.00       0.00   
+Dec    169.04  127.50  227.91        1.00        1.00         0.99       0.00   
 
        days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  \
 month                                                                
-Jan                 0.12           0.98       3.01           21.18   
-Feb                 1.83           6.28       7.82           12.30   
-Mar                 6.04          12.71       8.08            3.91   
-Apr                 5.44          12.56       7.91            3.94   
-May                 6.38          12.86       7.79            3.80   
-Jun                13.90          10.64       3.27            0.83   
-Jul                19.52           2.48       0.19            0.01   
-Aug                18.51           1.38       0.06            0.00   
-Sep                18.06           5.37       0.65            0.06   
-Oct                 2.75           7.58       7.48           12.22   
-Nov                 0.21           1.13       2.99           19.63   
-Dec                 0.24           2.16       4.96           19.86   
+Jan                 0.12           0.97       2.94           21.31   
+Feb                 1.83           6.22       7.83           12.38   
+Mar                 6.04          12.65       8.04            3.99   
+Apr                 5.45          12.58       7.88            3.92   
+May                 6.14          12.81       7.90            3.98   
+Jun                13.95          10.63       3.24            0.82   
+Jul                19.49           2.48       0.17            0.01   
+Aug                18.69           1.38       0.06            0.00   
+Sep                18.01           5.38       0.64            0.05   
+Oct                 2.78           7.60       7.46           12.25   
+Nov                 0.20           1.11       3.05           19.68   
+Dec                 0.25           2.17       4.95           19.85   
 
        days_Severe  actual_mean_2020  actual_days_covered  
 month                                                      
-Jan           5.70            157.11                 31.0  
-Feb           0.73            121.48                 29.0  
+Jan           5.65            157.11                 31.0  
+Feb           0.69            121.48                 29.0  
 Mar           0.00             57.51                 31.0  
 Apr           0.01             44.94                 30.0  
 May           0.01      
 ...[truncated]
 ```
 
-### [code 25]
+### [code 27]
 ```python
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [1.35, 1]})
 ax = axes[0]; xs = np.arange(12)
@@ -2901,13 +2940,13 @@ output:
 <Figure size 1320x462 with 2 Axes>
 ```
 
-### [md 26]
+### [md 28]
 ## 7. Case study: the 2020 lockdown
 Delhi's lockdown began on 25 March 2020. We compare the actual weekly PM2.5 of the ten Sunday-ending weeks 29 March – 31 May (these cover 23 March – 31 May, so two pre-lockdown days are included) with the no-lockdown forecast made on
 29 Dec 2019 (calibrated, as above). A second counterfactual uses a version of the same model *with the actual 2020 same-week wind and humidity* (fitted on 2015–2019),
 to separate the weather contribution from the rest. Both are descriptive, not causal: they rely on the model being right about the level for 2020, and the model was already about 9% too high in the weeks before the lockdown (sensitivities below).
 
-### [code 27]
+### [code 29]
 ```python
 lock_idx = pd.date_range("2020-03-29", "2020-05-31", freq="W-SUN")
 act_l = raw.loc[lock_idx].to_numpy()
@@ -2952,25 +2991,25 @@ savefig(fig, "16_lockdown"); plt.show()
 output:
 ```
                                             actual_mean  cf_median  \
-no-lockdown forecast                               48.7       85.0   
-weather-adjusted forecast (oracle weather)          NaN       78.6   
+no-lockdown forecast                               48.7       85.5   
+weather-adjusted forecast (oracle weather)          NaN       78.4   
 
                                             gap_median_pct  gap_lo95_pct  \
-no-lockdown forecast                                 -42.8         -52.1   
-weather-adjusted forecast (oracle weather)           -38.1         -47.5   
+no-lockdown forecast                                 -43.1         -52.3   
+weather-adjusted forecast (oracle weather)           -37.9         -47.8   
 
                                             gap_hi95_pct  
-no-lockdown forecast                               -31.8  
-weather-adjusted forecast (oracle weather)         -26.7  <Figure size 990x418 with 1 Axes>
+no-lockdown forecast                               -32.0  
+weather-adjusted forecast (oracle weather)         -26.5  <Figure size 990x418 with 1 Axes>
 ```
 
-### [md 28]
+### [md 30]
 ### Sensitivity of the lockdown gap
 The gap to a forecast is only as good as the forecast's level. Checks: (a) the same model's gap in the 12 weeks *before* the lockdown (5 Jan – 22 Mar), and the lockdown gap adjusted for it;
 (b) a 9-week window starting 5 April (no pre-lockdown days); (c) other level specifications (constant, random-walk); (d) a mean-bias shift shrunk from the 2018–19 errors (post-hoc);
 (e) a placebo: the same calendar weeks of 2019 against the 2019 forecast pipeline.
 
-### [code 29]
+### [code 31]
 ```python
 def gap_stats(paths, idx_, weeks):
     pos_ = pd.DatetimeIndex(idx_).get_indexer(weeks); assert (pos_ >= 0).all()
@@ -3010,30 +3049,30 @@ output:
 ```
                                  counterfactual  pre_lockdown_gap_pct  \
 0    selected spec (linear, K=5, AR1), headline                 -11.3   
-1                                constant level                 -22.6   
-2              random-walk level (ARIMA errors)                  -9.9   
+1                                constant level                 -22.3   
+2              random-walk level (ARIMA errors)                  -9.7   
 3  headline + shrunk mean-bias shift (post-hoc)                  -2.4   
-4  PLACEBO: same weeks of 2019 vs 2019 forecast                  -8.9   
+4  PLACEBO: same weeks of 2019 vs 2019 forecast                  -9.0   
 
    lockdown_gap_10wk_pct  lo95  hi95  gap_9wk_from_5Apr_pct  \
-0                  -42.8 -52.1 -31.8                  -41.5   
-1                  -50.8 -59.6 -40.0                  -49.8   
-2                  -43.1 -54.5 -28.5                  -41.7   
-3                  -37.0 -47.3 -25.0                  -35.6   
-4                  -14.9 -43.9  28.2                    NaN   
+0                  -43.1 -52.3 -32.0                  -41.8   
+1                  -50.9 -59.6 -40.0                  -49.8   
+2                  -43.2 -55.2 -28.8                  -42.0   
+3                  -37.3 -47.6 -25.1                  -35.9   
+4                  -15.0 -43.4  28.1                    NaN   
 
    lockdown_gap_adjusted_for_pre_gap_pct  
-0                                  -35.5  
-1                                  -36.5  
-2                                  -36.9  
-3                                  -35.5  
+0                                  -35.8  
+1                                  -36.8  
+2                                  -37.1  
+3                                  -35.8  
 4                                    NaN
 ```
 
-### [md 30]
+### [md 32]
 ## 8. Summary numbers
 
-### [code 31]
+### [code 33]
 ```python
 m_sel = bt[bt.model == SEL].set_index("fold"); m_clim = bt[bt.model == "Climatology"].set_index("fold")
 key["backtest"] = {"mae_selected": m_sel["MAE"].round(2).to_dict(), "mae_climatology": m_clim["MAE"].round(2).to_dict(),
@@ -3095,20 +3134,20 @@ output:
   'last3': np.float64(0.7),
   'oracle': np.float64(6.9)},
  'validation_2019': {'months_actual_inside_95': 12,
-  'annual_days_pred': {'Good': 21.0,
-   'Satisfactory': 75.0,
-   'Moderate': 68.0,
+  'annual_days_pred': {'Good': 21.5,
+   'Satisfactory': 75.2,
+   'Moderate': 67.4,
    'Poor': 53.0,
-   'Very Poor': 114.0,
-   'Severe': 35.0},
+   'Very Poor': 113.2,
+   'Severe': 34.7},
   'annual_days_actual': {'Good': 25,
    'Satisfactory': 97,
    'Moderate': 78,
    'Poor': 58,
    'Very Poor': 73,
    'Severe': 34},
-  'mean_abs_days_error_per_band_month': 1.9,
-  'poor_or_worse_pred_pct': 55.1,
+  'mean_abs_days_error_per_band_month': 1.89,
+  'poor_or_worse_pred_pct': 55.0,
   'poor_or_worse_actual_pct': 45.2},
  'outlook_2020_spec': {'trend': 'linear',
   'K': 5,
@@ -3121,11 +3160,11 @@ output:
   'by_fold_mean_z': {2018: -0.45, 2019: -0.53},
   'recentre': False},
  'lockdown': {'plain': {'actual_mean': 48.669714285714285,
-   'cf_median': 85.04899262695417,
-   'gap_median_pct': -42.77449646078571,
-   'gap_lo95_pct': -52.11359900861902,
-   'gap_hi95_pct': -31.819259395224652},
-  'weather_ad
+   'cf_median': 85.46299198510313,
+   'gap_median_pct': -43.051707931100005,
+   'gap_lo95_pct': -52.341350673611394,
+   'gap_hi95_pct': -31.980318287029235},
+  'weather
 ...[truncated]
 ```
 
@@ -3211,18 +3250,18 @@ Fourier+ARMA (selected) (rw, K=5, p=1, q=1)     1      208   0.22653    0.088338
 ## fc_lockdown.csv
 ```
                                 Unnamed: 0  actual_mean  cf_median  gap_median_pct  gap_lo95_pct  gap_hi95_pct
-                      no-lockdown forecast         48.7         85           -42.8         -52.1         -31.8
-weather-adjusted forecast (oracle weather)          NaN       78.6           -38.1         -47.5         -26.7
+                      no-lockdown forecast         48.7       85.5           -43.1         -52.3           -32
+weather-adjusted forecast (oracle weather)          NaN       78.4           -37.9         -47.8         -26.5
 ```
 
 ## fc_lockdown_sensitivity.csv
 ```
                               counterfactual  pre_lockdown_gap_pct  lockdown_gap_10wk_pct  lo95  hi95  gap_9wk_from_5Apr_pct  lockdown_gap_adjusted_for_pre_gap_pct
-  selected spec (linear, K=5, AR1), headline                 -11.3                  -42.8 -52.1 -31.8                  -41.5                                  -35.5
-                              constant level                 -22.6                  -50.8 -59.6   -40                  -49.8                                  -36.5
-            random-walk level (ARIMA errors)                  -9.9                  -43.1 -54.5 -28.5                  -41.7                                  -36.9
-headline + shrunk mean-bias shift (post-hoc)                  -2.4                    -37 -47.3   -25                  -35.6                                  -35.5
-PLACEBO: same weeks of 2019 vs 2019 forecast                  -8.9                  -14.9 -43.9  28.2                    NaN                                    NaN
+  selected spec (linear, K=5, AR1), headline                 -11.3                  -43.1 -52.3   -32                  -41.8                                  -35.8
+                              constant level                 -22.3                  -50.9 -59.6   -40                  -49.8                                  -36.8
+            random-walk level (ARIMA errors)                  -9.7                  -43.2 -55.2 -28.8                    -42                                  -37.1
+headline + shrunk mean-bias shift (post-hoc)                  -2.4                  -37.3 -47.6 -25.1                  -35.9                                  -35.8
+PLACEBO: same weeks of 2019 vs 2019 forecast                    -9                    -15 -43.4  28.1                    NaN                                    NaN
 ```
 
 ## fc_loss_diff.csv
@@ -3270,53 +3309,53 @@ Unnamed: 0    coef      p
 ## fc_outlook_2020.csv
 ```
 month  median   lo95   hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  days_Severe  actual_mean_2020  actual_days_covered
-  Jan  190.41 141.68 254.94           1           1        0.999          0              0.117          0.985      3.013          21.182        5.703            157.11                   31
-  Feb  121.89 90.349 164.84           1       0.976        0.541       0.04              1.832          6.283      7.817          12.297        0.731            121.48                   29
-  Mar  84.449 66.285 108.66       0.994       0.304        0.001      0.261              6.036         12.707      8.084           3.909        0.003            57.506                   31
-  Apr  85.706 66.921 110.66       0.997       0.348        0.005      0.151              5.439          12.56      7.906           3.936        0.008             44.94                   30
-  May  84.108  65.63 108.65       0.995       0.297        0.003      0.159              6.384         12.856      7.787           3.804        0.011            55.449                   31
-  Jun  62.753 47.927 81.704        0.64       0.004            0      1.365             13.898         10.643      3.267           0.826        0.001            46.695                   30
-  Jul  38.892 30.275  50.51           0           0            0      8.796              19.52          2.475      0.195           0.014            0             54.01                    1
-  Aug  35.517  27.55 46.091           0           0            0     11.047              18.51           1.38      0.063           0.001            0               NaN                  NaN
-  Sep  45.561 35.291 58.631       0.018           0            0      5.867             18.061          5.369      0.645           0.058            0               NaN                  NaN
-  Oct  120.12 91.856 155.92           1       0.983        0.503      0.028              2.755          7.582      7.479          12.218        0.938               NaN                  NaN
-  Nov  192.13 143.31 259.61           1           1            1      0.001              0.206          1.127      2.988           19.63        6.048               NaN                  NaN
-  Dec  169.29 126.12 225.66           1           1         0.99          0              0.237          2.157      4.964          19.858        3.784               NaN                  NaN
+  Jan  189.96  143.3 253.88           1           1        0.999          0              0.124          0.974      2.943          21.311        5.649            157.11                   31
+  Feb  121.39 90.298 164.34           1       0.976        0.531       0.04              1.829          6.224      7.832          12.384        0.692            121.48                   29
+  Mar  84.679 66.062 109.14       0.997        0.32        0.004      0.268              6.044         12.646      8.044           3.994        0.004            57.506                   31
+  Apr  85.738  66.69 111.64       0.998       0.354        0.006      0.162              5.453         12.584      7.877           3.917        0.006             44.94                   30
+  May  84.657 66.604  109.1       0.997       0.326        0.002      0.154              6.142          12.81      7.896           3.983        0.015            55.449                   31
+  Jun  62.858 48.194 81.468       0.632       0.003            0      1.362             13.945         10.633      3.241           0.818            0            46.695                   30
+  Jul  38.774 30.339 50.208       0.001           0            0      8.843             19.487          2.482      0.175           0.014            0             54.01                    1
+  Aug  35.719 27.729 46.297           0           0            0     10.871             18.686           1.38      0.061           0.002            0               NaN                  NaN
+  Sep  45.382 35.478 59.237       0.019           0            0       5.92             18.008          5.381      0.638           0.053            0               NaN                  NaN
+  Oct  119.44 92.001 156.75           1       0.983        0.488       0.03              2.776            7.6      7.455          12.252        0.888               NaN                  NaN
+  Nov  191.52 142.84  257.9           1           1        0.999      0.001              0.203          1.107       3.05          19.681        5.959               NaN                  NaN
+  Dec  169.04  127.5 227.91           1           1         0.99          0               0.25          2.171      4.953          19.847         3.78               NaN                  NaN
 ```
 
 ## fc_outlook_validation_2019_days.csv
 ```
 Unnamed: 0 predicted  predicted.1 predicted.2 predicted.3 predicted.4 predicted.5 actual     actual.1 actual.2 actual.3  actual.4 actual.5
        NaN      Good Satisfactory    Moderate        Poor   Very Poor      Severe   Good Satisfactory Moderate     Poor Very Poor   Severe
-       Jan       0.0          0.0         0.6         2.2        19.5         8.6      0            1        1        2        16       11
-       Feb       0.0          1.1         4.0         6.0        14.9         1.9      0            3        6        6        12        1
-       Mar       0.3          4.5         9.0         7.8         9.0         0.4      0            5       13       13         0        0
-       Apr       0.1          4.2         9.0         7.6         8.6         0.4      1            6       12        9         2        0
-       May       0.2          5.0         9.1         7.6         8.7         0.4      0            6       12        8         5        0
-       Jun       1.3         10.0         9.8         5.2         3.7         0.1      1           12       14        3         0        0
-       Jul       6.8         16.9         5.6         1.3         0.4         0.0      4           17       10        0         0        0
-       Aug       7.9         17.1         4.9         0.9         0.2         0.0     11           19        1        0         0        0
-       Sep       4.2         13.6         7.8         2.9         1.5         0.0      8           18        4        0         0        0
-       Oct       0.1          2.3         5.4         5.9        13.9         3.4      0            8        2        8         9        4
-       Nov       0.0          0.1         0.7         1.9        15.6        11.6      0            2        1        6        12        9
-       Dec       0.0          0.2         1.6         3.5        17.6         8.1      0            0        2        3        17        9
+       Jan       0.0          0.0         0.6         2.2        19.6         8.5      0            1        1        2        16       11
+       Feb       0.0          1.1         4.0         6.1        14.8         1.9      0            3        6        6        12        1
+       Mar       0.3          4.5         9.1         7.8         8.9         0.4      0            5       13       13         0        0
+       Apr       0.1          4.3         9.0         7.6         8.6         0.4      1            6       12        9         2        0
+       May       0.3          4.9         9.2         7.6         8.7         0.4      0            6       12        8         5        0
+       Jun       1.3         10.1         9.8         5.1         3.7         0.1      1           12       14        3         0        0
+       Jul       6.9         17.0         5.4         1.2         0.4         0.0      4           17       10        0         0        0
+       Aug       8.0         17.0         4.8         0.9         0.3         0.0     11           19        1        0         0        0
+       Sep       4.4         13.5         7.7         2.8         1.5         0.0      8           18        4        0         0        0
+       Oct       0.1          2.4         5.4         5.9        13.9         3.3      0            8        2        8         9        4
+       Nov       0.0          0.1         0.7         2.1        15.6        11.5      0            2        1        6        12        9
+       Dec       0.0          0.2         1.7         3.5        17.4         8.2      0            0        2        3        17        9
 ```
 
 ## fc_outlook_validation_2019_monthly.csv
 ```
 Unnamed: 0  actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-       Jan        204.3        209.8        147      301.4      True
-       Feb        122.3        141.9       95.2        213      True
-       Mar         84.2        101.7       65.5      156.9      True
-       Apr         82.3        101.5       63.8      160.2      True
-       May         89.7        100.2       61.5      163.3      True
-       Jun         63.8         75.4       45.7      122.8      True
-       Jul         46.7         46.2       27.3       77.3      True
-       Aug         34.1         43.2       25.3       73.8      True
-       Sep         40.1         57.3       32.7       99.3      True
-       Oct        123.7        141.9       80.7      250.8      True
-       Nov        205.4        234.6      133.6      403.4      True
-       Dec        205.2        199.2      113.8      346.7      True
+       Jan        204.3        210.3      146.2      299.4      True
+       Feb        122.3        142.6         94      210.6      True
+       Mar         84.2        101.2       65.7      157.1      True
+       Apr         82.3          102       63.3      164.4      True
+       May         89.7          100       62.4      161.7      True
+       Jun         63.8         75.2       45.6      123.7      True
+       Jul         46.7         46.1       27.1       76.8      True
+       Aug         34.1           43       24.4         75      True
+       Sep         40.1           57       31.8      101.6      True
+       Oct        123.7        142.2       79.1      254.9      True
+       Nov        205.4        232.2      130.2      417.3      True
+       Dec        205.2        197.6      108.8      351.8      True
 ```
 
 ## fc_sarima_d0_constant.csv
@@ -3325,6 +3364,17 @@ Unnamed: 0  actual_mean  pred_median  pred_lo95  pred_hi95  inside95
             no constant  76.9    61  92.1
           with constant  44.9  42.8  44.1
 Climatology (reference)    31  21.8  27.8
+```
+
+## fc_sarima_d0_fit_details.csv
+```
+ fold       variant  converged  loglik    ar1  seasonal_ar52  n_params statsmodels  scipy  python
+ 2017   no constant       True -7.0451 0.9989         0.2636         4      0.15.0 1.18.1 3.12.16
+ 2017 with constant       True -2.5802 0.9156         0.2921         5      0.15.0 1.18.1 3.12.16
+ 2018   no constant       True -28.618 0.9988         0.2732         4      0.15.0 1.18.1 3.12.16
+ 2018 with constant       True -23.301 0.9217         0.3025         5      0.15.0 1.18.1 3.12.16
+ 2019   no constant       True -33.294 0.9995         0.3406         4      0.15.0 1.18.1 3.12.16
+ 2019 with constant       True  -26.93 0.9216          0.366         5      0.15.0 1.18.1 3.12.16
 ```
 
 ## fevd_orderings.csv
@@ -3820,12 +3870,12 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   "validation_2019": {
     "months_actual_inside_95": 12,
     "annual_days_pred": {
-      "Good": 21.0,
-      "Satisfactory": 75.0,
-      "Moderate": 68.0,
+      "Good": 21.5,
+      "Satisfactory": 75.2,
+      "Moderate": 67.4,
       "Poor": 53.0,
-      "Very Poor": 114.0,
-      "Severe": 35.0
+      "Very Poor": 113.2,
+      "Severe": 34.7
     },
     "annual_days_actual": {
       "Good": 25,
@@ -3835,8 +3885,8 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.9,
-    "poor_or_worse_pred_pct": 55.1,
+    "mean_abs_days_error_per_band_month": 1.89,
+    "poor_or_worse_pred_pct": 55.0,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
@@ -3861,56 +3911,56 @@ Monsoon (Jul–Sep)           -0.39         -0.37   461
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.04899262695417,
-      "gap_median_pct": -42.77449646078571,
-      "gap_lo95_pct": -52.11359900861902,
-      "gap_hi95_pct": -31.819259395224652
+      "cf_median": 85.46299198510313,
+      "gap_median_pct": -43.051707931100005,
+      "gap_lo95_pct": -52.341350673611394,
+      "gap_hi95_pct": -31.980318287029235
     },
     "weather_adjusted": {
-      "cf_median": 78.5752915693168,
-      "gap_median_pct": -38.059772562764856,
-      "gap_lo95_pct": -47.516118559968525,
-      "gap_hi95_pct": -26.675729977641215
+      "cf_median": 78.38583242809868,
+      "gap_median_pct": -37.910062528631435,
+      "gap_lo95_pct": -47.7503801997891,
+      "gap_hi95_pct": -26.53614923420981
     }
   },
   "lockdown_sensitivity": {
     "selected spec (linear, K=5, AR1), headline": {
-      "pre_lockdown_gap_pct": -11.32,
-      "lockdown_gap_10wk_pct": -42.77,
-      "lo95": -52.11,
-      "hi95": -31.82,
-      "gap_9wk_from_5Apr_pct": -41.49,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+      "pre_lockdown_gap_pct": -11.26,
+      "lockdown_gap_10wk_pct": -43.05,
+      "lo95": -52.34,
+      "hi95": -31.98,
+      "gap_9wk_from_5Apr_pct": -41.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.83
     },
     "constant level": {
-      "pre_lockdown_gap_pct": -22.6,
-      "lockdown_gap_10wk_pct": -50.84,
+      "pre_lockdown_gap_pct": -22.27,
+      "lockdown_gap_10wk_pct": -50.89,
       "lo95": -59.58,
-      "hi95": -40.01,
-      "gap_9wk_from_5Apr_pct": -49.78,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+      "hi95": -39.98,
+      "gap_9wk_from_5Apr_pct": -49.84,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.81
     },
     "random-walk level (ARIMA errors)": {
-      "pre_lockdown_gap_pct": -9.87,
-      "lockdown_gap_10wk_pct": -43.11,
-      "lo95": -54.55,
-      "hi95": -28.55,
-      "gap_9wk_from_5Apr_pct": -41.74,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+      "pre_lockdown_gap_pct": -9.74,
+      "lockdown_gap_10wk_pct": -43.19,
+      "lo95": -55.21,
+      "hi95": -28.79,
+      "gap_9wk_from_5Apr_pct": -41.96,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -37.06
     },
     "headline + shrunk mean-bias shift (post-hoc)": {
-      "pre_lockdown_gap_pct": -2.43,
-      "lockdown_gap_10wk_pct": -37.02,
-      "lo95": -47.3,
-      "hi95": -24.97,
-      "gap_9wk_from_5Apr_pct": -35.61,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+      "pre_lockdown_gap_pct": -2.37,
+      "lockdown_gap_10wk_pct": -37.33,
+      "lo95": -47.55,
+      "hi95": -25.14,
+      "gap_9wk_from_5Apr_pct": -35.92,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.81
     },
     "PLACEBO: same weeks of 2019 vs 2019 forecast": {
-      "pre_lockdown_gap_pct": -8.88,
-      "lockdown_gap_10wk_pct": -14.87,
-      "lo95": -43.9,
-      "hi95": 28.17,
+      "pre_lockdown_gap_pct": -9.04,
+      "lockdown_gap_10wk_pct": -15.01,
+      "lo95": -43.38,
+      "hi95": 28.14,
       "gap_9wk_from_5Apr_pct": NaN,
       "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }
@@ -6692,32 +6742,32 @@ year,model,date,actual,mu
 ## fc_weekly_2020.csv (no-lockdown forecast, 95% interval, weather-adjusted median and actual, weeks of 2020)
 ```
 date,lo95,median,hi95,weather_adj_median,actual
-2020-01-05,118.42678315810193,197.52459088617573,326.99164630418403,199.5657103440318,271.12142857142857
-2020-01-12,114.86578106190404,193.14153623343609,327.5177084810721,175.2833378018649,139.47714285714284
-2020-01-19,113.5838762964645,188.40426364609996,318.5429808574382,167.0796240116145,134.74571428571429
-2020-01-26,106.14049077950357,179.35865422451218,304.8593124013851,174.2466693632494,150.86714285714285
-2020-02-02,97.24900403957253,162.7948911280826,276.5658453396509,156.5525617907848,115.5657142857143
-2020-02-09,84.23362869889253,140.99979244131492,238.4328311335805,143.83476653847862,149.54571428571427
-2020-02-16,71.23416205665043,120.51098805123311,205.7319231042121,111.02674720456862,129.7642857142857
-2020-02-23,62.088576903384165,104.43891713845784,176.455827076084,90.54328349679928,106.28
-2020-03-01,58.84517612755658,93.24994369711466,144.11956865689098,78.51444745822505,90.53571428571428
-2020-03-08,54.28878444051528,85.85374296165143,132.63415045713734,73.17938920623745,62.044285714285714
-2020-03-15,52.7084621383437,82.342577677099,128.1086027777061,71.19582439393858,60.51714285714286
-2020-03-22,52.13891261579746,82.05007952887482,129.6037714135071,76.25560020822385,77.45285714285716
-2020-03-29,53.23295421735197,82.94285077806165,128.4088387379614,68.83034424966442,38.48285714285714
-2020-04-05,53.20943903381347,83.42332548474883,130.05005298446767,75.70761323558764,36.53142857142857
-2020-04-12,54.33207688680345,84.39294833393966,132.68187069255123,82.9964779958391,44.01857142857143
-2020-04-19,53.444537680530914,84.70664379946643,134.69444461669823,86.13531174765512,48.34857142857143
-2020-04-26,53.02344176663063,84.26664629837228,133.00964430271887,77.58157766759041,48.89
-2020-05-03,54.071841899268335,83.82951715737907,132.59198233270462,62.40175009689558,43.191428571428574
-2020-05-10,53.25866305956278,83.6371009575867,131.65701036328747,74.82037818669444,46.7
-2020-05-17,53.15160729763342,83.21962275038324,131.87337546136862,76.54892286938781,62.76571428571429
-2020-05-24,52.89073300593888,82.5283076308067,126.48548520126418,94.5905803314257,79.43285714285715
-2020-05-31,51.02750864528648,78.78769323859852,123.24827530236756,69.73769302755402,38.33571428571429
-2020-06-07,47.57645117628432,74.27895567877677,114.95403354255195,75.08322996323705,46.19571428571429
-2020-06-14,42.68315267020742,66.91795749116123,106.46550407097624,75.30407614946672,58.957142857142856
-2020-06-21,37.301062229755416,58.73561650169241,92.5624494513853,60.73748006939193,41.85857142857143
-2020-06-28,33.026386195671854,51.02958522591283,79.77870142348056,54.44760495334137,41.01428571428572
+2020-01-05,118.67894993697628,195.9385980577021,338.53066645277755,197.56676790265817,271.12142857142857
+2020-01-12,114.65914875027232,195.22115774819568,320.93905529811906,176.4391904804011,139.47714285714284
+2020-01-19,112.74311009696434,190.3350700599419,317.5612439124217,169.66231407177904,134.74571428571429
+2020-01-26,108.03548097205108,178.63877088753148,302.36471938628773,176.05122394329507,150.86714285714285
+2020-02-02,96.08106529507432,162.40026541638585,270.7627399143569,157.5358762756137,115.5657142857143
+2020-02-09,83.78293633075857,139.74715788017858,235.44243844106992,144.36054559239815,149.54571428571427
+2020-02-16,70.86132118165733,120.72925483112624,205.39566052102188,111.26719835846468,129.7642857142857
+2020-02-23,61.61635069199006,105.08890127358684,175.3734243194487,89.96853312288191,106.28
+2020-03-01,58.55298488938939,92.75514489694358,146.90733908559514,78.78116868555692,90.53571428571428
+2020-03-08,54.45331449120437,86.12055756442857,135.89973695337602,72.44396346743198,62.044285714285714
+2020-03-15,52.785842851084,82.5071639387841,130.78075228412123,71.08093893118536,60.51714285714286
+2020-03-22,51.435425025312114,82.08884973848852,128.72810966729807,75.95183252159889,77.45285714285716
+2020-03-29,52.55503145406424,82.76295748753782,130.03623721014094,69.33396501747141,38.48285714285714
+2020-04-05,52.948626243273615,83.59676452988451,131.53792712275404,75.71163585571364,36.53142857142857
+2020-04-12,53.48458741816274,84.34502099260004,133.8435368853156,82.39072286188367,44.01857142857143
+2020-04-19,54.43867308964453,84.41899277135214,134.53322572124824,85.94047921765998,48.34857142857143
+2020-04-26,53.22266259415501,84.27649640423587,132.34277673501705,77.57497876254715,48.89
+2020-05-03,53.31175303272342,84.4682433213696,133.08389722279853,62.463059627102986,43.191428571428574
+2020-05-10,54.57897348605604,84.66958921883567,130.24263461596243,74.50998811014556,46.7
+2020-05-17,54.31095852369975,84.10101390296974,132.45817733413713,76.39782280225195,62.76571428571429
+2020-05-24,52.56570446313894,83.10060497231657,129.84307713656037,94.89296084895638,79.43285714285715
+2020-05-31,50.59394215582089,79.55308970751436,123.90276643973742,69.99177327164516,38.33571428571429
+2020-06-07,46.73666690480973,73.34706417314993,116.49891824458894,74.95070557081377,46.19571428571429
+2020-06-14,41.98936499429974,66.9137923140096,103.64255358917296,75.19403685695922,58.957142857142856
+2020-06-21,37.46130671782182,58.5889787298615,92.27182750248828,60.6809019243436,41.85857142857143
+2020-06-28,32.36045296261688,51.727683616204494,82.46479507382192,54.66679829714422,41.01428571428572
 ```
 
 
@@ -9161,6 +9211,13 @@ for lab_, folds_ in [("folds 2018+2019", [2018, 2019]), ("all three folds", [201
         r_ = ld[(ld.folds == lab_) & (ld.model == m_)].iloc[0]
         ok_ld &= close(dm_, r_.mean_MAE_diff_vs_climatology, 0.02) and close(lo_, r_.ci_lo, 0.1) and close(hi_, r_.ci_hi, 0.1)
 check("fc_loss_diff.csv reproduced by the per-fold block bootstrap from saved forecasts", ok_ld)
+for mac_, (m_, f_) in {"fcMaeSelNineteen": ("Fourier+ARMA (selected)", 2019), "fcMaeClimNineteen": ("Climatology", 2019), "fcMaeSarimaNineteen": ("SARIMA D=1", 2019),
+                       "fcMaeSarimaSeventeen": ("SARIMA D=1", 2017), "fcMaeLstmNineteen": ("LSTM (small)", 2019), "fcMaeLstmEighteen": ("LSTM (small)", 2018),
+                       "fcMaeSarimaZeroNineteen": ("SARIMA D=0", 2019)}.items():
+    exact_ = bf[(bf.model == m_) & (bf.fold == f_)].ae.mean()
+    check(f"slide macro {mac_} = {macros[mac_]} equals the unrounded MAE {exact_:.3f} to one decimal", macros[mac_] == f"{exact_:.1f}")
+ad_ = FC["validation_2019"]["annual_days_pred"]
+check(f"2019 predicted band days sum to 365 (sum = {sum(ad_.values()):.1f})", close(sum(ad_.values()), 365, 0.2))
 # (d) one-week-ahead MAEs recomputed from the saved one-step forecasts
 of = pd.read_csv(RES / "fc_oneweek_forecasts.csv")
 of["ae"] = (of.actual - np.exp(of.mu)).abs()
@@ -9609,10 +9666,12 @@ if FCN is not None:
     write("fc_outlook", "lrrrrr", r"\textbf{Month} & \textbf{Median} & \textbf{95\% interval} & \textbf{P(mean$>$90)} & \textbf{Days Poor+} & \textbf{Actual}", rows)
 
     ck = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
+    _bm = pd.read_csv(RES / "fc_backtest_metrics.csv").set_index(["model", "fold"])["MAE"]   # unrounded: avoids double rounding
+    mae_ = lambda m_, f_: f"{_bm[(m_, f_)]:.1f}"  # noqa: E731
     nums_fc = {
-        "fcMaeSelNineteen": f"{FCN['backtest']['mae_selected']['2019']:.1f}", "fcMaeClimNineteen": f"{FCN['backtest']['mae_climatology']['2019']:.1f}",
-        "fcMaeSarimaNineteen": f"{FCN['backtest']['sarima_D1_mae']['2019']:.1f}", "fcMaeSarimaSeventeen": f"{FCN['backtest']['sarima_D1_mae']['2017']:.1f}",
-        "fcMaeLstmNineteen": f"{FCN['backtest']['lstm_mae']['2019']:.1f}", "fcMaeLstmEighteen": f"{FCN['backtest']['lstm_mae']['2018']:.1f}", "fcMaeSarimaZeroNineteen": f"{FCN['backtest']['sarima_D0_mae']['2019']:.1f}",
+        "fcMaeSelNineteen": mae_("Fourier+ARMA (selected)", 2019), "fcMaeClimNineteen": mae_("Climatology", 2019),
+        "fcMaeSarimaNineteen": mae_("SARIMA D=1", 2019), "fcMaeSarimaSeventeen": mae_("SARIMA D=1", 2017),
+        "fcMaeLstmNineteen": mae_("LSTM (small)", 2019), "fcMaeLstmEighteen": mae_("LSTM (small)", 2018), "fcMaeSarimaZeroNineteen": mae_("SARIMA D=0", 2019),
         "fcCalWidthRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['width']:.0f}", "fcCalWidthCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['width']:.0f}",
         "fcCalWinkRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['winkler']:.0f}", "fcCalWinkCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['winkler']:.0f}",
         "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}",
@@ -9717,9 +9776,9 @@ print("numbers:", len(nums))
 \newcommand{\sdAug}{15}
 \newcommand{\fcMaeSelNineteen}{25.7}
 \newcommand{\fcMaeClimNineteen}{27.8}
-\newcommand{\fcMaeSarimaNineteen}{27.4}
+\newcommand{\fcMaeSarimaNineteen}{27.5}
 \newcommand{\fcMaeSarimaSeventeen}{53.8}
-\newcommand{\fcMaeLstmNineteen}{54.4}
+\newcommand{\fcMaeLstmNineteen}{54.3}
 \newcommand{\fcMaeLstmEighteen}{28.3}
 \newcommand{\fcMaeSarimaZeroNineteen}{44.1}
 \newcommand{\fcCalWidthRaw}{125}
@@ -9728,7 +9787,7 @@ print("numbers:", len(nums))
 \newcommand{\fcCalWinkCal}{193}
 \newcommand{\fcCovSeventeen}{69}
 \newcommand{\fcLockPre}{11}
-\newcommand{\fcLockAdj}{35}
+\newcommand{\fcLockAdj}{36}
 \newcommand{\fcLockPlacebo}{15}
 \newcommand{\fcLockSensLo}{37}
 \newcommand{\fcLockSensHi}{51}
@@ -9776,11 +9835,11 @@ print("numbers:", len(nums))
 \begin{document}
 \maketitle
 \begin{abstract}
-We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: no added predictive value for next week was detected in the tested specification, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. No model is significantly better than climatology (a smooth Fourier+ARMA model is statistically indistinguishable from it); SARIMA with seasonal differencing is fragile, SARIMA with $D=0$ and the small LSTM are clearly worse. We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction interval widths out of sample (at the cost of wider intervals), and produce a monthly 2020 outlook in which the observed lockdown-period PM$_{2.5}$ is about \fcLockPct\% below the model's no-lockdown projection (descriptive, not a causal estimate; see Section on the lockdown).
+We study daily \pmtwo{} in Delhi from January 2015 to July 2020 (CPCB monitors; ERA5 wind and humidity). \pmtwo{} has a very strong annual cycle (winter \ratioWM$\times$ the monsoon) and a slow downward drift. After removing the cycle, wind and humidity anomalies \emph{predict} \pmtwo{} for about a week (Granger causality in a VAR, robust to lag order, differencing, HAC errors and rain/temperature controls), but their information is gone at the weekly scale: no added predictive value for next week was detected in the tested specification, and even the same week's weather, unknown in advance, improves a one-week forecast by only \fcOneOracle\%. For 52-week forecasts we compare climatology, Fourier-term regression with ARMA errors, SARIMA, linear regression and a small LSTM on three expanding-window origins. In this limited rolling-origin evaluation no model showed a convincing gain over climatology (a smooth Fourier+ARMA model is statistically indistinguishable from it); SARIMA with seasonal differencing is fragile, SARIMA with $D=0$ and the small LSTM are clearly worse (the LSTM's intervals are heuristic and optimistic). We fix several diagnostic and design errors found in an earlier draft (residual burn-in, missing constant, leakage), calibrate prediction interval widths out of sample (at the cost of wider intervals), and produce a monthly 2020 outlook in which the observed lockdown-period PM$_{2.5}$ is about \fcLockPct\% below the model's no-lockdown projection (descriptive, not a causal estimate; see Section on the lockdown).
 \end{abstract}
 
 \section{Introduction}
-Delhi's air is Poor or worse (PM$_{2.5}>90$ \ugm{}) on \pctPoor\% of days in our sample, and the pattern repeats every winter. We ask two questions: \textbf{Q1} (explain) does weather predict \pmtwo{}, and over what horizon? \textbf{Q2} (forecast) how well can \pmtwo{} be forecast one week and 52 weeks ahead, and which model should be trusted? The project was reviewed independently three times; every concrete claim of those reviews was re-tested on the data, and the verdicts are in \texttt{docs/REVIEW\_RESPONSES.md} (summarised in Section~\ref{sec:review}). Because the data end in July 2020, the deliverable is a \emph{historical forecasting study} (backtests for 2017--2019 and an outlook for 2020 made in December 2019), not a current health advisory.
+Delhi's PM$_{2.5}$ is in the Poor-or-worse sub-index band ($>90$ \ugm{}; not the official multi-pollutant AQI) on \pctPoor\% of days in our sample, and the pattern repeats every winter. We ask two questions: \textbf{Q1} (explain) does weather predict \pmtwo{}, and over what horizon? \textbf{Q2} (forecast) how well can \pmtwo{} be forecast one week and 52 weeks ahead, and which model should be trusted? The project was reviewed independently three times; every concrete claim of those reviews was re-tested on the data, and the verdicts are in \texttt{docs/REVIEW\_RESPONSES.md} (summarised in Section~\ref{sec:review}). Because the data end in July 2020, the deliverable is a \emph{historical forecasting study} (backtests for 2017--2019 and an outlook for 2020 made in December 2019), not a current health advisory.
 
 \section{Data and cleaning}
 \pmtwo{} (and NO$_2$, SO$_2$) are the CPCB city-level daily values for Delhi from the Kaggle dataset \texttt{rohanrao/air-quality-data-in-india}: 2{,}009 days, 1 Jan 2015 to 1 Jul 2020, with 2 missing \pmtwo{} values (interpolated; gaps $\le3$ days are interpolated, longer ones are left missing). Wind speed, relative humidity, temperature and precipitation are ERA5 reanalysis values for central Delhi (28.61$^\circ$N, 77.21$^\circ$E) from the Open-Meteo archive. Forecasting uses weekly means (weeks ending Sunday, 287 weeks). Modelling is on $\log$ \pmtwo{}; a back-transformed forecast $\exp(\mu)$ is a \emph{median}, and mean forecasts use $\exp(\mu_h+\sigma_h^2/2)$ with the horizon-specific $\sigma_h$. The 2020 lockdown never enters model selection.
@@ -9794,7 +9853,7 @@ Winter (Nov--Jan) averages \winterMean{} \ugm{} against \monsoonMean{} in the mo
 ADF and KPSS (opposite null hypotheses) on 2015--2018 weekly log \pmtwo{} are both consistent with stationarity, as is the seasonal difference; a further first difference over-differences (lag-1 autocorrelation $-0.46$). So $d=0$. But KPSS on the \emph{raw level} is dominated by the large seasonal cycle. Removing a day-of-year climatology reveals a slow decline: the KPSS statistic of the anomaly is 0.90 on 2015--18 and 2.0 on 2015--19 (5\% critical value 0.46), and the mean log anomaly falls from $+0.10$ in 2016 to $-0.19$ in 2019. The level is therefore \emph{not} constant, which drives the model design in Section~\ref{sec:fc}.
 
 \subsection{Is the decline real? A station-level check}
-The city series is the mean over reporting stations (correlation 0.995 with the station-level mean), and the number of stations reporting \pmtwo{} rose from 10 and 8 (2015, 2016) to 37 (2018, 2019), so a change in the station mix could create a spurious decline. A fixed panel of six long-running stations (at least 60 days in each year) falls by \declPanel\% between 2016 and 2019, all stations by \declAll\%, and the city series after regressing out wind, humidity and temperature by \declWx\%. We conclude that most of the decline is real, while stressing that the panel is small and thin in 2017.
+The city series is the mean over reporting stations (correlation 0.995 with the station-level mean), and the number of stations reporting \pmtwo{} rose from 10 and 8 (2015, 2016) to 37 (2018, 2019), so a change in the station mix could create a spurious decline. A fixed panel of six long-running stations (at least 60 days in each year) falls by \declPanel\% between 2016 and 2019, all stations by \declAll\%, and the city series after regressing out wind, humidity and temperature by \declWx\%. The decline persists in the restricted fixed-station sample and after weather adjustment, which is consistent with a genuine component; it does not rule out a network-composition effect, and the panel is small and thin in 2017 (125 days).
 \begin{figure}[H]\centering\includegraphics[width=0.85\linewidth]{fc_station.pdf}\caption{Left: stations reporting; right: mean log anomaly by year for all stations, the fixed panel and the weather-adjusted city series.}\end{figure}
 
 \section{Does weather predict \pmtwo{}? (Q1)}
@@ -9803,7 +9862,7 @@ Wind, humidity and log \pmtwo{} are deseasonalised with a smoothed day-of-year c
 \begin{figure}[H]\centering\includegraphics[width=0.9\linewidth]{granger_hac.pdf}\caption{HAC Wald tests (4 lags).}\end{figure}
 \paragraph{Size and timing.} A one-SD wind shock (2.5 km/h) lowers \pmtwo{} by \irfWindA--\irfWindB\% the next day, a one-SD humidity shock (5.4\% RH) by \irfRhA--\irfRhB\%, fading within about a week; the range reflects the Cholesky ordering (weather first allows same-day effects). The generalised IRF, which does not depend on ordering, gives $-12.0\%$ and $-5.2\%$ on day 1, inside or at the edge of those ranges. Weather shocks explain \fevdA--\fevdB\% of the 14-day forecast-error variance of \pmtwo{} depending on the ordering.
 \begin{figure}[H]\centering\includegraphics[width=0.95\linewidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\end{figure}
-\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add no detectable predictive value to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$) in the specification we tested. Weather is therefore a short-memory predictor, and the 52-week models use no weather.
+\paragraph{Horizon.} At the weekly scale, last week's wind and humidity add no detectable predictive value to last week's \pmtwo{} for predicting this week's ($\Delta R^2=0.005$, joint HAC Wald $p=0.51$) in the specification we tested. Within the tested specification weather therefore acts as a short-memory predictor, and the 52-week models use no weather.
 
 \section{Forecasting (Q2)}\label{sec:fc}
 \subsection{Models and evaluation design}
@@ -9814,7 +9873,7 @@ All models forecast weekly log \pmtwo{} with no weather inputs: seasonal naive; 
 In 2019 the selected Fourier+ARMA model has an MAE of \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology and \fcMaeSarimaNineteen{} for the seasonal-differenced SARIMA; the SARIMA is, however, at \fcMaeSarimaSeventeen{} in the 2017 fold, where it has only two seasons to learn from. Over 2018--2019 only the seasonal naive forecast, SARIMA with $D=0$ (\fcMaeSarimaZeroNineteen{} in 2019) and the LSTM (\fcMaeLstmEighteen{} in 2018, \fcMaeLstmNineteen{} in 2019) are clearly worse than climatology (the bootstrap interval excludes 0), and SARIMA with $D=1$ is clearly worse over all three origins. For every other model, including the selected Fourier+ARMA model and the linear-trend variant (which has the lowest 2018--19 MAE, 21.9), the bootstrap interval includes 0, so we call them statistically indistinguishable from climatology. The LSTM was rerun after the alignment fix; it remains worse, but it is a small, untuned model and says nothing about neural networks in general. The honest summary: a year ahead the calendar carries almost all of the predictable signal, and with three origins the remaining models cannot be ranked.
 
 \subsection{Diagnostics: errors in the earlier draft}
-The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, the usual sign that the seasonal difference is unnecessary. The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; the matched comparison (same orders, same folds; notebook~04, \texttt{fc\_sarima\_d0\_constant.csv}) gives MAE 76.9/61.0/92.1 without and 44.9/42.8/44.1 with a constant for 2017/2018/2019, against 31.0/21.8/27.8 for climatology, so the constant matters a lot but D=0 stays clearly worse. The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$; lag 10 is marginal, $p=0.088$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
+The draft's Ljung--Box test had $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely, so the first 52 in-sample residuals equal the level of the series (about 5 on the log scale). With them excluded (\texttt{loglikelihood\_burn}) the residuals are acceptable at lags 10 and 26 ($p=0.49,\,0.10$) but not at lag 52 ($p=0.016$). The seasonal MA coefficient is \fcMaCoef{} with a standard error far above 1: the parameter sits on the invertibility boundary and is not identified, a sign of possible over-differencing (an identification problem, not a proof that the difference is unnecessary); the exact standard error is numerically unstable (an outside refit gave 5--10 and $-0.98$ to $-0.99$ for the coefficient). The $D=0$ candidate in the draft had no constant, forcing the forecast toward $\log \text{PM}_{2.5}=0$; the matched comparison (same orders, same folds; notebook~04, \texttt{fc\_sarima\_d0\_constant.csv}) gives MAE 76.9/61.0/92.1 without and 44.9/42.8/44.1 with a constant for 2017/2018/2019, against 31.0/21.8/27.8 for climatology. The no-constant fit is numerically fragile (AR root near 1; an outside refit gave 64.8 and 81.5--92.1 for 2018 and 2019; fit details and software versions are saved in \texttt{fc\_sarima\_d0\_fit\_details.csv}), so read it as ``60--90'', but with a constant or without, D=0 stays clearly worse than climatology. The selected Fourier+ARMA model still shows autocorrelation at lags 26 and 52 in the 2019 fold ($p=0.001$ and $0.009$; lag 10 is marginal, $p=0.088$) and ARCH-LM(4) is clean ($p=0.87$): there is more seasonal structure than a few harmonics capture, which we list as a limit.
 
 \subsection{Prediction intervals}
 Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks (2018: 94\%; the 2017 stress-test fold only \fcCovSeventeen\%); in 2019 all 5 misses were below the lower bound because 2019 was cleaner than 2015--18, so the problem is level bias as much as width. We rescale the predictive standard deviation by season (winter vs other months, shrunk toward the pooled value) using only the 2017 and 2018 errors, and re-centre only if the bias has the same sign and size $>0.5$ standard deviations in both calibration years; it did not (mean standardised errors $-0.66$ and $-0.45$), so only the scale is changed. On 2019 the coverage rises to \fcCovCal\%, but only by widening the intervals (mean width \fcCalWidthRaw{} to \fcCalWidthCal{} \ugm{}) and the Winkler interval score gets \emph{worse} (\fcCalWinkRaw{} to \fcCalWinkCal{}; lower is better): the rescaling buys nominal coverage, not better intervals. The scale factors differ by fold (1.33/1.42 for 2019, 1.09/0.95 for the 2020 forecast), so the calibration is itself uncertain, and with three origins no general reliability claim is possible. A smooth, shrunk shift added afterwards as a sensitivity (defined after seeing 2019, so not a headline) removes the level bias in 2019 (bias from $-8.5$ to $+4.3$, Winkler 161) but we do not adopt it.
@@ -9835,7 +9894,7 @@ The ten Sunday-ending weeks 29 March--31 May 2020 cover 23 March--31 May (two da
 Three independent reviews proposed about 30 changes. We accepted the confirmed errors (diagnostic burn-in, missing constant, leakage in headline statistics, wording that over-stated causality or p-values, the PM$_{2.5}$-band versus AQI distinction, an invalid DM test) and rejected others after testing them (for example, the claim that re-anchoring the level gives 94\% coverage gives 90\% in the data; the shock-bin statistic has no Jensen bias; humidity's effect is not detectably monsoon-specific). The full log, with evidence for each claim, is \texttt{docs/REVIEW\_RESPONSES.md}.
 
 \section{Limitations}
-(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; no model is significantly better than climatology, and the 2019 year was examined in earlier iterations (not a pristine hold-out). (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check uses six stations, so the decline is consistent with a genuine decline but a network effect is not fully excluded. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM is deliberately small and is not tuned: it is a small-data baseline, not a statement about deep learning in general. (viii) The automated checker re-derives selected numbers; it does not re-run every model selection or the station download.
+(i) Granger causality is predictive; boundary-layer height, stubble burning and fireworks are unmeasured, and ERA5 is a single grid cell. (ii) Three backtest origins give few independent tests; no model is significantly better than climatology, and the 2019 year was examined in earlier iterations (not a pristine hold-out). (iii) A level bias remains: 2019 was cleaner than the training years, and the calibrated intervals depend on the fold. (iv) The Fourier model leaves some autocorrelation at lags 26 and 52. (v) One city; the data end in July 2020 and the monitoring network changed during the sample; the fixed-station check uses six stations, so the decline is consistent with a genuine decline but a network effect is not fully excluded. (vi) The bands are \pmtwo{} sub-index bands, not the official AQI. (vii) The LSTM's prediction interval comes from in-sample recursive errors and should be read as optimistic; the LSTM is deliberately small and is not tuned: it is a small-data baseline, not a statement about deep learning in general. (viii) The automated checker re-derives selected numbers; it does not re-run every model selection or the station download.
 
 \section{Conclusion}
 Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling level. Wind and humidity anomalies help for about a week, not for a year. For 52-week forecasts a smooth Fourier+ARMA model is statistically indistinguishable from climatology and more robust than SARIMA with seasonal differencing; its interval widths can be adjusted out of sample at the price of wider intervals. Against its no-lockdown projection, observed 2020 lockdown-period PM$_{2.5}$ is much lower, though the size of the gap depends on the projected level. The most valuable parts of the work are the honest accounting of what is and is not significant and the correction of diagnostic errors that would have led to wrong model choices.
@@ -9945,7 +10004,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     particles under 2.5 $\mu$m that reach the lungs and blood, in \ugm{} (micrograms per m$^3$). \textbf{AQI} = India's colour-coded Air Quality Index; the bands show its PM$_{2.5}$ categories (Poor starts above 90 \ugm{}). The official AQI takes the worst pollutant; we use the PM$_{2.5}$ band only.
   \end{defbox}
   \begin{takeaway}
-    \textbf{\pctPoor\%} of days (2015--2020) were Poor or worse, and the pattern repeats yearly: winter averages \textbf{\winterMean} \ugm{}, the monsoon \textbf{\monsoonMean}: winter is \textbf{\ratioWM$\times$} higher.
+    \textbf{\pctPoor\%} of days (2015--2020) were in the Poor-or-worse PM$_{2.5}$ band, and the pattern repeats yearly: winter averages \textbf{\winterMean} \ugm{}, the monsoon \textbf{\monsoonMean}: winter is \textbf{\ratioWM$\times$} higher.
   \end{takeaway}
 \end{frame}
 
@@ -10067,7 +10126,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \vspace{4pt}
   \begin{takeaway}
     \textbf{Both tests are consistent with stationarity} for log \pmtwo{} and its seasonal difference $\Rightarrow$ $d=0$. A further difference over-differences (lag-1 autocorrelation $-0.46$, near the $-0.5$ warning level) and is dropped.
-    A seasonal difference $D=1$ is not needed: a $D=1$ SARIMA's seasonal MA coefficient is $\fcMaCoef$ with a standard error above 1, the sign of over-differencing, so we model the cycle with Fourier terms instead.
+    A seasonal difference is questionable: a $D=1$ SARIMA's seasonal MA coefficient is $\fcMaCoef$ with a standard error above 1 (unidentified, a sign of possible over-differencing, not proof), so we model the cycle with Fourier terms instead.
   \end{takeaway}
 \end{frame}
 
@@ -10182,7 +10241,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
     \begin{card}[title={Residual checks}]{pblue}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
         \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact} (52 diffuse-initialisation residuals); removed, SARIMA passes at lags 10 and 26.
-        \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: the seasonal difference is not needed.
+        \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: possible over-differencing.
         \item Limit: the Fourier model keeps some autocorrelation at lags 26, 52.
       \end{itemize}
     \end{card}
@@ -10298,7 +10357,7 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
   \centering
   \includegraphics[width=0.85\linewidth]{fig/fc_station.pdf}\\[2pt]
   \begin{takeaway}
-    The city series is the mean of the stations (corr.\ 0.995) and the number of stations rose from 8--10 to 37, so a mix effect is possible. But a fixed panel of six long-running stations falls by \declPanel\%, all stations by \declAll\%, and the weather-adjusted city series by \declWx\% (2016 $\to$ 2019): most of the decline is real.
+    The city series is the mean of the stations (corr.\ 0.995) and the number of stations rose from 8--10 to 37, so a mix effect is possible. But a fixed panel of six long-running stations falls by \declPanel\%, all stations by \declAll\%, and the weather-adjusted city series by \declWx\% (2016 $\to$ 2019): consistent with a genuine component; a network effect is not ruled out.
   \end{takeaway}
 \end{frame}
 
@@ -10316,6 +10375,11 @@ Delhi's \pmtwo{} is overwhelmingly a calendar phenomenon with a slowly falling l
 
 ## git log (main..HEAD)
 ```
+d5d5e26 Verification pack v3 (full-precision data, daily table, station summary, claims ledger) and refreshed LLM briefs
+1a93049 Deck, report, script, README, review log: round-2 corrections and softened claims; file both audits
+5f1fb42 verify_numbers: fix month off-by-one and persistence week, offline-safe link checks, 13 new checks (78 total)
+03a2dce Notebook 04: matched SARIMA D=0 table, calibration width/Winkler and post-hoc shift sensitivity, one-step forecasts saved, lockdown sensitivities and placebo; re-executed
+5cef57e src: fix LSTM window alignment, horizon-specific sd for linreg/LSTM/benchmarks, reject non-converged fits, per-fold circular block bootstrap, coherent daily paths
 76e359e Add verification pack (recompute data, code, results, claims ledger) for external audit
 3397b23 Deck, report, review-response log, README, presentation script, LLM briefs, verification (65 checks)
 9b351f9 Notebook 04: rolling-origin backtest, diagnostics, calibration, 1-week weather test, 2020 outlook, lockdown case study; archive SARIMA draft

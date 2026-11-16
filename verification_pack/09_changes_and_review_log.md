@@ -2,6 +2,11 @@
 
 ## git log (main..HEAD)
 ```
+d5d5e26 Verification pack v3 (full-precision data, daily table, station summary, claims ledger) and refreshed LLM briefs
+1a93049 Deck, report, script, README, review log: round-2 corrections and softened claims; file both audits
+5f1fb42 verify_numbers: fix month off-by-one and persistence week, offline-safe link checks, 13 new checks (78 total)
+03a2dce Notebook 04: matched SARIMA D=0 table, calibration width/Winkler and post-hoc shift sensitivity, one-step forecasts saved, lockdown sensitivities and placebo; re-executed
+5cef57e src: fix LSTM window alignment, horizon-specific sd for linreg/LSTM/benchmarks, reject non-converged fits, per-fold circular block bootstrap, coherent daily paths
 76e359e Add verification pack (recompute data, code, results, claims ledger) for external audit
 3397b23 Deck, report, review-response log, README, presentation script, LLM briefs, verification (65 checks)
 9b351f9 Notebook 04: rolling-origin backtest, diagnostics, calibration, 1-week weather test, 2020 outlook, lockdown case study; archive SARIMA draft

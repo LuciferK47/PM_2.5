@@ -57,7 +57,7 @@ md("""## 1. Models
 | Climatology | mean log PM2.5 of the same calendar week over the training years |
 | Climatology + AR(1) | climatology plus an AR(1) on the weekly anomalies |
 | Linear regression | OLS on 3 Fourier harmonics + a linear time trend (prediction interval includes parameter uncertainty, so it widens with the horizon) |
-| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only |
+| LSTM (small) | 1 layer, 16 units, seeded and deterministic, recursive one-step on anomalies; each input row pairs the anomaly with the calendar features of **its own week** (an alignment bug in the first version was fixed); interval sd from in-sample recursive h-step errors. Small-data baseline only. **Its interval is a heuristic** (the h-step error spread is estimated in-sample, so it is optimistic) |
 | Fourier+ARMA const / linear | dynamic harmonic regression (DHR): K=3 harmonics, AR(1) errors, constant or linear-trend level |
 | **Fourier+ARMA (selected)** | K ∈ 1..5 and (p,q) by AICc inside each trend type (constant / linear / random-walk errors); the trend type chosen by validation on the *last training year*. The random-walk option makes the errors **ARIMA(p,1,q)**, so "ARMA" in the label covers both. Non-converged fits are rejected and counted. The procedure was fixed in the code before the final runs, but 2019 had been looked at in earlier iterations of the project, so it is not a pristine hold-out. |
 | SARIMA D=1 / D=0 | the benchmark from the draft: (1,0,1)(0,1,1)₅₂, and (1,0,1)(1,0,0)₅₂ **with a constant** (the draft omitted it) |""")
@@ -139,6 +139,20 @@ for f in (2017, 2018, 2019):
     d0tab.loc["Climatology (reference)", f] = bt[(bt.model == "Climatology") & (bt.fold == f)]["MAE"].iloc[0]
 d0tab.round(1).to_csv(RESULTS / "fc_sarima_d0_constant.csv"); display(d0tab.round(1))
 key["sarima_d0_const"] = d0tab.round(2).to_dict()''')
+
+code('''# Fit details of the D=0 candidates (the no-constant fit is numerically fragile: AR root near 1), so that the comparison can be audited
+import statsmodels, scipy, sys
+det = []
+for fold, origin in F.ORIGINS.items():
+    tr_ = y.loc[:origin]
+    for nm, tr_arg in (("no constant", "n"), ("with constant", "c")):
+        r_ = F._fit(SARIMAX(tr_, order=(1, 0, 1), seasonal_order=(1, 0, 0, 52), trend=tr_arg))
+        det.append({"fold": fold, "variant": nm, "converged": F.converged(r_), "loglik": float(r_.llf), "ar1": float(r_.params["ar.L1"]),
+                    "seasonal_ar52": float(r_.params["ar.S.L52"]), "n_params": len(r_.params)})
+det = pd.DataFrame(det); det["statsmodels"] = statsmodels.__version__; det["scipy"] = scipy.__version__; det["python"] = sys.version.split()[0]
+det.round(4).to_csv(RESULTS / "fc_sarima_d0_fit_details.csv", index=False); display(det.round(4))''')
+
+md("""**Reading it.** Without a constant the AR coefficient sits at about 1 and the fit is fragile: an outside audit refitting with another statsmodels version and a log column computed in a slightly different way (differences below 1e-15) obtained 64.8 (2018) and 81.5-92.1 (2019) instead of 61.0 and 92.1. With a constant the three folds reproduce (44.9 / 42.8 / 44.1). The exact no-constant MAEs should therefore be read as "much worse than climatology, 60-90", not as precise values; the fitted parameters and software versions are saved above.""")
 
 md("""**Reading it.** Adding the constant changes the SARIMA D=0 error by the amounts above (same orders, same folds); D=0 stays clearly worse than climatology either way.""")
 
@@ -379,7 +393,7 @@ bands_pred = mt19[[f"days_{c}" for c in CATEGORIES]]; bands_pred.columns = CATEG
 err_days = (bands_pred - act_days).abs()
 val.round(1).to_csv(RESULTS / "fc_outlook_validation_2019_monthly.csv")
 pd.concat({"predicted": bands_pred.round(1), "actual": act_days}, axis=1).to_csv(RESULTS / "fc_outlook_validation_2019_days.csv")
-key["validation_2019"] = {"months_actual_inside_95": int(val.inside95.sum()), "annual_days_pred": bands_pred.sum().round(0).to_dict(),
+key["validation_2019"] = {"months_actual_inside_95": int(val.inside95.sum()), "annual_days_pred": bands_pred.sum().round(1).to_dict(),
                           "annual_days_actual": act_days.sum().to_dict(), "mean_abs_days_error_per_band_month": round(float(err_days.mean().mean()), 2),
                           "poor_or_worse_pred_pct": round(float(bands_pred[["Poor", "Very Poor", "Severe"]].sum().sum() / 365 * 100), 1),
                           "poor_or_worse_actual_pct": round(float(act_days[["Poor", "Very Poor", "Severe"]].sum().sum() / 365 * 100), 1)}

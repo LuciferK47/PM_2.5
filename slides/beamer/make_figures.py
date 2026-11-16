@@ -418,10 +418,12 @@ if FCN is not None:
     write("fc_outlook", "lrrrrr", r"\textbf{Month} & \textbf{Median} & \textbf{95\% interval} & \textbf{P(mean$>$90)} & \textbf{Days Poor+} & \textbf{Actual}", rows)
 
     ck = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
+    _bm = pd.read_csv(RES / "fc_backtest_metrics.csv").set_index(["model", "fold"])["MAE"]   # unrounded: avoids double rounding
+    mae_ = lambda m_, f_: f"{_bm[(m_, f_)]:.1f}"  # noqa: E731
     nums_fc = {
-        "fcMaeSelNineteen": f"{FCN['backtest']['mae_selected']['2019']:.1f}", "fcMaeClimNineteen": f"{FCN['backtest']['mae_climatology']['2019']:.1f}",
-        "fcMaeSarimaNineteen": f"{FCN['backtest']['sarima_D1_mae']['2019']:.1f}", "fcMaeSarimaSeventeen": f"{FCN['backtest']['sarima_D1_mae']['2017']:.1f}",
-        "fcMaeLstmNineteen": f"{FCN['backtest']['lstm_mae']['2019']:.1f}", "fcMaeLstmEighteen": f"{FCN['backtest']['lstm_mae']['2018']:.1f}", "fcMaeSarimaZeroNineteen": f"{FCN['backtest']['sarima_D0_mae']['2019']:.1f}",
+        "fcMaeSelNineteen": mae_("Fourier+ARMA (selected)", 2019), "fcMaeClimNineteen": mae_("Climatology", 2019),
+        "fcMaeSarimaNineteen": mae_("SARIMA D=1", 2019), "fcMaeSarimaSeventeen": mae_("SARIMA D=1", 2017),
+        "fcMaeLstmNineteen": mae_("LSTM (small)", 2019), "fcMaeLstmEighteen": mae_("LSTM (small)", 2018), "fcMaeSarimaZeroNineteen": mae_("SARIMA D=0", 2019),
         "fcCalWidthRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['width']:.0f}", "fcCalWidthCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['width']:.0f}",
         "fcCalWinkRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['winkler']:.0f}", "fcCalWinkCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['winkler']:.0f}",
         "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}",

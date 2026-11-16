@@ -97,40 +97,40 @@ One week ahead:
 2019 pipeline validation (monthly):
 ```
 Unnamed: 0  actual_mean  pred_median  pred_lo95  pred_hi95  inside95
-       Jan        204.3        209.8        147      301.4      True
-       Feb        122.3        141.9       95.2        213      True
-       Mar         84.2        101.7       65.5      156.9      True
-       Apr         82.3        101.5       63.8      160.2      True
-       May         89.7        100.2       61.5      163.3      True
-       Jun         63.8         75.4       45.7      122.8      True
-       Jul         46.7         46.2       27.3       77.3      True
-       Aug         34.1         43.2       25.3       73.8      True
-       Sep         40.1         57.3       32.7       99.3      True
-       Oct        123.7        141.9       80.7      250.8      True
-       Nov        205.4        234.6      133.6      403.4      True
-       Dec        205.2        199.2      113.8      346.7      True
+       Jan        204.3        210.3      146.2      299.4      True
+       Feb        122.3        142.6         94      210.6      True
+       Mar         84.2        101.2       65.7      157.1      True
+       Apr         82.3          102       63.3      164.4      True
+       May         89.7          100       62.4      161.7      True
+       Jun         63.8         75.2       45.6      123.7      True
+       Jul         46.7         46.1       27.1       76.8      True
+       Aug         34.1           43       24.4         75      True
+       Sep         40.1           57       31.8      101.6      True
+       Oct        123.7        142.2       79.1      254.9      True
+       Nov        205.4        232.2      130.2      417.3      True
+       Dec        205.2        197.6      108.8      351.8      True
 ```
 2020 outlook:
 ```
 month  median  lo95  hi95  P(mean>60)  P(mean>90)  P(mean>120)  days_Good  days_Satisfactory  days_Moderate  days_Poor  days_Very Poor  days_Severe  actual_mean_2020  actual_days_covered
-  Jan   190.4 141.7 254.9           1           1        0.999          0              0.117          0.985      3.013           21.18        5.703             157.1                   31
-  Feb   121.9 90.35 164.8           1       0.976        0.541       0.04              1.832          6.283      7.817            12.3        0.731             121.5                   29
-  Mar   84.45 66.28 108.7       0.994       0.304        0.001      0.261              6.036          12.71      8.084           3.909        0.003             57.51                   31
-  Apr   85.71 66.92 110.7       0.997       0.348        0.005      0.151              5.439          12.56      7.906           3.936        0.008             44.94                   30
-  May   84.11 65.63 108.7       0.995       0.297        0.003      0.159              6.384          12.86      7.787           3.804        0.011             55.45                   31
-  Jun   62.75 47.93  81.7        0.64       0.004            0      1.365               13.9          10.64      3.267           0.826        0.001              46.7                   30
-  Jul   38.89 30.27 50.51           0           0            0      8.796              19.52          2.475      0.195           0.014            0             54.01                    1
-  Aug   35.52 27.55 46.09           0           0            0      11.05              18.51           1.38      0.063           0.001            0               NaN                  NaN
-  Sep   45.56 35.29 58.63       0.018           0            0      5.867              18.06          5.369      0.645           0.058            0               NaN                  NaN
-  Oct   120.1 91.86 155.9           1       0.983        0.503      0.028              2.755          7.582      7.479           12.22        0.938               NaN                  NaN
-  Nov   192.1 143.3 259.6           1           1            1      0.001              0.206          1.127      2.988           19.63        6.048               NaN                  NaN
-  Dec   169.3 126.1 225.7           1           1         0.99          0              0.237          2.157      4.964           19.86        3.784               NaN                  NaN
+  Jan     190 143.3 253.9           1           1        0.999          0              0.124          0.974      2.943           21.31        5.649             157.1                   31
+  Feb   121.4  90.3 164.3           1       0.976        0.531       0.04              1.829          6.224      7.832           12.38        0.692             121.5                   29
+  Mar   84.68 66.06 109.1       0.997        0.32        0.004      0.268              6.044          12.65      8.044           3.994        0.004             57.51                   31
+  Apr   85.74 66.69 111.6       0.998       0.354        0.006      0.162              5.453          12.58      7.877           3.917        0.006             44.94                   30
+  May   84.66  66.6 109.1       0.997       0.326        0.002      0.154              6.142          12.81      7.896           3.983        0.015             55.45                   31
+  Jun   62.86 48.19 81.47       0.632       0.003            0      1.362              13.95          10.63      3.241           0.818            0              46.7                   30
+  Jul   38.77 30.34 50.21       0.001           0            0      8.843              19.49          2.482      0.175           0.014            0             54.01                    1
+  Aug   35.72 27.73  46.3           0           0            0      10.87              18.69           1.38      0.061           0.002            0               NaN                  NaN
+  Sep   45.38 35.48 59.24       0.019           0            0       5.92              18.01          5.381      0.638           0.053            0               NaN                  NaN
+  Oct   119.4    92 156.7           1       0.983        0.488       0.03              2.776            7.6      7.455           12.25        0.888               NaN                  NaN
+  Nov   191.5 142.8 257.9           1           1        0.999      0.001              0.203          1.107       3.05           19.68        5.959               NaN                  NaN
+  Dec     169 127.5 227.9           1           1         0.99          0               0.25          2.171      4.953           19.85         3.78               NaN                  NaN
 ```
 Lockdown:
 ```
                                    Unnamed: 0  actual_mean  cf_median  gap_median_pct  gap_lo95_pct  gap_hi95_pct
-0                        no-lockdown forecast         48.7         85           -42.8         -52.1         -31.8
-1  weather-adjusted forecast (oracle weather)          NaN       78.6           -38.1         -47.5         -26.7
+0                        no-lockdown forecast         48.7       85.5           -43.1         -52.3           -32
+1  weather-adjusted forecast (oracle weather)          NaN       78.4           -37.9         -47.8         -26.5
 ```
 Key numbers:
 ```
@@ -214,12 +214,12 @@ Key numbers:
   "validation_2019": {
     "months_actual_inside_95": 12,
     "annual_days_pred": {
-      "Good": 21.0,
-      "Satisfactory": 75.0,
-      "Moderate": 68.0,
+      "Good": 21.5,
+      "Satisfactory": 75.2,
+      "Moderate": 67.4,
       "Poor": 53.0,
-      "Very Poor": 114.0,
-      "Severe": 35.0
+      "Very Poor": 113.2,
+      "Severe": 34.7
     },
     "annual_days_actual": {
       "Good": 25,
@@ -229,8 +229,8 @@ Key numbers:
       "Very Poor": 73,
       "Severe": 34
     },
-    "mean_abs_days_error_per_band_month": 1.9,
-    "poor_or_worse_pred_pct": 55.1,
+    "mean_abs_days_error_per_band_month": 1.89,
+    "poor_or_worse_pred_pct": 55.0,
     "poor_or_worse_actual_pct": 45.2
   },
   "outlook_2020_spec": {
@@ -255,56 +255,56 @@ Key numbers:
   "lockdown": {
     "plain": {
       "actual_mean": 48.669714285714285,
-      "cf_median": 85.04899262695417,
-      "gap_median_pct": -42.77449646078571,
-      "gap_lo95_pct": -52.11359900861902,
-      "gap_hi95_pct": -31.819259395224652
+      "cf_median": 85.46299198510313,
+      "gap_median_pct": -43.051707931100005,
+      "gap_lo95_pct": -52.341350673611394,
+      "gap_hi95_pct": -31.980318287029235
     },
     "weather_adjusted": {
-      "cf_median": 78.5752915693168,
-      "gap_median_pct": -38.059772562764856,
-      "gap_lo95_pct": -47.516118559968525,
-      "gap_hi95_pct": -26.675729977641215
+      "cf_median": 78.38583242809868,
+      "gap_median_pct": -37.910062528631435,
+      "gap_lo95_pct": -47.7503801997891,
+      "gap_hi95_pct": -26.53614923420981
     }
   },
   "lockdown_sensitivity": {
     "selected spec (linear, K=5, AR1), headline": {
-      "pre_lockdown_gap_pct": -11.32,
-      "lockdown_gap_10wk_pct": -42.77,
-      "lo95": -52.11,
-      "hi95": -31.82,
-      "gap_9wk_from_5Apr_pct": -41.49,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.47
+      "pre_lockdown_gap_pct": -11.26,
+      "lockdown_gap_10wk_pct": -43.05,
+      "lo95": -52.34,
+      "hi95": -31.98,
+      "gap_9wk_from_5Apr_pct": -41.78,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.83
     },
     "constant level": {
-      "pre_lockdown_gap_pct": -22.6,
-      "lockdown_gap_10wk_pct": -50.84,
+      "pre_lockdown_gap_pct": -22.27,
+      "lockdown_gap_10wk_pct": -50.89,
       "lo95": -59.58,
-      "hi95": -40.01,
-      "gap_9wk_from_5Apr_pct": -49.78,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.48
+      "hi95": -39.98,
+      "gap_9wk_from_5Apr_pct": -49.84,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -36.81
     },
     "random-walk level (ARIMA errors)": {
-      "pre_lockdown_gap_pct": -9.87,
-      "lockdown_gap_10wk_pct": -43.11,
-      "lo95": -54.55,
-      "hi95": -28.55,
-      "gap_9wk_from_5Apr_pct": -41.74,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.88
+      "pre_lockdown_gap_pct": -9.74,
+      "lockdown_gap_10wk_pct": -43.19,
+      "lo95": -55.21,
+      "hi95": -28.79,
+      "gap_9wk_from_5Apr_pct": -41.96,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -37.06
     },
     "headline + shrunk mean-bias shift (post-hoc)": {
-      "pre_lockdown_gap_pct": -2.43,
-      "lockdown_gap_10wk_pct": -37.02,
-      "lo95": -47.3,
-      "hi95": -24.97,
-      "gap_9wk_from_5Apr_pct": -35.61,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.45
+      "pre_lockdown_gap_pct": -2.37,
+      "lockdown_gap_10wk_pct": -37.33,
+      "lo95": -47.55,
+      "hi95": -25.14,
+      "gap_9wk_from_5Apr_pct": -35.92,
+      "lockdown_gap_adjusted_for_pre_gap_pct": -35.81
     },
     "PLACEBO: same weeks of 2019 vs 2019 forecast": {
-      "pre_lockdown_gap_pct": -8.88,
-      "lockdown_gap_10wk_pct": -14.87,
-      "lo95": -43.9,
-      "hi95": 28.17,
+      "pre_lockdown_gap_pct": -9.04,
+      "lockdown_gap_10wk_pct": -15.01,
+      "lo95": -43.38,
+      "hi95": 28.14,
       "gap_9wk_from_5Apr_pct": NaN,
       "lockdown_gap_adjusted_for_pre_gap_pct": NaN
     }

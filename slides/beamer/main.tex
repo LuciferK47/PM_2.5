@@ -96,7 +96,7 @@
     particles under 2.5 $\mu$m that reach the lungs and blood, in \ugm{} (micrograms per m$^3$). \textbf{AQI} = India's colour-coded Air Quality Index; the bands show its PM$_{2.5}$ categories (Poor starts above 90 \ugm{}). The official AQI takes the worst pollutant; we use the PM$_{2.5}$ band only.
   \end{defbox}
   \begin{takeaway}
-    \textbf{\pctPoor\%} of days (2015--2020) were Poor or worse, and the pattern repeats yearly: winter averages \textbf{\winterMean} \ugm{}, the monsoon \textbf{\monsoonMean}: winter is \textbf{\ratioWM$\times$} higher.
+    \textbf{\pctPoor\%} of days (2015--2020) were in the Poor-or-worse PM$_{2.5}$ band, and the pattern repeats yearly: winter averages \textbf{\winterMean} \ugm{}, the monsoon \textbf{\monsoonMean}: winter is \textbf{\ratioWM$\times$} higher.
   \end{takeaway}
 \end{frame}
 
@@ -218,7 +218,7 @@
   \vspace{4pt}
   \begin{takeaway}
     \textbf{Both tests are consistent with stationarity} for log \pmtwo{} and its seasonal difference $\Rightarrow$ $d=0$. A further difference over-differences (lag-1 autocorrelation $-0.46$, near the $-0.5$ warning level) and is dropped.
-    A seasonal difference $D=1$ is not needed: a $D=1$ SARIMA's seasonal MA coefficient is $\fcMaCoef$ with a standard error above 1, the sign of over-differencing, so we model the cycle with Fourier terms instead.
+    A seasonal difference is questionable: a $D=1$ SARIMA's seasonal MA coefficient is $\fcMaCoef$ with a standard error above 1 (unidentified, a sign of possible over-differencing, not proof), so we model the cycle with Fourier terms instead.
   \end{takeaway}
 \end{frame}
 
@@ -333,7 +333,7 @@
     \begin{card}[title={Residual checks}]{pblue}\footnotesize
       \begin{itemize}\setlength\itemsep{3pt}
         \item The draft's Ljung-Box $p\approx0$ was an \textbf{artifact} (52 diffuse-initialisation residuals); removed, SARIMA passes at lags 10 and 26.
-        \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: the seasonal difference is not needed.
+        \item The seasonal MA ($\fcMaCoef$, SE $>1$) is not identified: possible over-differencing.
         \item Limit: the Fourier model keeps some autocorrelation at lags 26, 52.
       \end{itemize}
     \end{card}
@@ -449,7 +449,7 @@
   \centering
   \includegraphics[width=0.85\linewidth]{fig/fc_station.pdf}\\[2pt]
   \begin{takeaway}
-    The city series is the mean of the stations (corr.\ 0.995) and the number of stations rose from 8--10 to 37, so a mix effect is possible. But a fixed panel of six long-running stations falls by \declPanel\%, all stations by \declAll\%, and the weather-adjusted city series by \declWx\% (2016 $\to$ 2019): most of the decline is real.
+    The city series is the mean of the stations (corr.\ 0.995) and the number of stations rose from 8--10 to 37, so a mix effect is possible. But a fixed panel of six long-running stations falls by \declPanel\%, all stations by \declAll\%, and the weather-adjusted city series by \declWx\% (2016 $\to$ 2019): consistent with a genuine component; a network effect is not ruled out.
   \end{takeaway}
 \end{frame}
 
