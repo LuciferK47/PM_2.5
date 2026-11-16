@@ -35,20 +35,39 @@ def stationarity_table(series_dict):
     return pd.DataFrame([adf_kpss(s, name) for name, s in series_dict.items()]).set_index("series")
 
 
+def doy365(index):
+    """Calendar day-of-year on a fixed 1..365 scale: Feb 29 maps to day 59, later leap-year days shift by -1."""
+    idx = pd.DatetimeIndex(index)
+    doy = np.asarray(idx.dayofyear)
+    leap_after_feb = idx.is_leap_year & (doy > 59)
+    return np.where(leap_after_feb, doy - 1, doy).clip(1, 365)
+
+
 def doy_climatology(s, window=31):
-    """Smoothed day-of-year mean (circular rolling window), indexed 1..365."""
-    doy = np.minimum(s.index.dayofyear, 365)
-    clim = s.groupby(doy).mean().reindex(range(1, 366)).interpolate()
+    """Smoothed day-of-year mean (circular rolling window), indexed 1..365. Fit on whatever sample is passed."""
+    clim = s.groupby(doy365(s.index)).mean().reindex(range(1, 366)).interpolate()
     half = window // 2
     padded = pd.concat([clim.iloc[-half:], clim, clim.iloc[:half]])
     return padded.rolling(window, center=True).mean().iloc[half:-half]
 
 
-def doy_anomaly(s, window=31):
-    """Deseasonalised series: value minus its smoothed day-of-year climatology."""
-    clim = doy_climatology(s, window)
-    doy = np.minimum(s.index.dayofyear, 365)
-    return s - clim.reindex(doy).to_numpy()
+def apply_climatology(s, clim):
+    """Subtract a previously fitted climatology (from `doy_climatology`) from any series."""
+    return s - clim.reindex(doy365(s.index)).to_numpy()
+
+
+def doy_anomaly(s, window=31, ref=None):
+    """Deseasonalised series: value minus its smoothed day-of-year climatology.
+
+    The climatology is fitted on `ref` (default: `s` itself). Pass a training slice as `ref` to avoid leakage.
+    """
+    return apply_climatology(s, doy_climatology(s if ref is None else ref, window))
+
+
+def week_index(index):
+    """1..52 calendar-week index for weekly (W-SUN) dates: day-of-year of the week's Thursday, in 7-day blocks."""
+    thu = pd.DatetimeIndex(index) - pd.Timedelta(days=3)
+    return np.minimum((doy365(thu) - 1) // 7 + 1, 52)
 
 
 def pairwise_granger(df, pairs, maxlag=7):

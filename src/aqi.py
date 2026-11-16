@@ -1,4 +1,7 @@
-"""CPCB (India) National AQI categories for 24-hour average PM2.5 (µg/m³)."""
+"""CPCB (India) National AQI PM2.5 sub-index bands for 24-hour average PM2.5 (µg/m³).
+
+The official AQI is the MAXIMUM sub-index over all pollutants, so a band here is a "PM2.5 sub-index band", not the AQI.
+"""
 import numpy as np
 import pandas as pd
 
@@ -28,3 +31,11 @@ def band_edges():
         out.append((name, lower, upper, colour))
         lower = upper
     return out
+
+
+def band_probabilities(mu, sd):
+    """P(PM2.5 in each band) for a lognormal log-PM2.5 ~ N(mu, sd^2). Returns array (len(CATEGORIES),)."""
+    from scipy.stats import norm
+    edges = [b[1] for b in CPCB_PM25_BANDS[:-1]]
+    cdf = np.r_[0.0, norm.cdf((np.log(edges) - mu) / sd), 1.0]
+    return np.diff(cdf)
