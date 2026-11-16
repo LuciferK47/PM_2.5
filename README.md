@@ -22,17 +22,17 @@ Because the data end in July 2020 this is a **historical forecasting study**: ba
 
 2 PM2.5 values were missing (interpolated). 287 weekly means (week ending Sunday) are used for forecasting.
 
-## Main results (all numbers are re-derived by `slides/beamer/verify_numbers.py`, 65 checks)
+## Main results (all numbers are re-derived by `slides/beamer/verify_numbers.py`, automated checks of selected numbers; see `docs/REVIEW_RESPONSES.md` for what they do not cover)
 
 - **Seasonality:** winter 213 vs monsoon 48 ug/m3 (4.4x); STL seasonal strength 0.90 (2015-18 weeks). Log transform: skew 1.70 to -0.08, monthly spread 7.9x to 1.3x.
-- **Level drift:** after removing the cycle, PM2.5 falls about 25% from 2016 to 2019. Station check: 10, 8, 17, 37, 37 stations reporting; a fixed 6-station panel still falls about 20%, so the decline is mostly real.
+- **Level drift:** after removing the cycle, PM2.5 falls about 25% from 2016 to 2019. Station check: 10, 8, 17, 37, 37 stations reporting; a fixed 6-station panel still falls about 20%, consistent with a genuine decline (a network effect is not fully excluded).
 - **Weather (Q1):** wind and humidity anomalies predict PM2.5 for about a week (joint HAC tests p<1e-9 at every lag order 1-7; robust to rain/temperature controls, trend, training-only climatology). Reverse direction absent/weak. A 1-SD shock changes PM2.5 by about -6 to -12% (wind) and -4 to -7% (humidity) the next day. Predictive, not proof of physical cause.
-- **Weekly scale:** last week's weather adds nothing (delta R2 = 0.005, p = 0.51).
-- **52-week forecasts (Q2):** climatology is hard to beat. Pre-declared Fourier+ARMA: MAE 31.5 / 23.4 / 25.7 for 2017 / 2018 / 2019 vs climatology 31.0 / 21.8 / 27.8. SARIMA D=1 is unstable (54 in 2017), SARIMA D=0 and a small LSTM are clearly worse. Most differences are not significant with three origins.
-- **Intervals:** model-based 95% intervals covered 90% of 2019 weeks (all misses low: level bias); seasonal rescaling from earlier folds gives 96%.
+- **Weekly scale:** no added value from last week's weather was detected in the tested specification (delta R2 = 0.005, p = 0.51).
+- **52-week forecasts (Q2):** climatology is hard to beat. Fourier+ARMA (procedure fixed before the final runs; 2019 was examined in earlier iterations): MAE 31.5 / 23.4 / 25.7 for 2017 / 2018 / 2019 vs climatology 31.0 / 21.8 / 27.8, statistically indistinguishable. SARIMA D=1 is unstable (54 in 2017); SARIMA D=0 and a small LSTM (36 / 28 / 54 after an alignment fix) are clearly worse. No model is significantly better than climatology.
+- **Intervals:** model-based 95% intervals covered 90% of 2019 weeks (all misses low: level bias); seasonal rescaling from earlier folds gives 96% but makes the intervals ~43% wider and the Winkler score worse (175 to 193); the 2017 stress fold covered only 69%.
 - **One week ahead:** lagged weather -2.4%, last-3-days +0.7%, same-week weather (hindsight) +6.9% MAE change: weather is explanatory, not a forecasting input.
-- **2020:** outlook month by month; validated pipeline on 2019 (all 12 monthly means inside the 95% interval, but Poor-or-worse share over-predicted 55% vs 45%). Lockdown weeks were about 43% below the no-lockdown forecast (38% after weather adjustment).
-- **Bugs found and fixed from the earlier draft:** Ljung-Box artifact (52 diffuse residuals), seasonal MA at -0.988 (unidentified), missing constant in D=0 SARIMA, test-year leakage in headline statistics, leap-year day-of-year, over-claims ("weather drives", "p<1e-10 everywhere", PM2.5 band called AQI). See `docs/REVIEW_RESPONSES.md`.
+- **2020:** outlook month by month; validated pipeline on 2019 (all 12 monthly means inside the 95% interval, but Poor-or-worse share over-predicted 55% vs 45%). Lockdown-period PM2.5 (10 weeks, 23 Mar-31 May) was about 43% below the model's no-lockdown median (38% with the actual weather; about 35% after adjusting for the model's pre-lockdown bias; 37-51% across level specifications; a 2019 placebo gives -15%). Descriptive, not a causal estimate.
+- **Bugs found and fixed from the earlier draft and from two rounds of outside audits (LSTM alignment, checker off-by-one, bootstrap boundaries, interval widths, daily-path coherence):** Ljung-Box artifact (52 diffuse residuals), seasonal MA at -0.988 (unidentified), missing constant in D=0 SARIMA, test-year leakage in headline statistics, leap-year day-of-year, over-claims ("weather drives", "p<1e-10 everywhere", PM2.5 band called AQI). See `docs/REVIEW_RESPONSES.md`.
 
 ## Layout
 
