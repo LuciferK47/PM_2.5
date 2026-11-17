@@ -12,7 +12,7 @@
 \definecolor{hblue}{HTML}{0B4F8A}
 \definecolor{boxbg}{HTML}{C9D4E3}
 \hypersetup{colorlinks=true,urlcolor=hblue,linkcolor=hblue,citecolor=hblue}
-\graphicspath{{../slides/beamer/fig/}{../figures/}}
+\graphicspath{{../slides/beamer/fig_report/}{../figures/}}
 \newcommand{\pmtwo}{PM$_{2.5}$}
 \newcommand{\ugm}{$\mu$g/m$^3$}
 \input{../slides/beamer/tables/numbers.tex}
@@ -67,7 +67,7 @@ Pollution is a sequence of correlated observations with a strong seasonal cycle,
 \section{Data Analysis}
 \subsection{Data}
 Daily city-level \pmtwo{} for Delhi, 2015-01-01 to 2020-07-01 (2{,}009 days; two missing days interpolated), comes from the CPCB records in the Kaggle air-quality dataset \cite{kaggle}, which also holds station-level files. Wind, relative humidity, temperature and rain come from the ERA5 reanalysis \cite{era5} served by Open-Meteo \cite{openmeteo} at 28.61N, 77.21E. The forecasting series is 287 weekly means (weeks end on Sunday); all headline statistics use the training years 2015--2018.
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{01_pm25_timeseries.png}\caption{Daily \pmtwo{} in Delhi, 2015--2020, with a 30-day rolling mean.}\label{fig:ts}\end{figure}
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{daily_ts.pdf}\caption{Daily \pmtwo{} in Delhi, 2015--2020, with a 30-day rolling mean.}\label{fig:ts}\end{figure}
 
 \subsection{Stationarity Analysis}
 Winters average (Figure~\ref{fig:box}) \winterMean{} \ugm{} against \monsoonMean{} \ugm{} in the monsoon (\ratioWM$\times$); STL decomposition \cite{stl} gives a seasonal strength of $F_s=\Fs$ (Figure~\ref{fig:stl}). Raw \pmtwo{} is right-skewed (\skewRaw) and its monthly spread grows with its level (max/min monthly SD \sdRatioRaw$\times$, ARCH-LM \archRaw); after the log (Table~\ref{tab:log}) \cite{boxcox} the skew is \skewLog{}, the ratio \sdRatioLog$\times$ and ARCH-LM \archLog{} \cite{engle}.
@@ -88,7 +88,7 @@ We also tested whether the level is constant: annual means of the deseasonalised
 \subsection{Is the Decline Real?}
 After removing the cycle, annual means fall about \declAll\% from 2016 to 2019, but the number of reporting stations rose from 10 and 8 (2015--16) to 37 (2018--19), so a change in the station mix could create a spurious decline (Figure~\ref{fig:st}). A fixed six-station panel (at least 60 days in every year) falls by \declPanel\%, and the city series after regressing out wind, humidity and temperature by \declWx\%. This is consistent with a genuine component; it does not rule out a network-composition effect, and the panel is thin in 2017 (\panelDaysSev{} days).
 \begin{figure}[t]\centering\includegraphics[width=\linewidth]{seasonal_boxplot.pdf}\caption{\pmtwo{} by calendar month.}\label{fig:box}\end{figure}
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{fc_station.pdf}\caption{Stations reporting (left) and mean log anomaly by year (right).}\label{fig:st}\end{figure}
+\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_station.pdf}\caption{Stations reporting (left) and mean log anomaly by year (right).}\label{fig:st}\end{figure*}
 
 \section{Preliminary Analysis: Does Weather Predict \pmtwo{}?}
 \subsection{Granger Causality in a VAR}
@@ -97,7 +97,7 @@ We deseasonalise daily wind $W$, humidity $H$ and log \pmtwo{} $P$ by their day-
 
 \subsection{Shocks and Variance Decomposition}
 A one-SD unexpected rise in wind lowers \pmtwo{} by \irfWindA--\irfWindB\% the next day, humidity by \irfRhA--\irfRhB\%, fading within about a week (Figure~\ref{fig:irf}); the range is the Cholesky ordering, and the ordering-free generalised response \cite{pesaran} lies inside it. Weather shocks explain \fevdA--\fevdB\% of the 14-day forecast-error variance, again depending on the ordering.
-\begin{figure*}[t]\centering\includegraphics[width=0.8\textwidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\label{fig:irf}\end{figure*}
+\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\label{fig:irf}\end{figure*}
 
 \subsection{The Weekly Horizon}
 Adding last week's wind and humidity to a model with last week's \pmtwo{} raises $R^2$ only from \nestRone{} to \nestRtwo{} ($\Delta R^2=\nestDR$, joint HAC Wald $p=\nestP$): within the tested specification weather is a short-memory predictor, and the 52-week models use no weather.
@@ -129,7 +129,7 @@ The first $D=0$ model had no constant, which forces forecasts toward $\log\text{
 
 \section{Model Comparisons}
 \subsection{52-Week Backtest}
-\begin{figure*}[t]\centering\includegraphics[width=0.82\textwidth]{fc_backtest.pdf}\caption{The 2019 forecast of the selected model against climatology and the actuals (left), and MAE by forecast year (right).}\label{fig:bt}\end{figure*}
+\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_backtest.pdf}\caption{The 2019 forecast of the selected model against climatology and the actuals (left), and MAE by forecast year (right).}\label{fig:bt}\end{figure*}
 In 2019 the selected model scores \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology; SARIMA with $D=1$ scores \fcMaeSarimaNineteen{} but \fcMaeSarimaSeventeen{} in 2017 (Table~\ref{tab:bt}, Figure~\ref{fig:bt}). Over 2018--19 the selected model differs from climatology by \fcSelDiff{} \ugm{} with a 95\% bootstrap interval [\fcSelLo{}, \fcSelHi{}]: statistically indistinguishable. The linear-trend variant has the lowest mean (\fcLinMae{} vs \fcClimMae{}) but its interval also spans 0 and it was not the pre-set choice. Seasonal naive, SARIMA $D=0$ and the small LSTM (\fcMaeLstmEighteen{} in 2018, \fcMaeLstmNineteen{} in 2019, after an alignment fix) are clearly worse. A year ahead the calendar carries almost all of the predictable signal. The selected model's residuals still show autocorrelation at lags 26 and 52 in the 2019 fold ($p=\fcLBtwentysix{}$ and $\fcLBfiftytwo{}$; lag 10 is marginal at $p=\fcLBten{}$) while ARCH-LM(4) is clean ($p=\fcARCHp{}$): a few harmonics do not capture all seasonal structure, which is a limit of the model.
 \begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/fc_backtest.tex}}\caption{52-week MAE (\ugm{}); last column: bootstrap verdict against climatology, 2018--19.}\label{tab:bt}\end{table}
 
@@ -141,7 +141,7 @@ The calibration rule was fixed before 2019 was scored: compute standardised log 
 
 \subsection{One Week Ahead}
 The no-weather model's one-step MAE is \fcOneDhr{}. Last week's wind and humidity change it by \fcOneLagged\%, the last three days of the previous week by \fcOneLastThree\%, and the \emph{same} week's weather, known only with hindsight, by \fcOneOracle\% (Harvey--Leybourne--Newbold $p\approx0.07$). Weather explains \pmtwo{} but is a poor forecasting input (Figure~\ref{fig:one}).
-\begin{figure}[t]\centering\includegraphics[width=0.92\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\label{fig:one}\end{figure}
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\label{fig:one}\end{figure}
 
 \subsection{Conclusive Statements}
 \begin{itemize}\setlength\itemsep{0pt}\setlength\topsep{2pt}
@@ -165,7 +165,7 @@ The no-weather model's one-step MAE is \fcOneDhr{}. Last week's wind and humidit
 \section{Forecasting Results}
 \subsection{The 2020 Outlook and its Validation}
 The final model is fitted on 2015--2019; 5{,}000 weekly paths are simulated (53 weeks, so every calendar day is covered), calibrated, converted to daily values by adding a whole within-week offset vector so each week keeps its simulated mean, and classified into \pmtwo{} bands (not the official multi-pollutant index). Applied to 2019 with data to 2018, all \fcValInside{} monthly means fall inside their 95\% intervals, but the share of Poor-or-worse days is over-predicted (\fcValPoorPred\% vs \fcValPoorAct\% observed). In 2020, January--February fall inside the interval and March--June below it (Figure~\ref{fig:out}, Table~\ref{tab:out}).
-\begin{figure*}[t]\centering\includegraphics[width=0.8\textwidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval (left) and expected days per band (right).}\label{fig:out}\end{figure*}
+\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval (left) and expected days per band (right).}\label{fig:out}\end{figure*}
 
 \begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/fc_outlook.tex}}\caption{2020 outlook (\ugm{}); Days Poor+ = expected days above 90 \ugm{}; actual shown for full months.}\label{tab:out}\end{table}
 \subsection{The 2020 Lockdown}
@@ -186,7 +186,7 @@ The ten Sunday-ending weeks 29 March--31 May cover 23 March--31 May. Observed \p
 Code, data, notebooks and results are at \url{https://github.com/LuciferK47/PM_2.5}; \texttt{HANDOFF.md} there explains the project in detail.
 
 \section{Acknowledgement}
-The authors express their gratitude to Prof.\ Anupama Sharma for the opportunity to work on this project in Time Series Analysis and Forecasting, and for her guidance and support.
+The authors express their gratitude to Prof.\ Anupama Sharma for the opportunity to work on this project in Time Series Analysis and Forecasting, and for their guidance and support.
 
 \addcontentsline{toc}{section}{\protect\numberline{}References}
 \renewcommand{\refname}{References}

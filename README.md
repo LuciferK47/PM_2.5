@@ -59,7 +59,7 @@ src/               data.py, aqi.py, tsa.py (ADF/KPSS, climatology, week index),
 notebooks/         01_data_prep, 02_eda, 03_var_granger, 04_forecasting (executed, outputs saved)
 results/           CSV/JSON tables; fc_* files belong to the forecasting study
 figures/           PNG figures from the notebooks
-slides/beamer/     main.tex (final presentation, ~43 frames), make_figures.py, verify_numbers.py, tables/
+slides/beamer/     main.tex (final presentation, ~46 frames), make_figures.py, verify_numbers.py, tables/
 report/            report.tex (final report, 7 pages, two-column)
 HANDOFF.md         full project guide for a new team member: theory, data quirks, limitations, viva Q&A, reference audit
 tools/             build_nb04.py (regenerates notebook 04)
@@ -89,8 +89,8 @@ cd ..
 # optional: regenerate notebook 04 from its builder first
 python tools/build_nb04.py
 
-# deck figures and slide numbers, number checks, then the PDFs (needs tectonic)
-cd slides/beamer && python make_figures.py && python verify_numbers.py && tectonic main.tex
+# deck figures (slide size) and report figures (column size), number checks, then the PDFs (needs tectonic)
+cd slides/beamer && python make_figures.py && PROFILE=report python make_figures.py && python verify_numbers.py && tectonic main.tex
 cd ../../report && tectonic report.tex
 ```
 

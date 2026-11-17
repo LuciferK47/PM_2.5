@@ -50,12 +50,12 @@ src/data.py, tsa.py, aqi.py, forecast.py, plots.py    library code
 notebooks/01_data_prep, 02_eda, 03_var_granger, 04_forecasting    executed, outputs saved
 results/                     every CSV/JSON table (fc_* = forecasting)
 figures/                     PNG figures from the notebooks
-slides/beamer/               main.tex (deck), make_figures.py, verify_numbers.py, tables/*.tex, fig/*.pdf
+slides/beamer/               main.tex (deck), make_figures.py, verify_numbers.py, tables/*.tex, fig/*.pdf (deck), fig_report/*.pdf (report)
 report/report.tex            final report source
 tools/build_nb04.py          regenerates notebook 04 from code
 ```
 
-**Order to run** (see `README.md` for the full commands): create the environment from `requirements.txt` (Python 3.12, statsmodels 0.15.0 etc.), download the three Kaggle files into `data/raw/` (needs a Kaggle token), run the notebooks in order 01 to 04, then `python slides/beamer/make_figures.py` (writes `fig/*.pdf`, `tables/*.tex`, and `tables/numbers.tex` - the macros every slide and report number comes from), `python slides/beamer/verify_numbers.py` (independent re-derivation of the numbers; must end "checks passed"), then `tectonic main.tex` and `tectonic report/report.tex`.
+**Order to run** (see `README.md` for the full commands): create the environment from `requirements.txt` (Python 3.12, statsmodels 0.15.0 etc.), download the three Kaggle files into `data/raw/` (needs a Kaggle token), run the notebooks in order 01 to 04, then `python slides/beamer/make_figures.py` and `PROFILE=report python slides/beamer/make_figures.py` (the second writes the column-sized `fig_report/*.pdf`; the first writes `fig/*.pdf`, `tables/*.tex`, and `tables/numbers.tex` - the macros every slide and report number comes from), `python slides/beamer/verify_numbers.py` (independent re-derivation of the numbers; must end "checks passed"), then `tectonic main.tex` and `tectonic report/report.tex`.
 
 **Things that bite**
 - Notebook 04 takes roughly 10-12 minutes. It sets `OMP_NUM_THREADS=1` itself; without that, BLAS threads oversubscribe the parallel jobs and it crawls.

@@ -133,20 +133,25 @@
     \item \textbf{Weather}: ERA5 reanalysis from Open-Meteo at 28.61N, 77.21E: wind, relative humidity, temperature, rain.
     \item \textbf{Weekly series}: 287 weekly means (weeks end Sunday); training years 2015--2018 for all headline statistics.
   \end{itemize}
-  \begin{figure}\centering\includegraphics[width=0.78\linewidth]{../../figures/01_pm25_timeseries.png}\caption{Daily PM$_{2.5}$ in Delhi, 2015--2020.}\end{figure}
+\end{frame}
+
+\begin{frame}{The Daily PM$_{2.5}$ Series}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/daily_ts.pdf}\caption{Daily PM$_{2.5}$ in Delhi, 2015--2020, with a 30-day mean.}\end{figure}
+  \begin{itemize}\item Strong winter peaks every year and a clean monsoon trough; 2020 ends in July.\end{itemize}
 \end{frame}
 
 \begin{frame}{Seasonality: STL Decomposition}
-  \begin{figure}\centering\includegraphics[width=0.8\linewidth]{fig/stl.pdf}\caption{STL decomposition of weekly log PM$_{2.5}$.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/stl.pdf}\caption{STL decomposition of weekly log PM$_{2.5}$.}\end{figure}
   \begin{itemize}\item Seasonal strength $F_s=\Fs$ (STL, 2015--18 weeks): the yearly cycle explains most of the variance. Winter averages \winterMean\ \ugm{}, the monsoon \monsoonMean\ \ugm{} (\ratioWM$\times$).\end{itemize}
 \end{frame}
 
 \begin{frame}{Why Take Logs?}
-  \begin{columns}[c]
-    \column{0.5\linewidth}\begin{figure}\includegraphics[width=\linewidth]{fig/why_log.pdf}\caption{Raw and log distributions.}\end{figure}
-    \column{0.46\linewidth}\begin{itemize}\item Raw PM$_{2.5}$ is right-skewed (skew \skewRaw) and its monthly spread grows with its level (max/min monthly SD \sdRatioRaw$\times$). After the log: skew \skewLog, ratio \sdRatioLog$\times$.\end{itemize}
-  \end{columns}
-  \begin{table}\centering\scriptsize\input{tables/log_tests.tex}\caption{Tests before and after the log.}\end{table}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/why_log.pdf}\caption{Raw and log distributions.}\end{figure}
+  \begin{itemize}\item Raw PM$_{2.5}$ is right-skewed (skew \skewRaw) and its monthly spread grows with its level (max/min monthly SD \sdRatioRaw$\times$). After the log: skew \skewLog, ratio \sdRatioLog$\times$.\end{itemize}
+\end{frame}
+
+\begin{frame}{Why Take Logs? The Tests}
+  \begin{table}\centering\small\input{tables/log_tests.tex}\caption{Tests before and after the log.}\end{table}
 \end{frame}
 
 \begin{frame}{Stationarity and Transformations}
@@ -167,7 +172,7 @@
 \end{frame}
 
 \begin{frame}{Is the Decline Real? A Station Check}
-  \begin{figure}\centering\includegraphics[width=0.74\linewidth]{fig/fc_station.pdf}\caption{Stations reporting, and the decline on a fixed panel.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_station.pdf}\caption{Stations reporting, and the decline on a fixed panel.}\end{figure}
   \begin{itemize}\item The city value is the mean over reporting stations, and the count rose from 10 and 8 (2015--16) to 37 (2018--19). A fixed six-station panel still falls by \declPanel\% (all stations \declAll\%, weather-adjusted city series \declWx\%): consistent with a genuine decline, but a network effect is not ruled out.\end{itemize}
 \end{frame}
 
@@ -190,12 +195,12 @@
 \end{frame}
 
 \begin{frame}{What Is a Shock?}
-  \begin{figure}\centering\includegraphics[width=0.95\linewidth]{fig/shock_example.pdf}\caption{An unexpected change in weather (a shock) and the PM$_{2.5}$ change that follows.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/shock_example.pdf}\caption{An unexpected change in weather (a shock) and the PM$_{2.5}$ change that follows.}\end{figure}
   \begin{itemize}\item A \emph{shock} is the part of today's wind or humidity that the past does not predict. Looking at days with an unusually large wind surprise shows what PM$_{2.5}$ does next.\end{itemize}
 \end{frame}
 
 \begin{frame}{How Long Does a Weather Shock Matter?}
-  \begin{figure}\centering\includegraphics[width=0.95\linewidth]{fig/irf_range.pdf}\caption{Impulse responses of PM$_{2.5}$ to wind and humidity shocks under both orderings.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/irf_range.pdf}\caption{Impulse responses of PM$_{2.5}$ to wind and humidity shocks under both orderings.}\end{figure}
   \begin{itemize}
     \item A one-SD unexpected rise in wind lowers PM$_{2.5}$ by \irfWindA--\irfWindB\% the next day; humidity by \irfRhA--\irfRhB\%. The range is the variable ordering (Cholesky); the ordering-free generalised response (Pesaran--Shin) lies inside it. Effects fade in about a week.
   \end{itemize}
@@ -277,7 +282,12 @@
 \end{frame}
 
 \begin{frame}{Backtest Results}
-  \begin{figure}\centering\includegraphics[width=0.88\linewidth]{fig/fc_backtest.pdf}\caption{The 2019 forecast of the selected model, and MAE by forecast year.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_backtest.pdf}\caption{The 2019 forecast of the selected model against climatology and the actuals.}\end{figure}
+  \begin{itemize}\item The selected model follows the winter peak and monsoon trough; its 95\% band is wide in winter.\end{itemize}
+\end{frame}
+
+\begin{frame}{Backtest Errors by Year}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_mae.pdf}\caption{52-week MAE by forecast year and model.}\end{figure}
   \begin{itemize}\item 2019: selected \fcMaeSelNineteen\ vs climatology \fcMaeClimNineteen; SARIMA $D=1$ \fcMaeSarimaNineteen\ in 2019 but \fcMaeSarimaSeventeen\ in 2017.\end{itemize}
 \end{frame}
 
@@ -298,15 +308,15 @@
 \end{frame}
 
 \begin{frame}{One Week Ahead: Does Weather Help?}
-  \begin{figure}\centering\includegraphics[width=0.6\linewidth]{fig/fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\end{figure}
   \begin{itemize}\item MAE of the no-weather model \fcOneDhr; last week's weather changes it by \fcOneLagged\%, the last three days by \fcOneLastThree\%, and the \emph{same} week's weather (known only with hindsight) by \fcOneOracle\% ($p\approx0.07$, Harvey--Leybourne--Newbold). Weather explains but forecasts poorly.\end{itemize}
 \end{frame}
 
 % ================= 7. FORECAST AND CASE STUDY =================
 \section{Forecast and Case Study}
 \begin{frame}{Forecast: Outlook for 2020}
-  \begin{figure}\centering\includegraphics[width=0.84\linewidth]{fig/fc_outlook.pdf}\caption{2020 outlook: monthly mean and expected days per band.}\end{figure}
-  \begin{itemize}\item Fitted on 2015--2019: 5,000 simulated weekly paths, converted to daily values (each week keeps its simulated mean) and classified into PM$_{2.5}$ bands (not the official AQI). Jan--Feb 2020 fall inside the 95\% interval; March--June fall below it.\end{itemize}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_outlook.pdf}\caption{2020 outlook: monthly mean and expected days per band.}\end{figure}
+  \begin{itemize}\item 5,000 simulated weekly paths (fit to 2015--2019), converted to daily values and classified into PM$_{2.5}$ bands (not the AQI). Jan--Feb 2020 lie inside the 95\% interval; March--June below it.\end{itemize}
 \end{frame}
 
 \begin{frame}{Validating the Pipeline on 2019}
@@ -318,7 +328,7 @@
 \end{frame}
 
 \begin{frame}{Case Study: The 2020 Lockdown}
-  \begin{figure}\centering\includegraphics[width=0.76\linewidth]{fig/fc_lockdown.pdf}\caption{Actual 2020 weekly PM$_{2.5}$ against the no-lockdown forecast.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_lockdown.pdf}\caption{Actual 2020 weekly PM$_{2.5}$ against the no-lockdown forecast.}\end{figure}
   \begin{itemize}\item Over the ten weeks ending 29 Mar--31 May (covering 23 Mar--31 May) observed PM$_{2.5}$ averaged \fcLockActual\ \ugm{} against a no-lockdown median of \fcLockCf: about \textbf{\fcLockPct\%} lower (95\% interval \fcLockLo--\fcLockHi\%); \fcLockWxPct\% given the actual weather.\end{itemize}
 \end{frame}
 
