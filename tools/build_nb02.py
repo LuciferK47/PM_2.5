@@ -42,7 +42,7 @@ key = {"n_days": len(daily), "n_weeks": len(weekly), "n_weeks_model": len(w_mod)
 print(len(daily), "days;", len(weekly), "weeks;", len(w_mod), "weeks 2015-2019;", len(w_tr), "weeks 2015-2018")''')
 
 md("""## 1. The series: how bad is Delhi's PM2.5, and when?""")
-code('''cat_share = pm25_category(daily["pm25"].to_numpy()).value_counts(normalize=True).reindex(CATEGORIES) * 100
+code('''cat_share = pm25_category(d_mod["pm25"].to_numpy()).value_counts(normalize=True).reindex(CATEGORIES) * 100
 key["pct_days_poor_or_worse"] = round(float(cat_share[["Poor", "Very Poor", "Severe"]].sum()), 1)
 key["pm25_mean_2015_2019"] = round(float(d_mod["pm25"].mean()), 1)
 key["pm25_max_daily"] = round(float(d_mod["pm25"].max()), 1)

@@ -77,26 +77,31 @@ def converged(res):
 
 def holt_winters(y, idx):
     """Additive Holt-Winters (ETS) on log PM2.5 with seasonal period 52. Level + (optionally damped) trend + seasonal
-    index; the trend option is chosen by AIC on the training data. Interval from the model's own forecast variance."""
+    index; the trend option is chosen by AIC on the training data. Initial level and seasonal indices are estimated by
+    maximum likelihood (as in Lecture 23); the heuristic start (first two years) is used only if that fails.
+    Interval from the model's own forecast variance."""
     from statsmodels.tsa.exponential_smoothing.ets import ETSModel
     best = None
-    for trend, damped in [(None, False), ("add", True)]:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            try:
-                r = ETSModel(y, error="add", trend=trend, damped_trend=damped, seasonal="add", seasonal_periods=52,
-                             initialization_method="heuristic").fit(disp=False, maxiter=200)
-            except Exception:  # noqa: BLE001
-                continue
-        if np.isfinite(r.aic) and (best is None or r.aic < best[0]):
-            best = (r.aic, trend, r)
-    _, trend, r = best
+    for init in ("estimated", "heuristic"):            # Lecture 23 uses "estimated"; heuristic only as a fallback
+        for trend, damped in [(None, False), ("add", True)]:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    r = ETSModel(y, error="add", trend=trend, damped_trend=damped, seasonal="add", seasonal_periods=52,
+                                 initialization_method=init).fit(disp=False, maxiter=1000)
+                except Exception:  # noqa: BLE001
+                    continue
+            if np.isfinite(r.aic) and converged(r) and (best is None or r.aic < best[0]):
+                best = (r.aic, trend, r, init)
+        if best is not None:
+            break
+    _, trend, r, init = best
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         f = r.get_prediction(start=len(y), end=len(y) + len(idx) - 1)
         mu = np.asarray(f.predicted_mean)
         sd = np.sqrt(np.asarray(f.var_pred_mean))
-    return {"mu": mu, "sd": sd, "res": r, "spec": {"trend": trend or "none", "alpha": float(r.smoothing_level),
+    return {"mu": mu, "sd": sd, "res": r, "spec": {"trend": trend or "none", "init": init, "alpha": float(r.smoothing_level),
                                                      "gamma": float(r.smoothing_seasonal)}}
 
 
@@ -135,15 +140,16 @@ def sarima_fixed(order, sorder):
 
 # ── harmonic regression with ARMA errors (Lectures 13-16: regression with autocorrelated errors) ───────────
 PQ_GRID = [(0, 0), (1, 0), (2, 0), (1, 1), (2, 1)]
+K_MAX = 10   # Fourier pairs searched (FPP3 allows up to m/2 = 26; 10 keeps the search fast and is never the choice)
 
 
 def harmonic(y, idx, fixed=None):
     """y_t = c + sum_k [a_k sin(2 pi k t / m) + b_k cos(2 pi k t / m)] + eta_t, eta_t ~ ARMA(p,q).
-    K (number of Fourier pairs, 1..5) and (p,q) are chosen by AIC on the training data."""
+    K (number of Fourier pairs, 1..K_MAX) and (p,q) are chosen by AIC on the training data."""
     if fixed is not None:
         cand = [(fixed["K"], (fixed["p"], fixed["q"]))]
     else:
-        cand = list(product(range(1, 6), PQ_GRID))
+        cand = list(product(range(1, K_MAX + 1), PQ_GRID))
     best, rejected = None, 0
     for K, (p, q) in cand:
         try:

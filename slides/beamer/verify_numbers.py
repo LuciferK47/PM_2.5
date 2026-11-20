@@ -57,6 +57,7 @@ check("2,009 daily records", len(d) == 2009 and d.index.min() == pd.Timestamp("2
 check("2 PM2.5 values missing (then interpolated)", n_missing == 2 and d.pm25.notna().all(), f"missing={n_missing}")
 check("weather has no gaps", d[["wind", "rh", "temp", "rain"]].notna().all().all())
 d["lpm"] = np.log(d.pm25)
+dm_ = d.loc[:"2019-12-31"]
 proc = pd.read_csv(ROOT / "data/processed/delhi_daily.csv", index_col="Date", parse_dates=True)
 check("processed daily PM2.5/wind/humidity equal independent rebuild", np.allclose(proc.pm25, d.pm25) and np.allclose(proc.wind, d.wind) and np.allclose(proc.rh, d.rh))
 wk = d[["pm25"]].resample("W-SUN").mean().assign(n=d.pm25.resample("W-SUN").count())
@@ -67,9 +68,8 @@ lw = np.log(wk.pm25)
 check("macros: nDays/nWeeks", macros["nDays"].replace("{,}", "") == "2009" and macros["nWeeks"] == "287")
 
 # ── 2. motivation and seasonality (modelling sample 2015-2019) ─────────────────────────────────────────
-dm_ = d.loc[:"2019-12-31"]
-share = float((d.pm25 > 90).mean() * 100)
-check("share of Poor-or-worse days (PM2.5 > 90, all days)", macros["pctPoor"] == f"{share:.0f}", f"{share:.1f}%")
+share = float((dm_.pm25 > 90).mean() * 100)
+check("share of days in the Poor band or worse (PM2.5 > 90), 2015-2019 only", macros["pctPoor"] == f"{share:.0f}", f"{share:.1f}%")
 check("2015-2019 mean PM2.5", macros["pmMean"] == f"{dm_.pm25.mean():.0f}", f"{dm_.pm25.mean():.1f}")
 w_mean = dm_.pm25[dm_.index.month.isin([11, 12, 1])].mean(); m_mean = dm_.pm25[dm_.index.month.isin([7, 8, 9])].mean()
 check("winter / monsoon means and ratio", macros["winterMean"] == f"{w_mean:.0f}" and macros["monsoonMean"] == f"{m_mean:.0f}" and macros["ratioWM"] == f"{w_mean / m_mean:.1f}",
@@ -103,6 +103,25 @@ check("ACF of seasonal difference at lag 52 is negative", acf(t52, nlags=52)[52]
 for lab, s_, pk, kk in (("log level", tr, "adfPLog", "kpssLog"), ("seasonal difference", t52, "adfPDiff", "kpssDiff")):
     ap, ks = adfuller(s_, autolag="AIC")[1], kpss(s_, regression="c", nlags="auto")[0]
     check(f"ADF p / KPSS stat, {lab}", close(np.log10(ap), np.log10(mn(pk)), 0.03) and close(ks, mn(kk), 0.0011) and ap < 0.05 and ks < 0.463, f"p={ap:.2e}, KPSS={ks:.3f}")
+
+# ── 5b. SARIMA identification: same differencing, Ljung-Box df, harmonic K, Holt-Winters start ─────────
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.stats.diagnostic import acorr_ljungbox
+
+idn = pd.read_csv(RES / "fc_sarima_identification.csv", index_col=0)
+check("all SARIMA candidates in the AIC table share d = 0, D = 1 (AIC is only comparable on the same differencing)",
+      all(re.search(r"\(\d,0,\d\)\(\d,1,\d\)52", n) for n in idn.index), str(list(idn.index)))
+fitC = SARIMAX(tr, order=(1, 0, 1), seasonal_order=(0, 1, 1, 52)).fit(disp=False, maxiter=200)
+rowC = idn[idn.index.str.contains(r"\(1,0,1\)\(0,1,1\)52")].iloc[0]
+check("AIC of (1,0,1)(0,1,1)52 refit independently", close(fitC.aic, rowC.AIC, 0.2), f"{fitC.aic:.2f} vs {rowC.AIC}")
+e_ = pd.Series(np.asarray(fitC.resid)).iloc[int(fitC.loglikelihood_burn):]
+lb_ = acorr_ljungbox(e_, lags=[10, 26, 52], model_df=3, return_df=True)["lb_pvalue"]
+lbf = pd.read_csv(RES / "fc_sarima_ljungbox.csv", index_col=0).iloc[:, 1]
+check("Ljung-Box p-values with model_df = 3 (ar, ma, seasonal ma), first 52 residuals dropped",
+      all(close(lb_[k], lbf.loc[k], 0.003) for k in (10, 26, 52)) and macros["lbTen"] == f"{lb_[10]:.2f}" and macros["lbFiftyTwo"] == f"{lb_[52]:.3f}", str(lb_.round(3).to_dict()))
+sp_ = pd.read_csv(RES / "fc_specs.csv")
+check("harmonic K is below the search bound (K_MAX = 10) at every origin", (sp_[sp_.model == "Harmonic regression"].K < 10).all(), str(sp_[sp_.model == "Harmonic regression"].K.tolist()))
+check("Holt-Winters initial state estimated by maximum likelihood (Lecture 23) at every origin", (sp_[sp_.model == "Holt-Winters"].init == "estimated").all())
 
 # ── 6. weather: VAR lag choice, Granger F-tests and the weekly nested test (own OLS) ──────────────────
 def clim_anom(s, window=31):
@@ -282,16 +301,40 @@ for (fold, m), g in fb.groupby(["fold", "model"]):
 check("10-week window gaps: 774 = 6 models x 3 years x 43 windows, equal recomputation", len(win) == 774 and np.allclose(sorted(win.gap_pct.to_numpy()), sorted(ww), atol=1e-6))
 check("harmonic: no ordinary window as low as the lockdown gap (slide claim)", win[win.model == "Harmonic regression"].gap_pct.min() > lk.loc["Harmonic regression", "lockdown gap (%)"])
 
-# ── 10. slides and report: structure ──────────────────────────────────────────────────────────────────
+# ── 10. slides, notes and documents: structure ──────────────────────────────────────────────────────
 main = (Path(__file__).resolve().parent / "main.tex").read_text(); body = main[main.index("\\begin{document}"):]
 frames = body.count("\\begin{frame}"); notes = len(re.findall(r"\\note\{", body))
-check("every frame has a speaker note (section overviews get theirs from the macro)", notes + len(re.findall(r"\\section\{", body)) >= frames, f"{frames} frames, {notes} notes")
+check("deck has 33-38 frames and every frame has a speaker note", 33 <= frames <= 38 and notes == frames, f"{frames} frames, {notes} notes")
+
+
+def balanced(t, i):
+    depth, j = 0, i
+    while j < len(t):
+        depth += t[j] == "{"; depth -= t[j] == "}"; j += 1
+        if depth == 0:
+            return t[i + 1:j - 1]
+    return ""
+
+
+bare = []
+for m in re.finditer(r"\\note\{", body):
+    txt = balanced(body, m.end() - 1)
+    txt = re.sub(r"\\[A-Za-z]+", " ", txt)                                    # drop macros (their numbers are generated)
+    txt = re.sub(r"Lectures? [\d, and-]+", " ", txt)                           # lecture numbers
+    txt = re.sub(r"\b20(1[5-9]|20)\b", " ", txt)                              # years
+    txt = txt.replace("PM2.5", " ")
+    bare += [t_ for t_ in re.findall(r"\d+(?:\.\d+)?", txt) if t_ not in ("26", "52", "95", "365.25")]
+check("speaker notes contain no hand-typed numbers (all numbers come from macros)", not bare, str(sorted(set(bare))[:15]))
 forbidden = ["Wold", "Levene", "ARCH", "HAC", "Newey", "impulse", "FEVD", "Winkler", "bootstrap", "LSTM", "AICc", "calibrat", "Cholesky"]
-slide_text = re.sub(r"\\note\{.*?\}\s*\n(?=\\end\{frame\}|\s*\\end)", "", body, flags=re.S)
-hits = [w for w in forbidden if w in slide_text]
+slide_text = re.sub(r"\\note\{", "\\note{", body)
+hits = [w for w in forbidden if w in re.sub(r"\\note\{.*?\}\s*\n\\end\{frame\}", "", body, flags=re.S)]
 check("no out-of-syllabus terms on the slides", not hits, str(hits))
-tabs_ok = all((TAB / f"{n}.tex").read_text().startswith("\\begin{tabular}") for n in ("acc", "dm", "cover", "lock", "oneweek", "granger", "stationarity"))
+tabs_ok = all((TAB / f"{n}.tex").read_text().startswith("\\begin{tabular}") for n in ("acc", "key", "dm", "cover", "lock", "oneweek", "granger", "stationarity"))
 check("generated tables exist and are boxed tabulars", tabs_ok)
+docs = (ROOT / "README.md").read_text() + (ROOT / "HANDOFF.md").read_text()
+strip = lambda v: re.sub(r"\\ensuremath\{(.*?)\}", r"\1", v).replace("$", "")  # noqa: E731
+miss = [k for k in ("maeNaiveAvg", "maeMeanAvg", "maeHWAvg", "maeSarimaAvg", "maeHarmAvg", "maeCombAvg", "maeSarimaSeventeen", "lockActual", "pctPoor", "Fs") if strip(macros[k]) not in docs]
+check("key numbers quoted in README/HANDOFF equal the macros", not miss, str(miss))
 
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} checks passed")

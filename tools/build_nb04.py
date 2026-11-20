@@ -50,14 +50,13 @@ key = {}
 print(len(weekly), "weekly values; origins:", F.ORIGINS)''')
 
 md("""## 1. Identification: which SARIMA?
-Training years 2015-2018 (209 weeks), log scale, seasonal period s = 52. Following the Lecture 21 hands-on we compare a non-seasonal benchmark
-(A), a seasonal-only model (B) and combined models (C, D). **AIC/BIC are only comparable between models with the same differencing and
-data**; the lectures compare A-C anyway and warn that "no single metric tells the whole story", so we also look at the residuals.""")
+Training years 2015-2018 (209 weeks), log scale, seasonal period s = 52. The yearly cycle is removed by a seasonal difference (D = 1, d = 0, Section 5 of notebook 02).\n**AIC/BIC are only comparable between models fitted to the same differenced data**, so all five candidates below share d = 0, D = 1 and differ only in their\nARMA parts; the Lecture 21 hands-on warns that \"no single metric tells the whole story\", so we also look at the residuals.""")
 code('''y_tr = y.loc[:"2018-12-30"]
-cands = {"A: ARIMA(0,1,1)": ((0, 1, 1), (0, 0, 0, 0)),
-         "B: ARIMA(0,0,0)(0,1,1)52": ((0, 0, 0), (0, 1, 1, 52)),
-         "C: ARIMA(0,1,1)(0,1,1)52": ((0, 1, 1), (0, 1, 1, 52)),
-         "D: ARIMA(1,0,1)(0,1,1)52": ((1, 0, 1), (0, 1, 1, 52))}
+cands = {"A: (0,0,0)(0,1,1)52": ((0, 0, 0), (0, 1, 1, 52)),
+         "B: (1,0,0)(0,1,1)52": ((1, 0, 0), (0, 1, 1, 52)),
+         "C: (1,0,1)(0,1,1)52": ((1, 0, 1), (0, 1, 1, 52)),
+         "D: (2,0,0)(0,1,1)52": ((2, 0, 0), (0, 1, 1, 52)),
+         "E: (1,0,0)(1,1,0)52": ((1, 0, 0), (1, 1, 0, 52))}
 fits, rows = {}, []
 for name, (o, so) in cands.items():
     r = F._fit(SARIMAX(y_tr, order=o, seasonal_order=so, trend="n"))
@@ -70,12 +69,12 @@ md("""## 2. Residual check of the SARIMA model (Ljung-Box, Lecture 29)
 For a model with a seasonal difference the state-space fit starts with a **diffuse** prior on the first 52 seasonal states
 (it has no earlier year to difference against), so the first 52 "residuals" simply equal the series level; they are **not** one-step prediction errors
 and must be dropped before testing for autocorrelation. If they are kept, Ljung-Box shows p ≈ 0 at every lag, which would wrongly suggest the model is useless.""")
-code('''rD = fits["D: ARIMA(1,0,1)(0,1,1)52"]
+code('''rD = fits["C: (1,0,1)(0,1,1)52"]
 burn = int(rD.loglikelihood_burn)
 e_all = pd.Series(np.asarray(rD.resid), index=y_tr.index)
 e = e_all.iloc[burn:]
-lb_all = acorr_ljungbox(e_all, lags=[10, 26, 52], model_df=2, return_df=True)["lb_pvalue"]
-lb = acorr_ljungbox(e, lags=[10, 26, 52], model_df=2, return_df=True)["lb_pvalue"]
+lb_all = acorr_ljungbox(e_all, lags=[10, 26, 52], model_df=3, return_df=True)["lb_pvalue"]
+lb = acorr_ljungbox(e, lags=[10, 26, 52], model_df=3, return_df=True)["lb_pvalue"]
 diag = pd.DataFrame({"p-value, all residuals": lb_all.values, "p-value, first 52 dropped": lb.values}, index=pd.Index([10, 26, 52], name="Ljung-Box lag"))
 diag.round(4).to_csv(RESULTS / "fc_sarima_ljungbox.csv")
 sma = float(rD.params["ma.S.L52"]); sma_se = float(rD.bse["ma.S.L52"])

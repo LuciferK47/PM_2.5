@@ -61,10 +61,8 @@ COL = {"Seasonal naive": NEUTRAL, "Seasonal mean": MUTED, "Holt-Winters": AQUA, 
 def new_fig(h_cm, nrows=1, ncols=1, w=None, single=False, half=False, **kw):
     if PROFILE == "report" and (single or half):
         w, h_cm = SINGLE_CM, h_cm * 1.25
-    elif PROFILE == "deck" and half:
-        w, h_cm = 7.6, h_cm * 1.15
     elif PROFILE == "deck":
-        h_cm *= 1.0
+        h_cm *= 1.0                       # every deck figure is drawn at the full text width
     return plt.subplots(nrows, ncols, figsize=((w or W_CM) * CM, h_cm * CM), layout="constrained", **kw)
 
 
@@ -159,17 +157,17 @@ save(fig, "acf_pacf_d52")
 from src.tsa import week_index  # noqa: E402
 tr_y = y.loc[:"2018-12-30"]; tr_raw = raw.loc[:"2018-12-30"]
 wk_idx = pd.Series(week_index(tr_y.index), index=tr_y.index)
-fig, ax = new_fig(4.6, single=True, half=True)
+fig, ax = new_fig(4.8, single=True, half=True)
 for yr, c in zip((2015, 2016, 2017, 2018), (NEUTRAL, "#cfcfc7", "#a8a8a0", MUTED)):
     s = tr_raw[tr_raw.index.year == yr]; ax.plot(wk_idx[s.index], s, color=c, lw=1.0, label=str(yr))
 smean = np.exp(tr_y.groupby(wk_idx).mean())
 ax.plot(smean.index, smean, color=BLUE, lw=2.6, label="mean")
-ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(ncols=3, frameon=False, loc="upper center", fontsize=fs(7), columnspacing=0.8, handlelength=1.2)
-ax.set_ylim(0, 700)
+ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=5, frameon=False, fontsize=fs(8))
+ax.set_ylim(0, 620)
 save(fig, "year_curves")
 
 Xf = lambda ix, Kk: F.fourier(ix, Kk)  # noqa: E731
-fig, ax = new_fig(4.6, single=True, half=True)
+fig, ax = new_fig(3.8, single=True, half=True)
 ax.plot(smean.index, smean, color=NEUTRAL, lw=1.4, label="seasonal mean")
 wkset = tr_y.index[:52]
 import statsmodels.api as sm  # noqa: E402
@@ -178,7 +176,7 @@ for Kk, c in ((1, AQUA), (2, ORANGE), (4, BLUE)):
     ref = pd.date_range("2018-01-07", periods=52, freq="W-SUN")
     curve = np.exp(b.predict(sm.add_constant(Xf(ref, Kk), has_constant="add")))
     ax.plot(week_index(ref), curve, color=c, lw=2.0, label=f"K = {Kk}")
-ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(ncols=2, frameon=False, loc="upper center", fontsize=fs(7.5), columnspacing=0.8, handlelength=1.2); ax.set_ylim(0, 400)
+ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=4, frameon=False, fontsize=fs(8)); ax.set_ylim(0, 380)
 save(fig, "harmonic_k")
 
 # ═══ 3. SARIMA residuals (refit the identification model, ~15 s) ═══════════════════════════════════════
@@ -186,7 +184,7 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX  # noqa: E402
 rD = F._fit(SARIMAX(tr_y, order=(1, 0, 1), seasonal_order=(0, 1, 1, 52)))
 e = pd.Series(np.asarray(rD.resid), index=tr_y.index).iloc[int(rD.loglikelihood_burn):]
 from statsmodels.tsa.stattools import acf as _acf  # noqa: E402
-fig, axes = new_fig(3.9, ncols=2, width_ratios=[1.3, 1])
+fig, axes = new_fig(3.2, ncols=2, width_ratios=[1.3, 1])
 axes[0].plot(tr_y.index[-len(e):], e, color=BLUE, lw=1.2); axes[0].axhline(0, color=INK_2, lw=0.8); axes[0].set_title("Residuals (first 52 dropped)", loc="left")
 axes[0].xaxis.set_major_locator(mdates.YearLocator()); axes[0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 a_ = _acf(e, nlags=40)
@@ -199,7 +197,7 @@ save(fig, "sarima_resid")
 from src.tsa import doy_anomaly, doy_climatology, doy365  # noqa: E402
 w_mod = weekly.loc[:"2019-12-29"]
 fig, axes = new_fig(5.6, nrows=3, sharex=True, single=True)
-for ax, (c, lab, col) in zip(axes, [("pm25", "PM$_{2.5}$", BLUE), ("wind", "Wind (km/h)", ORANGE), ("rh", "Humidity (%)", AQUA)]):
+for ax, (c, lab, col) in zip(axes, [("pm25", "PM$_{2.5}$", BLUE), ("wind", "Wind km/h", ORANGE), ("rh", "RH %", AQUA)]):
     ax.plot(w_mod.index, w_mod[c], color=col, lw=1.2); ax.set_ylabel(lab, fontsize=fs(8))
     ax.tick_params(axis="y", labelsize=fs(7.5))
 save(fig, "weather_weekly")
@@ -208,14 +206,17 @@ fig, axes = new_fig(4.8, nrows=2, sharex=True, single=True)
 lg = d_mod["log_pm25"]; clim = doy_climatology(lg)
 axes[0].plot(lg.index, lg, color=NEUTRAL, lw=0.7, label="daily")
 axes[0].plot(lg.index, clim.reindex(doy365(lg.index)).to_numpy(), color=BLUE, lw=1.8, label="seasonal mean")
-axes[0].set_ylabel("log PM$_{2.5}$"); axes[0].legend(ncols=2, frameon=False, loc="lower left")
+axes[0].set_ylabel("log PM$_{2.5}$"); fig.legend(*axes[0].get_legend_handles_labels(), loc="outside upper center", ncols=2, frameon=False, fontsize=fs(8))
 an = doy_anomaly(lg); axes[1].plot(an.index, an, color=BLUE, lw=0.8); axes[1].axhline(0, color=INK_2, lw=0.8); axes[1].set_ylabel("anomaly")
 save(fig, "deseason")
 
 lag = pd.read_csv(RES / "var_lag_selection.csv", index_col=0)
-fig, ax = new_fig(4.0, single=True, half=True)
+fig, ax = new_fig(4.4, single=True, half=True)
 ax.plot(lag.index, lag["AIC"], marker="o", color=BLUE, label="AIC"); ax.plot(lag.index, lag["BIC"], marker="s", color=ORANGE, label="BIC")
-ax.axvline(var["var_lag_aic"], color=MUTED, ls=":"); ax.set_xlabel("VAR lag $p$ (days)"); ax.set_ylabel("criterion"); ax.legend(frameon=False)
+ax.axvline(var["var_lag_aic"], color=MUTED, ls=":"); ax.set_xlabel("VAR lag $p$ (days)"); ax.set_ylabel("criterion")
+ax.scatter([var["var_lag_aic"]], [lag["AIC"].loc[var["var_lag_aic"]]], s=120, facecolors="none", edgecolors=BLUE, zorder=4)
+ax.scatter([var["var_lag_bic"]], [lag["BIC"].loc[var["var_lag_bic"]]], s=120, facecolors="none", edgecolors=ORANGE, zorder=4)
+fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=2, frameon=False, fontsize=fs(8))
 ax.set_ylim(2.3, 3.0)
 save(fig, "var_lag")
 
@@ -230,11 +231,11 @@ def panel(ax, fold, m, title=None, band=True):
     ax.set_title(title or m, loc="left"); ax.set_ylim(0, 520)
 
 
-for name, pair in (("fc19_a", ("Seasonal naive", "Seasonal mean")), ("fc19_b", ("Holt-Winters", "SARIMA")), ("fc19_c", ("Harmonic regression", "Combination"))):
-    fig, axes = new_fig(5.2, ncols=2, sharey=True)
-    for ax, m in zip(axes, pair):
-        panel(ax, 2019, m, f"{m}, 2019" + (" (no interval)" if m == "Combination" else ""))
-    axes[0].set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
+for name, trio in (("fc19_1", ("Seasonal naive", "Seasonal mean", "Holt-Winters")), ("fc19_2", ("SARIMA", "Harmonic regression", "Combination"))):
+    fig, axes = new_fig(4.8, ncols=3, sharey=True)
+    for ax, m in zip(axes, trio):
+        panel(ax, 2019, m, m + (" (no band)" if m == "Combination" else ""))
+    axes[0].set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)")
     save(fig, name)
 
 if PROFILE == "report":
@@ -287,7 +288,7 @@ ax.plot(a20.date, a20.actual, color="black", lw=1.5, marker="o", ms=3, label="ac
 ax.axvspan(LOCK0, LOCK1, color=NEUTRAL, alpha=0.3, lw=0)
 ax.text(LOCK0 + (LOCK1 - LOCK0) / 2, 12, "lockdown", ha="center", fontsize=fs(8), color=INK_2)
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
-ax.legend(fontsize=fs(7.5), ncols=2, loc="upper right", frameon=False, bbox_to_anchor=(1.0, 0.92)); ax.set_ylim(0, 420)
+fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=3, frameon=False, fontsize=fs(8)); ax.set_ylim(0, 420)
 save(fig, "fc_lockdown")
 
 win = pd.read_csv(RES / "fc_lockdown_windows.csv"); lk = pd.read_csv(RES / "fc_lockdown.csv", index_col=0)
@@ -299,7 +300,7 @@ for i, m in enumerate(MODELS):
     ax.scatter(i, lk.loc[m, "same weeks of 2019 (%)"], s=40, marker="D", color=BLUE, zorder=3, label="same weeks, 2019" if i == 0 else None)
 ax.axhline(0, color=INK_2, lw=0.8)
 ax.set_xticks(range(len(MODELS)), ["Naive", "Seasonal\nmean", "Holt-\nWinters", "SARIMA", "Harmonic", "Combin."], fontsize=fs(7.5))
-ax.set_ylabel("gap (%)"); fig.legend(*ax.get_legend_handles_labels(), frameon=False, loc="outside lower center", ncols=2, fontsize=fs(7.5))
+ax.set_ylabel("gap (%)"); fig.legend(*ax.get_legend_handles_labels(), frameon=False, loc="outside upper center", ncols=2, fontsize=fs(8))
 save(fig, "lock_gap")
 
 
@@ -369,6 +370,13 @@ for m in MODELS:
 write("acc", "lrrrrrrr", r"\textbf{Model} & \textbf{2017} & \textbf{2018} & \textbf{2019} & \textbf{MAE} & \textbf{RMSE} & \textbf{MAPE\%} & \textbf{ME}", rows)
 
 dmt = pd.read_csv(RES / "fc_dm.csv", index_col=0)
+cov = pd.read_csv(RES / "fc_coverage.csv", index_col=0)
+rows = []
+for m in MODELS:
+    p_ = "--" if m == "Seasonal mean" else f"{dmt.loc[m, 'DM p-value']:.2f}"
+    c_ = "--" if np.isnan(cov.loc[m, "2019"]) else f"{100 * cov.loc[m, '2019']:.0f}\\%"
+    rows.append([m, f"{mm_.loc[m, '2017']:.1f}", f"{mm_.loc[m, 'mean 2018-19']:.1f}", neg(me_.loc[m, "mean 2018-19"]), p_, c_])
+write("key", "lrrrrr", r"\textbf{Model} & \textbf{MAE 2017} & \textbf{MAE 18--19} & \textbf{ME 18--19} & \textbf{DM $p$ vs mean} & \textbf{coverage 2019}", rows)
 rows = [[m, neg(r["mean MAE difference vs seasonal mean"]), neg(r["DM"], 2), f"{r['DM p-value']:.3f}", f"[{neg(r['bootstrap lo95'])}, {neg(r['bootstrap hi95'])}]"] for m, r in dmt.iterrows()]
 write("dm_full", "lrrrr", r"\textbf{Model vs seasonal mean} & \textbf{mean diff.} & \textbf{DM} & \textbf{$p$} & \textbf{bootstrap 95\%}", rows)
 rows = [r[:4] for r in rows]
@@ -439,6 +447,9 @@ for m, sh in SHORT.items():
 for m, r in dmt.iterrows():
     nums[f"dmP{SHORT[m]}"] = f"{r['DM p-value']:.2f}"; nums[f"dmD{SHORT[m]}"] = neg(r["mean MAE difference vs seasonal mean"])
 bestm = mm_["mean 2018-19"].idxmin()
+for c, w in (("2017", "Seventeen"), ("2018", "Eighteen"), ("2019", "Nineteen")):
+    cc = cov[c].dropna()
+    nums[f"covMin{w}"] = f"{100 * cc.min():.0f}"; nums[f"covMax{w}"] = f"{100 * cc.max():.0f}"
 nums["bestAvgModel"] = bestm
 for m, sh in SHORT.items():
     if not np.isnan(wd.loc[m, "2019"]):
@@ -465,6 +476,16 @@ exs = {yr: float(tr_raw[(tr_raw.index.year == yr) & (week_index(tr_raw.index) ==
 nums.update({"exWeek": str(EXW), **{f"exY{chr(97 + i)}": f"{v:.0f}" for i, v in enumerate(exs.values())},
              "exMean": f"{np.exp(np.mean(np.log(list(exs.values())))):.0f}", "exNaive": f"{exs[2018]:.0f}"})
 nums["declWeeks"] = str(len(weekly.loc["2020-01-01":]))
+for L_, r_ in idn.iterrows():
+    nums[f"aic{L_[0]}"] = f"{r_.AIC:.1f}"
+nums["aicBest"] = f"{idn.AIC.min():.1f}"; nums["aicGap"] = f"{np.sort(idn.AIC.to_numpy())[1] - idn.AIC.min():.1f}"
+kk_ = specs[specs.model == "Harmonic regression"].K
+nums["kHarmLo"], nums["kHarmHi"] = f"{int(kk_.min())}", f"{int(kk_.max())}"
+for m_, sh_ in (("Holt-Winters", "HW"), ("SARIMA", "Sarima"), ("Harmonic regression", "Harm"), ("Seasonal mean", "Mean")):
+    g_ = win[win.model == m_].gap_pct
+    nums[f"lockShare{sh_}"] = f"{100 * (g_ <= lk.loc[m_, 'lockdown gap (%)']).mean():.0f}"
+    nums[f"lockShareAdj{sh_}"] = f"{100 * (g_ <= lk.loc[m_, 'gap after removing pre-lockdown bias (%)']).mean():.0f}"
+    nums[f"lockMin{sh_}"] = neg(g_.min(), 0)
 (TAB / "numbers.tex").write_text("\n".join(f"\\newcommand{{\\{k}}}{{{v}}}" for k, v in nums.items()) + "\n")
 print("figures:", sorted(p.name for p in FIG.glob("*.pdf")))
 print("numbers:", len(nums))

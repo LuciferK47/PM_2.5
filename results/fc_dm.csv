@@ -1,6 +1,6 @@
 model,mean MAE difference vs seasonal mean,DM,DM p-value,bootstrap lo95,bootstrap hi95
 Seasonal naive,4.841,2.21,0.027,0.937,8.964
-Holt-Winters,4.422,3.312,0.001,2.431,6.505
+Holt-Winters,0.907,0.574,0.566,-0.582,2.47
 SARIMA,-0.527,-0.689,0.491,-1.911,0.981
-Harmonic regression,0.73,0.529,0.597,-1.938,3.641
-Combination,-0.137,-0.268,0.789,-1.132,0.838
+Harmonic regression,-0.335,-0.336,0.737,-2.375,1.635
+Combination,-0.948,-1.728,0.084,-1.884,-0.035

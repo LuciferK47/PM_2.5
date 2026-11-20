@@ -15,11 +15,11 @@ The data end in July 2020, so this is a **historical study**, not an advisory. *
 
 | Question | Finding |
 |---|---|
-| Seasonality | Winter average 217 vs monsoon 48 ug/m3 (4.5x). STL seasonal strength 0.90, trend strength 0.18. A log transform removes the link between monthly mean and SD (correlation 0.94 -> -0.09). |
+| Seasonality | 54% of days in 2015-2019 exceed 90 ug/m3 (Poor or worse). Winter average 217 vs monsoon 48 ug/m3 (4.5x). STL seasonal strength 0.90, trend strength 0.18. A log transform removes the link between monthly mean and SD (correlation 0.94 -> -0.09). |
 | Stationarity | The ACF of log PM2.5 shows a yearly wave (lag 26: -0.43, lag 52: +0.68). ADF/KPSS do not flag it (they look for unit roots); a seasonal difference removes the wave but over-differences (seasonal MA coefficient -0.99). |
-| 52-week forecasts | MAE 2018-19: SARIMA 24.3, combination 24.7, seasonal mean 24.8, harmonic regression 25.5, Holt-Winters 29.2, seasonal naive 29.6 ug/m3. **No model is significantly better than the seasonal mean** (Diebold-Mariano); the naive forecast (p = 0.03) and Holt-Winters (p = 0.001) are significantly worse. SARIMA is unstable with two training years (MAE 72.3 in 2017). Every model over-predicts (the level drifts down 22% from 2016 to 2019). |
-| Weather | Wind and humidity Granger-cause PM2.5 over **days** (p about 1e-29 and 1e-11; still < 1e-8 with temperature and rain), the reverse is not significant. At the **weekly** scale last week's weather adds nothing (R2 0.123 -> 0.128, p = 0.47) and one-week forecasts get slightly worse (+2.8%, p = 0.03). |
-| 2020 | In the ten lockdown weeks (ending 29 Mar - 31 May) PM2.5 averaged 49 ug/m3 against 86-97 for the business-as-usual forecasts: **44-50% lower** (35-41% after removing the models' pre-lockdown bias), below every ordinary ten-week window of 2017-19 for the seasonal mean, harmonic regression and combination. Descriptive, not causal. |
+| 52-week forecasts | MAE 2018-19 (ug/m3): combination 23.8, SARIMA 24.3, harmonic regression 24.5, seasonal mean 24.8, Holt-Winters 25.7, seasonal naive 29.6. **No model is significantly better than the seasonal mean** (Diebold-Mariano; the combination's 0.9 edge has p = 0.08); only the naive forecast is significantly worse (p = 0.03). SARIMA is unstable with two training years (MAE 72.3 in 2017). Every model over-predicts (the level drifts down 22% from 2016 to 2019). |
+| Weather | Wind and humidity Granger-cause PM2.5 over **days** (p about 1e-29 and 1e-11; still < 1e-8 with temperature and rain), the reverse is not significant. At the **weekly** scale last week's weather adds nothing (R2 0.123 -> 0.128, p = 0.47) and one-week forecasts get slightly worse (+2.6%, p = 0.04). |
+| 2020 | In the ten lockdown weeks (ending 29 Mar - 31 May) PM2.5 averaged 49 ug/m3 against 86-97 for the business-as-usual forecasts: **44-50% lower** (34-41% after removing the models' pre-lockdown bias), below every ordinary ten-week window of 2017-19 for the seasonal mean, harmonic regression and combination. Descriptive, not causal. |
 
 ![Forecasts of six methods for 2019](figures/13_backtest_2019_all.png)
 

@@ -15,7 +15,7 @@ For a teammate who has to present and defend this project. Read sections 1-4 fir
 2. **Q2.** Do wind speed and relative humidity help (predict PM2.5, and improve a forecast)?
 3. **Q3.** A model fitted on 2015-2019 cannot know about the 2020 lockdown. Used as a "business as usual" baseline, how far below it was PM2.5 in the lockdown weeks?
 
-**The story in one paragraph.** PM2.5 in Delhi has a huge yearly cycle (winter 217 vs monsoon 48 ug/m3, seasonal strength 0.90). The variance grows with the level, so we take logs. The ACF shows a yearly wave, so the series is not stationary in the mean (ADF/KPSS do not see this: they look for unit roots). We compare six methods on three expanding-window origins (forecast 2017, 2018, 2019, each 52 weeks). The seasonal mean, SARIMA, harmonic regression and the combination are statistically indistinguishable (MAE 24.3-25.5 in 2018-19); the seasonal naive and Holt-Winters are significantly worse; SARIMA fails with only two training years (MAE 72.3 in 2017). Wind and humidity Granger-cause PM2.5 over days (p about 1e-29 and 1e-11) but add nothing at the weekly scale (p = 0.47) and make one-week forecasts slightly worse (+2.8%, p = 0.03). In the 2020 lockdown weeks PM2.5 was 44-50% below the business-as-usual forecast (35-41% after adjusting for the models' earlier bias), beyond the ordinary ten-week error of the better models. This is descriptive, not causal.
+**The story in one paragraph.** PM2.5 in Delhi has a huge yearly cycle (winter 217 vs monsoon 48 ug/m3, seasonal strength 0.90). The variance grows with the level, so we take logs. The ACF shows a yearly wave, so the series is not stationary in the mean (ADF/KPSS do not see this: they look for unit roots). We compare six methods on three expanding-window origins (forecast 2017, 2018, 2019, each 52 weeks). The combination has the lowest MAE in 2018-19 (23.8 vs 24.8 for the seasonal mean, 24.3 SARIMA, 24.5 harmonic, 25.7 Holt-Winters, 29.6 naive), but no model is significantly better than the seasonal mean (combination: Diebold-Mariano p = 0.08); only the seasonal naive is significantly worse (p = 0.03). SARIMA fails with only two training years (MAE 72.3 in 2017). Wind and humidity Granger-cause PM2.5 over days (p about 1e-29 and 1e-11) but add nothing at the weekly scale (p = 0.47) and make one-week forecasts slightly worse (+2.6%, p = 0.04). In the 2020 lockdown weeks PM2.5 was 44-50% below the business-as-usual forecast (34-41% after adjusting for the models' earlier bias), beyond the ordinary ten-week error of the better models. This is descriptive, not causal.
 
 **What the project does not claim.** It is a historical study (data end in July 2020), not an advisory. Granger causality is predictive, not physical. The lockdown number is model-relative.
 
@@ -25,6 +25,7 @@ For a teammate who has to present and defend this project. Read sections 1-4 fir
 |---|---|
 | PM2.5 | CPCB `city_day.csv` (Kaggle `rohanrao/air-quality-data-in-india`), Delhi, mean over reporting stations. Two missing days are interpolated (gaps up to 3 days). |
 | Weather | Open-Meteo ERA5 archive at 28.61N 77.21E. **Wind = wind speed at 10 m in km/h (not direction).** Humidity = relative humidity in %. A reanalysis at one grid point, not a station measurement. |
+| Bad-air share | 54% of days in 2015-2019 have PM2.5 above 90 ug/m3 (CPCB sub-index band Poor or worse; this is the PM2.5 sub-index band, not the multi-pollutant AQI). |
 | Weekly series | Weeks end on Sunday; weeks with fewer than 4 PM2.5 days are dropped (the partial last week), leaving 287. |
 | Calendar week | `week_index` (in `src/tsa.py`) = day-of-year of the week's Thursday on a 365-day scale, in 7-day blocks, capped at 52: week 53 folds into week 52 and Feb 29 is mapped to Feb 28. |
 | Station count | The Delhi value is the mean over reporting stations; the count went 10, 8, 17, 37, 37 (2015-2019). Part of the 2016-19 decline may be a change of station mix. Listed as a limitation, not analysed. |
@@ -79,17 +80,17 @@ A stationary series has constant mean, variance and autocovariance. The **ACF** 
 - **Seasonal mean** (we call it that; the earlier name "climatology" confused people): for calendar week w, the average of log PM2.5 over all training years. It is the classical decomposition's seasonal index. It differs from the naive forecast because it averages all years. Example, week 3: training values 188, 272, 238, 197 -> naive 197, seasonal mean 221.
 
 ### 4.5 Holt-Winters (Lectures 22-23)
-Additive seasonal exponential smoothing on log PM2.5, m = 52: level L_t = alpha(x_t - I_{t-m}) + (1-alpha)L_{t-1}; seasonal index I_t = delta(x_t - L_t) + (1-delta)I_{t-m}; forecast = L_t + I_{t-m+h}. A damped trend is allowed and chosen by AIC (it never wins). *Peculiarity:* with 2-4 years of data the fitted seasonal smoothing parameter is about 0 (7e-5 at the 2019 origin), so the seasonal index stays at its initial heuristic estimate and the forecast over-predicts the winter peak. This is why it is significantly worse than the seasonal mean.
+Additive seasonal exponential smoothing on log PM2.5, m = 52: level L_t = alpha(x_t - I_{t-m}) + (1-alpha)L_{t-1}; seasonal index I_t = delta(x_t - L_t) + (1-delta)I_{t-m}; forecast = L_t + I_{t-m+h}. Initial level and seasonal indices are estimated by maximum likelihood (as in Lecture 23); a damped trend is allowed and chosen by AIC (it never wins). *Peculiarity:* with 2-4 years of data the fitted seasonal smoothing parameter delta is about 0 (7e-5 at every origin), so the seasonal index is learnt once and barely updated, and the level (alpha about 0.27) does the tracking. Its accuracy then depends on how typical the first years were: MAE 44.7 (2017), 19.2 (2018, the best that year), 32.2 (2019). Its difference from the seasonal mean is not significant (p = 0.57).
 
 ### 4.6 SARIMA and Box-Jenkins (Lectures 15-21, 24-29)
 SARIMA(p,d,q)(P,D,Q)_s with seasonal difference (1-B^52). We use d = 0, D = 1 and choose (p,q,P,Q) from a small grid by **AIC** (AIC = 2r - 2 ln L, r parameters, L the likelihood; BIC uses r ln n). *Box-Jenkins:* identify (ACF/PACF, differencing) -> estimate -> check residuals (Ljung-Box) -> forecast. Prediction intervals use the psi-weights: Var = sigma^2(1 + sum psi_j^2) (Lecture 28).
 *Peculiarities (important, expect questions):*
-1. **Diffuse initialisation.** A state-space model with D = 1 starts with a diffuse prior on its first 52 seasonal states, so the first 52 "residuals" equal the series itself. Ljung-Box with them kept gives p of about 0 at every lag; with them dropped it passes at lags 10 and 26 (p = 0.60, 0.13) and is borderline at 52 (p = 0.020). The first version of the project mistook this artifact for a bad model.
+1. **Diffuse initialisation.** A state-space model with D = 1 starts with a diffuse prior on its first 52 seasonal states, so the first 52 "residuals" equal the series itself. Ljung-Box with them kept gives p of about 0 at every lag; with them dropped (and the 3 fitted ARMA terms deducted from the degrees of freedom) it passes at lags 10 and 26 (p = 0.49, 0.10) but not at lag 52 (p = 0.016): a yearly pattern is still left. The first version of the project mistook this artifact for a bad model.
 2. **Seasonal MA coefficient -0.99** with a standard error of about 8: on the boundary of invertibility, not identified. A seasonal MA(1) near -1 is the standard sign of over-differencing (the yearly pattern is fixed, so differencing injects artificial MA structure). This motivates modelling the seasonal pattern directly.
 3. **Short data.** With two training years the seasonal difference leaves one year of information; SARIMA's 2017 MAE is 72.3 (seasonal mean 31.0) and its interval covers only 23% of weeks.
 
 ### 4.7 Harmonic regression with ARMA errors (Lectures 13-16; FPP3 sec. 10.5)
-x_t = c + sum_k [a_k sin(2 pi k t/m) + b_k cos(2 pi k t/m)] + eta_t, eta_t ~ ARMA(p,q), m = 365.25/7. A regression with autocorrelated errors in which the yearly shape has only 2K parameters (K <= 5, chosen with (p,q) by AIC). *"Doesn't a Fourier fit just reproduce the past?"* No: K pairs are 2K numbers describing a smooth curve (K = 1 is one wave, K = 4 already follows the winter peak), versus 52 free values for the seasonal mean. It is the direct alternative to differencing.
+x_t = c + sum_k [a_k sin(2 pi k t/m) + b_k cos(2 pi k t/m)] + eta_t, eta_t ~ ARMA(p,q), m = 365.25/7. A regression with autocorrelated errors in which the yearly shape has only 2K parameters (K <= 10, chosen with (p,q) by AIC; K = 6, 6, 7 at the three origins, so the search is not cut off). *"Doesn't a Fourier fit just reproduce the past?"* No: K pairs are 2K numbers describing a smooth curve (K = 1 is one wave, K = 4 already follows the winter peak), versus 52 free values for the seasonal mean. It is the direct alternative to differencing.
 
 ### 4.8 Forecast combination (Lecture 30)
 Equal-weight average of the log forecasts of the seasonal mean, Holt-Winters, SARIMA and harmonic regression. No interval (we only combine point forecasts). The lecture notes that a combination is not guaranteed to be better than every member.
@@ -103,11 +104,11 @@ d_t = |e_a| - |e_b|; H0: E(d_t) = 0; DM = mean(d)/sqrt(V/N). Errors of a 52-step
 ### 4.11 VAR and Granger causality (handout lectures 35-37)
 **Anomalies:** subtract each calendar day's smoothed average over the five years (the seasonal mean of that day). Needed because wind, humidity and PM2.5 all follow the calendar; without it any test mostly detects "it is winter". **VAR(p):** each of (wind, humidity, log PM2.5) is regressed on the last p days of all three. p is chosen by AIC (4) and BIC (2); we use 4; the residuals pass a portmanteau test (p = 0.17). **Granger test:** in the PM2.5 equation, H0: all lag-1..p wind coefficients are zero, tested by an F-test. Rejection means wind's past improves the *prediction* of PM2.5 given PM2.5's and humidity's past; it is not proof of a physical cause, and it does not say wind is the only driver. Reverse directions (PM2.5 -> wind, humidity) are not significant (p = 0.12, 0.62).
 **Weekly scale:** on deseasonalised weekly data, adding last week's wind and humidity to last week's PM2.5 changes R^2 from 0.123 to 0.128 (F-test p = 0.47): nothing. Same-week weather has R^2 = 0.17 but is only known with hindsight.
-**One week ahead:** harmonic model one-step forecasts: no weather 22.4, + last week's weather 23.0 (+2.8%, DM p = 0.03: slightly *worse*), + same-week weather (oracle, unusable) 20.9; persistence 30.7, seasonal mean 24.8.
+**One week ahead:** harmonic model one-step forecasts: no weather 21.5, + last week's weather 22.1 (+2.6%, DM p = 0.04: slightly *worse*), + same-week weather (oracle, unusable) 20.0; persistence 30.7, seasonal mean 24.8.
 **Reconciling "weather predicts" with "weather adds nothing":** different time scales. Weather moves PM2.5 over a few days; the effect is gone within a week, so for weekly or yearly forecasts it adds nothing (a yearly forecast would also need a weather forecast first).
 
 ### 4.12 The 2020 what-if (Q3)
-A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **January-February** is a genuine out-of-sample test (MAE 30-45, larger than in 2017-19 because actual values already ran 6-18% below the forecasts, the same level bias seen in earlier years); **the ten lockdown weeks** compare actual (49 ug/m3) with the business-as-usual forecast (86-97 depending on the model): gap -44% to -50%; after removing each model's Jan-Mar bias, -35% to -41%. *Yardstick:* the same ten-week gap for every window of the 2017-19 backtests (harmonic model: 5th-95th percentile -31% to +24%, lowest -35%) and for the same calendar weeks of 2019 (-4% to -25%). For the seasonal mean, harmonic regression, combination and naive no ordinary window is as low as 2020; for Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few are (8% and 1%). Descriptive, not causal.
+A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **January-February** is a genuine out-of-sample test (MAE 28-42, larger than in 2017-19 because actual values already ran 7-17% below the forecasts, the same level bias seen in earlier years); **the ten lockdown weeks** compare actual (49 ug/m3) with the business-as-usual forecast (86-97 depending on the model): gap -44% to -50%; after removing each model's Jan-Mar bias, -34% to -41%. *Yardstick:* the same ten-week gap for every window of the 2017-19 backtests (harmonic model: 5th-95th percentile -31% to +23%, lowest -36%) and for the same calendar weeks of 2019 (-4% to -21%). For the seasonal mean, harmonic regression, combination and naive no ordinary window is as low as 2020; for Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few are (3% and 1% of windows). Descriptive, not causal.
 
 ## 5. Results (numbers and where they live)
 
@@ -118,17 +119,17 @@ A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **J
 | Log: corr(monthly mean, SD) raw / log | 0.94 / -0.09 | `log_justification.csv` |
 | ACF lag 1 / 26 / 52 | 0.87 / -0.43 / 0.68 | `acf_weekly_train.csv` |
 | ADF p, KPSS (log level, train) | 5e-4, 0.058 | `stationarity_train.csv` |
-| SARIMA candidates AIC (A, B, C, D) | 79.9, 73.2, 45.2, 39.4 | `fc_sarima_identification.csv` |
+| SARIMA candidates AIC, all d = 0, D = 1 (A-E) | 73.2, 53.9, 39.4 (best), 45.2, 57.5 | `fc_sarima_identification.csv` |
 | Seasonal MA coefficient | -0.99 (SE about 8) | `key_numbers_forecast.json` |
-| MAE 2017 / 2018 / 2019 | naive 38.4/29.0/30.3; mean 31.0/21.8/27.8; HW 51.5/24.2/34.3; SARIMA 72.3/21.1/27.5; harmonic 30.1/23.4/27.6; combination 39.6/21.1/28.3 | `fc_backtest_mae.csv` |
-| ME 2018-19 (all negative) | -8 to -18 | `fc_backtest_me.csv` |
-| DM vs seasonal mean (2018-19) | naive +4.8 (p 0.03), HW +4.4 (0.001), SARIMA -0.5 (0.49), harmonic +0.7 (0.60), combination -0.1 (0.79) | `fc_dm.csv` |
-| Coverage 2017 / 2018 / 2019 | mean 62/92/81, SARIMA 23/94/85, harmonic 67/94/87 (%) | `fc_coverage.csv` |
+| MAE 2017 / 2018 / 2019 | naive 38.4/29.0/30.3; mean 31.0/21.8/27.8; HW 44.7/19.2/32.2; SARIMA 72.3/21.1/27.5; harmonic 29.4/22.5/26.4; combination 38.2/20.1/27.6 (2018-19 mean: 29.6, 24.8, 25.7, 24.3, 24.5, 23.8) | `fc_backtest_mae.csv` |
+| ME 2018-19 (all negative) | -8 to -15 | `fc_backtest_me.csv` |
+| DM vs seasonal mean (2018-19) | naive +4.8 (p 0.03), HW +0.9 (0.57), SARIMA -0.5 (0.49), harmonic -0.3 (0.74), combination -0.9 (0.08) | `fc_dm.csv` |
+| Coverage 2017 / 2018 / 2019 | mean 62/92/81, SARIMA 23/94/85, harmonic 65/92/87 (%) | `fc_coverage.csv` |
 | VAR lag AIC / BIC | 4 / 2 | `var_lag_selection.csv` |
 | Granger p: wind, humidity -> PM2.5 | 1e-29, 1e-11 (still < 1e-8 with temperature, rain) | `granger_var.csv`, `granger_var_controls.csv` |
 | Weekly nested test | R^2 0.123 -> 0.128, p = 0.47 | `weekly_lag_nested.csv` |
-| One-week MAE | persistence 30.7, mean 24.8, harmonic 22.4, + last week's weather 23.0, oracle 20.9 | `fc_oneweek.csv` |
-| Lockdown gap (10 weeks) | -44% to -50% (adjusted -35% to -41%) | `fc_lockdown.csv`, `fc_lockdown_windows.csv` |
+| One-week MAE | persistence 30.7, mean 24.8, harmonic 21.5, + last week's weather 22.1, oracle 20.0 | `fc_oneweek.csv` |
+| Lockdown gap (10 weeks) | -44% to -50% (adjusted -34% to -41%) | `fc_lockdown.csv`, `fc_lockdown_windows.csv` |
 
 The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slide.
 
@@ -156,6 +157,11 @@ The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slid
 | HAC Wald tests, shocks, impulse responses, FEVD | VAR lag table (AIC/BIC), plain Granger F-tests both ways, weekly nested test | Out of syllabus; the earlier slides read as jargon |
 | 2020 "outlook" with monthly intervals and band-days | 2020 as a what-if against a business-as-usual baseline, with a yardstick | A model fitted before 2020 cannot forecast a lockdown |
 | STL on 2015-2020 weeks (trend bent by 2020) | STL on 2015-2019 | 2020 is not a modelling year |
+| Holt-Winters started from a heuristic (first two years) | Initial state estimated by maximum likelihood (Lecture 23) | The heuristic start handicapped the model (MAE 2018: 24.2 -> 19.2) |
+| Harmonic regression search K <= 5 (K = 5 chosen at every origin) | K <= 10; K = 6, 6, 7 chosen | The old search stopped at its own upper bound |
+| SARIMA candidates with different differencing in one AIC table | Five candidates with the same d = 0, D = 1 | AIC is only comparable on the same differenced data |
+| Ljung-Box with 2 degrees of freedom deducted | 3 (ar, ma, seasonal ma) | Matches the three fitted ARMA parameters |
+| Poor-days share computed on all days incl. 2020 | 2015-2019 only (54%) | The label said 2015-2019 |
 | 46 dense slides without notes | slide-by-slide notes (`SPEAKER_NOTES.md`, `notes.tex`) | Each slide has a structure and a script |
 
 ## 8. Likely viva questions (short answers)
@@ -168,10 +174,10 @@ The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slid
 6. **What is the difference between seasonal naive and seasonal mean?** Naive repeats last year's value; the mean averages that week over all training years (noise averages out).
 7. **Does the Fourier fit just copy the past?** No: 2K parameters describe a smooth curve; the seasonal mean has 52.
 8. **Why is SARIMA not the winner?** Ties with the seasonal mean with three or more years (24.3 vs 24.8) but fails with two (72.3); over-differenced.
-9. **Why is Holt-Winters worse?** Its seasonal smoothing parameter is about 0, so the seasonal index stays at its initial estimate; it over-predicts.
+9. **Why is Holt-Winters erratic?** Its seasonal smoothing parameter is about 0, so the seasonal index is learnt once and barely updated; MAE 44.7, 19.2, 32.2 across the three years, not significantly different from the seasonal mean (p = 0.57).
 10. **What do the Ljung-Box results on the first 52 residuals mean?** They are not forecast errors (diffuse initialisation); drop them.
-11. **What does coverage tell you?** Share of weeks inside the 95% interval; ours are too narrow when the level drifts (2019: 81-87%, 2017 SARIMA 23%).
-12. **What does the DM test say?** No model is significantly better than the seasonal mean; naive and Holt-Winters are significantly worse.
+11. **What does coverage tell you?** Share of weeks inside the 95% interval; ours are too narrow when the level drifts (2019: 81-92%, 2017 SARIMA 23%).
+12. **What does the DM test say?** No model is significantly better than the seasonal mean (the combination's 0.9 edge has p = 0.08); only the seasonal naive is significantly worse (p = 0.03).
 13. **What is a Granger test? What is the null?** F-test that the past of X adds no prediction of Y beyond Y's (and the other variables') past. Not a physical cause.
 14. **Why did you deseasonalise first?** All three series share the seasonal cycle; otherwise the test mostly detects "it is winter".
 15. **How did you pick VAR(4)?** AIC minimum at 4, BIC at 2 (table on slide); residuals pass the portmanteau test.

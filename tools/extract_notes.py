@@ -46,8 +46,6 @@ for m in re.finditer(r"\\renewcommand\{\\secinfo\}\{|\\section\{([^}]*)\}|\\begi
     if m.group(1) is not None and not m.group(0).startswith("\\begin"):
         sec = m.group(1)
         out += [f"## {sec}", ""]
-        n += 1
-        out += [f"**Slide {n}: Section overview.** {clean(secinfo)}", ""]
         continue
     raw_title, after = balanced(SRC, m.end() - 1)
     title = clean(raw_title.replace("\\ ", "Title slide")) or "Title slide"
