@@ -87,9 +87,10 @@
     \end{shbox}
     \column{0.47\linewidth}
     \begin{shbox}{gold}{Our questions}
-      \textbf{Q1} Which method forecasts weekly PM$_{2.5}$ best, \textbf{52 weeks ahead}?\\
-      \textbf{Q2} Do wind speed and humidity help?\\
-      \textbf{Q3} A 2015--19 model cannot know the 2020 lockdown: how far below ``business as usual'' was PM$_{2.5}$ then?
+      \raggedright
+      \textbf{Q1} Which method gives the best forecast of Delhi's weekly PM$_{2.5}$ for the whole next year?\\[3pt]
+      \textbf{Q2} Do wind speed and humidity help predict PM$_{2.5}$?\\[3pt]
+      \textbf{Q3} How much lower was PM$_{2.5}$ in the 2020 lockdown than a model trained on 2015--19 would have expected?
     \end{shbox}
   \end{columns}
   \note{PM2.5 is the most harmful common air pollutant, and Delhi is among the worst cities. Over the five modelling years the average is \pmMean micrograms per cubic metre and more than half of all days are above the ninety microgram threshold, the Poor band or worse. The interesting part for a time series project is the structure: values ordered in time, a strong yearly cycle with winter \ratioWM times worse than the monsoon, and a level that drifts down. State the three questions. The first compares forecasting methods one year ahead using only the series itself. The second asks whether weather adds information. The third is a what-if: a model trained before 2020 cannot know about the lockdown, so we use it as a business-as-usual baseline.}
@@ -121,7 +122,7 @@
     \node[box] (b) at (1,0) {2. Identify\\ \tiny ACF/PACF, ADF/KPSS};
     \node[box] (c) at (2,0) {3. Estimate\\ \tiny 3 models, 2 benchmarks};
     \node[box] (d) at (3,0) {4. Check\\ \tiny residuals};
-    \node[box] (e) at (4,0) {5. Forecast\\ \tiny 52 weeks ahead};
+    \node[box] (e) at (4,0) {5. Forecast\\ \tiny a full year ahead};
     \node[box] (f) at (5,0) {6. Evaluate\\ \tiny MAE, DM test};
     \foreach \u/\v in {a/b,b/c,c/d,d/e,e/f}{\draw[arr] (\u) -- (\v);}
     \draw[arr,dashed] (d.south) -- ++(0,-0.5) -| (c.south);
