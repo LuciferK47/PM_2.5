@@ -11,9 +11,9 @@ For a teammate who has to present and defend this project. Read sections 1-4 fir
 **Data.** Daily PM2.5 for Delhi (CPCB stations via Kaggle) and ERA5 weather (wind speed, relative humidity, temperature, rain), 1 Jan 2015 to 1 Jul 2020 (2,009 days). We work with **weekly means** (weeks ending Sunday): 287 weeks, seasonal period 52. Modelling years are 2015-2019; 2020 is used only in a final what-if.
 
 **Three questions.**
-1. **Q1.** Which of the course's forecasting methods forecasts weekly PM2.5 best **52 weeks ahead**, using only the series itself?
-2. **Q2.** Do wind speed and relative humidity help (predict PM2.5, and improve a forecast)?
-3. **Q3.** A model fitted on 2015-2019 cannot know about the 2020 lockdown. Used as a "business as usual" baseline, how far below it was PM2.5 in the lockdown weeks?
+1. **Q1.** How far ahead (1 week to 1 year) can the course's forecasting methods beat the calendar average (the seasonal mean), and which is best at each horizon?
+2. **Q2.** Do wind speed, humidity, temperature or rain help (predict PM2.5, and improve a forecast)?
+3. **Side investigation (not a question we want to answer: 2020 is an outlier).** A model fitted on 2015-2019 cannot know about the 2020 lockdown. Used as a "business as usual" baseline, how far below it was PM2.5 in the lockdown weeks?
 
 **The story in one paragraph.** PM2.5 in Delhi has a huge yearly cycle (winter 217 vs monsoon 48 ug/m3, seasonal strength 0.90). The variance grows with the level, so we take logs. The ACF shows a yearly wave, so the series is not stationary in the mean (ADF/KPSS do not see this: they look for unit roots). We compare six methods on three expanding-window origins (forecast 2017, 2018, 2019, each 52 weeks). The combination has the lowest MAE in 2018-19 (23.8 vs 24.8 for the seasonal mean, 24.3 SARIMA, 24.5 harmonic, 25.7 Holt-Winters, 29.6 naive), but no model is significantly better than the seasonal mean (combination: Diebold-Mariano p = 0.08); only the seasonal naive is significantly worse (p = 0.03). SARIMA fails with only two training years (MAE 72.3 in 2017). Wind and humidity Granger-cause PM2.5 over days (p about 1e-29 and 1e-11) but add nothing at the weekly scale (p = 0.47) and make one-week forecasts slightly worse (+2.6%, p = 0.04). In the 2020 lockdown weeks PM2.5 was 44-50% below the business-as-usual forecast (34-41% after adjusting for the models' earlier bias), beyond the ordinary ten-week error of the better models. This is descriptive, not causal.
 
@@ -103,11 +103,15 @@ d_t = |e_a| - |e_b|; H0: E(d_t) = 0; DM = mean(d)/sqrt(V/N). Errors of a 52-step
 
 ### 4.11 VAR and Granger causality (handout lectures 35-37)
 **Anomalies:** subtract each calendar day's smoothed average over the five years (the seasonal mean of that day). Needed because wind, humidity and PM2.5 all follow the calendar; without it any test mostly detects "it is winter". **VAR(p):** each of (wind, humidity, log PM2.5) is regressed on the last p days of all three. p is chosen by AIC (4) and BIC (2); we use 4; the residuals pass a portmanteau test (p = 0.17). **Granger test:** in the PM2.5 equation, H0: all lag-1..p wind coefficients are zero, tested by an F-test. Rejection means wind's past improves the *prediction* of PM2.5 given PM2.5's and humidity's past; it is not proof of a physical cause, and it does not say wind is the only driver. Reverse directions (PM2.5 -> wind, humidity) are not significant (p = 0.12, 0.62).
-**Weekly scale:** on deseasonalised weekly data, adding last week's wind and humidity to last week's PM2.5 changes R^2 from 0.123 to 0.128 (F-test p = 0.47): nothing. Same-week weather has R^2 = 0.17 but is only known with hindsight.
-**One week ahead:** harmonic model one-step forecasts: no weather 21.5, + last week's weather 22.1 (+2.6%, DM p = 0.04: slightly *worse*), + same-week weather (oracle, unusable) 20.0; persistence 30.7, seasonal mean 24.8.
+**Temperature and rain:** the VAR/Granger tests now include all four weather variables (the lag, 4, is chosen on the wind-humidity-PM2.5 system). Wind (p ~ 5e-27), humidity (1e-8) and temperature (4e-9) each Granger-cause PM2.5 with the other weather variables in the model; rain does not (p = 0.47); all four together p ~ 1e-38; PM2.5 -> all four weather variables is weaker (p = 0.015). Temperature adds less than wind and humidity, and the daily result does not carry over to the weekly horizon.
+**Weekly scale:** on deseasonalised weekly data, adding last week's wind and humidity to last week's PM2.5 changes R^2 from 0.123 to 0.128 (F-test p = 0.47), and adding all four variables gives 0.140 (p = 0.29): nothing. Same-week weather has R^2 = 0.17 (0.19 with all four) but is only known with hindsight.
+**One week ahead:** harmonic model one-step forecasts: no weather 21.5, + last week's wind and humidity 22.1 (+2.6%, DM p = 0.04: slightly *worse*), + last week's all four 22.2 (+3.0%, p = 0.02), + same-week wind and humidity (not known in advance) 20.0 (-7%, p = 0.08, not significant), + same-week all four 22.9 (worse: extra coefficients add noise); persistence 30.7, seasonal mean 24.8.
+
+### 4.13 Rolling horizons (`tools/horizon.py`)
+Besides the three year-ahead origins, every week of 2018-19 is a forecast origin. Parameters (orders, K, smoothing parameters) are estimated once a year on earlier data (the specs in `fc_specs.csv`); within the year the state is updated with all data up to the origin, the seasonal mean is recomputed at every origin so all methods have the same information, and forecasts are scored at 1, 4, 13, 26 and 52 weeks. Number of forecasts per horizon: 104, 101, 92, 79, 53. The DM variance uses h-1 Bartlett lags (at most n/3) and the normal reference, so p-values at long horizons are approximate. Results (MAE, ug/m3; seasonal mean 24.8, 24.9, 25.2, 25.9, 28.5): 1 week combination 20.2, SARIMA 21.0, harmonic 21.5, Holt-Winters 22.4 (the first three significant); 4 weeks combination 21.7 (significant), others 22.6-24.5; 13 weeks none significantly better (24.5 to 27.8); 26 weeks Holt-Winters 21.7 and combination 23.2 lower, SARIMA and harmonic not; 52 weeks Holt-Winters 25.4, combination 27.1, SARIMA 29.0, harmonic 28.8. Honest reading: models are ahead of the calendar average up to about a month; the long-horizon gains of Holt-Winters and the combination (which keep following the falling level) are not repeated at 13 weeks, so we do not claim them. Files: `fc_horizon.csv`, `fc_horizon_forecasts.csv`.
 **Reconciling "weather predicts" with "weather adds nothing":** different time scales. Weather moves PM2.5 over a few days; the effect is gone within a week, so for weekly or yearly forecasts it adds nothing (a yearly forecast would also need a weather forecast first).
 
-### 4.12 The 2020 what-if (Q3)
+### 4.12 The 2020 side investigation
 A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **January-February** is a genuine out-of-sample test (MAE 28-42, larger than in 2017-19 because actual values already ran 7-17% below the forecasts, the same level bias seen in earlier years); **the ten lockdown weeks** compare actual (49 ug/m3) with the business-as-usual forecast (86-97 depending on the model): gap -44% to -50%; after removing each model's Jan-Mar bias, -34% to -41%. *Yardstick:* the same ten-week gap for every window of the 2017-19 backtests (harmonic model: 5th-95th percentile -31% to +23%, lowest -36%) and for the same calendar weeks of 2019 (-4% to -21%). For the seasonal mean, harmonic regression, combination and naive no ordinary window is as low as 2020; for Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few are (3% and 1% of windows). Descriptive, not causal.
 
 ## 5. Results (numbers and where they live)
@@ -126,9 +130,10 @@ A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **J
 | DM vs seasonal mean (2018-19) | naive +4.8 (p 0.03), HW +0.9 (0.57), SARIMA -0.5 (0.49), harmonic -0.3 (0.74), combination -0.9 (0.08) | `fc_dm.csv` |
 | Coverage 2017 / 2018 / 2019 | mean 62/92/81, SARIMA 23/94/85, harmonic 65/92/87 (%) | `fc_coverage.csv` |
 | VAR lag AIC / BIC | 4 / 2 | `var_lag_selection.csv` |
-| Granger p: wind, humidity -> PM2.5 | 1e-29, 1e-11 (still < 1e-8 with temperature, rain) | `granger_var.csv`, `granger_var_controls.csv` |
+| Granger p: wind, humidity, temperature, rain -> PM2.5 | 5e-27, 1e-8, 4e-9, 0.47 (each with the other weather variables) | `granger_var.csv`, `granger_var_controls.csv` |
+| Horizons 1 / 4 / 13 / 26 / 52 weeks (combination MAE, seasonal mean) | 20.2 / 21.7 / 24.8 / 23.2 / 27.1 (24.8 / 24.9 / 25.2 / 25.9 / 28.5) | `fc_horizon.csv` |
 | Weekly nested test | R^2 0.123 -> 0.128, p = 0.47 | `weekly_lag_nested.csv` |
-| One-week MAE | persistence 30.7, mean 24.8, harmonic 21.5, + last week's weather 22.1, oracle 20.0 | `fc_oneweek.csv` |
+| One-week MAE | persistence 30.7, mean 24.8, harmonic 21.5, + last week's weather 22.1 (all four 22.2), same-week (not known in advance) 20.0 (all four 22.9) | `fc_oneweek.csv` |
 | Lockdown gap (10 weeks) | -44% to -50% (adjusted -34% to -41%) | `fc_lockdown.csv`, `fc_lockdown_windows.csv` |
 
 The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slide.
@@ -164,6 +169,7 @@ The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slid
 | Poor-days share computed on all days incl. 2020 | 2015-2019 only (54%) | The label said 2015-2019 |
 | 46 dense slides without notes | slide-by-slide notes (`SPEAKER_NOTES.md`, `notes.tex`) | Each slide has a structure and a script |
 | 57-page deck with section-overview slides, lecture numbers and one slide per model | 28 slides + 4 backup slides: one plain slide for the three models, one 2x2 ACF/PACF slide, one 2019-forecast slide, lecture numbers and "course" wording removed; equations, AIC table, harmonic curve and DM formula moved to the backup | Shorter, no jargon; backup is used only if asked |
+| Deck: 28 slides + 4 backup, only the 52-week horizon, wind and humidity only, 2020 as Q3 | Rolling horizons 1-52 weeks, temperature and rain added to every weather test, 2020 a side investigation, plain wording, notes explain each graph | Review comments: a year ahead is the hard version of the problem; 2020 is an outlier, not a question |
 
 ## 8. Likely viva questions (short answers)
 

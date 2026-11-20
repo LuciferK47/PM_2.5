@@ -3,11 +3,11 @@
 MATH F428 (Time Series Analysis and Forecasting), BITS Pilani, Goa. Instructor: Prof. Anupama Sharma.
 **Authors:** Kushagra Singh, Yatin JM, Aryan Choudhary
 
-Delhi's PM2.5 follows a very strong yearly cycle. The project uses methods from the course to answer three questions:
+Delhi's PM2.5 follows a very strong yearly cycle. The project uses methods from the course to answer two questions and one side investigation:
 
-1. **Forecast.** Which method (seasonal mean, Holt-Winters, SARIMA, harmonic regression, a combination) forecasts weekly PM2.5 best, **52 weeks ahead**?
-2. **Weather.** Do wind speed and relative humidity help (VAR / Granger test, weekly test, one-week forecasts)?
-3. **2020 what-if.** A model fitted on 2015-2019 cannot know about the lockdown. How far below its "business as usual" path was PM2.5 in the lockdown weeks?
+1. **Forecast.** How far ahead (1 week to 1 year) can we forecast weekly PM2.5 better than the calendar average (the seasonal mean), and which method (seasonal naive, seasonal mean, Holt-Winters, SARIMA, harmonic regression, a combination) is best at each horizon?
+2. **Weather.** Do wind speed, humidity, temperature or rain help (VAR / Granger test, weekly test, one-week forecasts)?
+3. **Side investigation: 2020.** 2020 is an outlier by construction, not a forecasting question. A model fitted on 2015-2019 is used as a "business as usual" baseline: how far below it was PM2.5 in the lockdown weeks?
 
 The data end in July 2020, so this is a **historical study**, not an advisory. **New to the project? Read [HANDOFF.md](HANDOFF.md) first; [SPEAKER_NOTES.md](SPEAKER_NOTES.md) says what to present on each slide.**
 
@@ -17,9 +17,10 @@ The data end in July 2020, so this is a **historical study**, not an advisory. *
 |---|---|
 | Seasonality | 54% of days in 2015-2019 exceed 90 ug/m3 (Poor or worse). Winter average 217 vs monsoon 48 ug/m3 (4.5x). STL seasonal strength 0.90, trend strength 0.18. A log transform removes the link between monthly mean and SD (correlation 0.94 -> -0.09). |
 | Stationarity | The ACF of log PM2.5 shows a yearly wave (lag 26: -0.43, lag 52: +0.68). ADF/KPSS do not flag it (they look for unit roots); a seasonal difference removes the wave but over-differences (seasonal MA coefficient -0.99). |
+| Horizons (rolling, 2018-19) | **One week ahead** every model beats the seasonal mean: MAE 20.2 (combination, 82% of the seasonal mean's 24.8), 21.0 (SARIMA), 21.5 (harmonic), 22.4 (Holt-Winters); significant for the combination (p < 0.001), SARIMA (0.015) and harmonic (0.04). **Four weeks:** combination 87% (p = 0.03), the rest not significant. **13 weeks and beyond:** no model is consistently better; Holt-Winters and the combination are lower at 26 and 52 weeks but not at 13, and the tests use few overlapping forecasts. The seasonal naive forecast is worse at every horizon. |
 | 52-week forecasts | MAE 2018-19 (ug/m3): combination 23.8, SARIMA 24.3, harmonic regression 24.5, seasonal mean 24.8, Holt-Winters 25.7, seasonal naive 29.6. **No model is significantly better than the seasonal mean** (Diebold-Mariano; the combination's 0.9 edge has p = 0.08); only the naive forecast is significantly worse (p = 0.03). SARIMA is unstable with two training years (MAE 72.3 in 2017). Every model over-predicts (the level drifts down 22% from 2016 to 2019). |
-| Weather | Wind and humidity Granger-cause PM2.5 over **days** (p about 1e-29 and 1e-11; still < 1e-8 with temperature and rain), the reverse is not significant. At the **weekly** scale last week's weather adds nothing (R2 0.123 -> 0.128, p = 0.47) and one-week forecasts get slightly worse (+2.6%, p = 0.04). |
-| 2020 | In the ten lockdown weeks (ending 29 Mar - 31 May) PM2.5 averaged 49 ug/m3 against 86-97 for the business-as-usual forecasts: **44-50% lower** (34-41% after removing the models' pre-lockdown bias), below every ordinary ten-week window of 2017-19 for the seasonal mean, harmonic regression and combination. Descriptive, not causal. |
+| Weather | Wind, humidity and temperature Granger-cause PM2.5 over **days** (p < 1e-8 each, with the other weather variables in the system); **rain does not** (p = 0.47). The reverse direction is much weaker (p = 0.015). At the **weekly** scale last week's weather adds nothing (R2 0.123 -> 0.128 with wind and humidity, 0.140 with all four, p = 0.47 and 0.29) and one-week forecasts get slightly worse (22.1 and 22.2 against 21.5, p = 0.04 and 0.02). Even the same week's weather (not known in advance) helps only a little: 20.0 with wind and humidity (p = 0.08), 22.9 with all four. |
+| 2020 (side investigation) | In the ten lockdown weeks (ending 29 Mar - 31 May) PM2.5 averaged 49 ug/m3 against 86-97 for the business-as-usual forecasts: **44-50% lower** (34-41% after removing the models' pre-lockdown bias), below every ordinary ten-week window of 2017-19 for the seasonal mean, harmonic regression and combination. Descriptive, not causal. |
 
 ![Forecasts of six methods for 2019](figures/13_backtest_2019_all.png)
 
@@ -37,7 +38,7 @@ Two missing PM2.5 values are interpolated. The forecasting series is 287 weekly 
 1. **Exploration** (`notebooks/01`, `02`; Lectures 04-07): time plot, monthly boxplot, mean-vs-SD check for the log, STL decomposition and seasonal strength.
 2. **Stationarity and identification** (Lectures 08-12, 20-21, 29): ACF/PACF, ADF and KPSS, seasonal difference, SARIMA candidates by AIC/BIC, Ljung-Box (first 52 diffuse residuals dropped).
 3. **Weather** (`notebooks/03`; handout, VAR/Granger): deseasonalised daily anomalies, VAR lag by AIC/BIC, Granger F-tests in both directions, a weekly nested regression test.
-4. **Forecasting** (`notebooks/04`, `src/forecast.py`; Lectures 06, 13-16, 20-23, 28-30): seasonal naive, seasonal mean, Holt-Winters, SARIMA (orders by AIC), harmonic regression with ARMA errors (K and (p,q) by AIC), equal-weight combination. Three expanding-window origins (end of 2016, 2017, 2018), each forecasting 52 weeks with every model refit and re-selected on earlier data only. Metrics: ME, MAE, RMSE, MAPE, interval coverage; Diebold-Mariano test against the seasonal mean (a block bootstrap is a robustness line in the report). One-week-ahead test with and without weather.
+4. **Forecasting** (`notebooks/04`, `tools/horizon.py` (rolling origins), `src/forecast.py`; Lectures 06, 13-16, 20-23, 28-30): seasonal naive, seasonal mean, Holt-Winters, SARIMA (orders by AIC), harmonic regression with ARMA errors (K and (p,q) by AIC), equal-weight combination. Three expanding-window origins (end of 2016, 2017, 2018), each forecasting 52 weeks with every model refit and re-selected on earlier data only. Metrics: ME, MAE, RMSE, MAPE, interval coverage; Diebold-Mariano test against the seasonal mean (a block bootstrap is a robustness line in the report). One-week-ahead test with and without weather.
 5. **2020 what-if**: forecasts made at the end of 2019 against the actual 2020 weeks; the lockdown gap is compared with ordinary ten-week gaps in 2017-19 and the same weeks of 2019.
 
 ## Repository layout
@@ -47,7 +48,7 @@ data/raw/          city_day.csv, station_day.csv, stations.csv, delhi_weather_op
 data/processed/    delhi_daily.csv, delhi_weekly.csv
 src/               data.py, tsa.py, forecast.py (models, backtest, metrics, DM test), plots.py, aqi.py
 notebooks/         01_data_prep, 02_eda, 03_var_granger, 04_forecasting (executed, outputs saved)
-tools/             build_nb02.py, build_nb03.py, build_nb04.py (regenerate notebooks), extract_notes.py
+tools/             build_nb02.py, build_nb03.py, build_nb04.py (regenerate notebooks), horizon.py (rolling 1-52 week study), extract_notes.py
 results/           CSV/JSON tables; fc_* files belong to the forecasting study
 figures/           PNG figures from the notebooks
 slides/beamer/     main.tex (final presentation), notes.tex (notes version), make_figures.py, verify_numbers.py, tables/

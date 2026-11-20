@@ -88,12 +88,12 @@
     \column{0.47\linewidth}
     \begin{shbox}{gold}{Our questions}
       \raggedright
-      \textbf{Q1} Which method gives the best forecast of Delhi's weekly PM$_{2.5}$ for the whole next year?\\[3pt]
-      \textbf{Q2} Do wind speed and humidity help predict PM$_{2.5}$?\\[3pt]
-      \textbf{Q3} How much lower was PM$_{2.5}$ in the 2020 lockdown than a model trained on 2015--19 would have expected?
+      \textbf{Q1} How far ahead can we forecast weekly PM$_{2.5}$ better than simply using the calendar average?\\[3pt]
+      \textbf{Q2} Do wind, humidity, temperature or rain help predict PM$_{2.5}$?\\[3pt]
+      {\small Side investigation: how far below expectation was PM$_{2.5}$ in the 2020 lockdown?}
     \end{shbox}
   \end{columns}
-  \note{PM2.5 is the most harmful common air pollutant, and Delhi is among the worst cities. Over the five modelling years the average is \pmMean micrograms per cubic metre and more than half of all days are above the ninety microgram threshold, the Poor band or worse. The interesting part for a time series project is the structure: values ordered in time, a strong yearly cycle with winter \ratioWM times worse than the monsoon, and a level that drifts down. State the three questions. The first compares forecasting methods one year ahead using only the series itself. The second asks whether weather adds information. The third is a what-if: a model trained before 2020 cannot know about the lockdown, so we use it as a business-as-usual baseline.}
+  \note{PM2.5 is the most harmful common air pollutant, and Delhi is among the worst cities. Over the five modelling years the average is \pmMean micrograms per cubic metre and more than half of all days are above the ninety microgram threshold, the Poor band or worse. The interesting part for a time series project is the structure: values ordered in time, a strong yearly cycle with winter \ratioWM times worse than the monsoon, and a level that drifts down. The first question is about forecasting. The simplest forecast is the average of the same calendar week in earlier years, which we call the seasonal mean. We ask how far ahead the standard models can beat that, from one week up to a full year. The second question is whether weather, meaning wind speed, humidity, temperature and rain, helps to predict PM2.5. The 2020 lockdown is a side investigation and not a question we want to answer: it is an outlier by construction, and a model trained before 2020 cannot know about it. We only use the model as a business-as-usual baseline to see how big an unpredictable gap it created.}
 \end{frame}
 
 \begin{frame}{Data and Variables}
@@ -103,13 +103,15 @@
   PM$_{2.5}$ & daily city mean of CPCB stations & \ugm{} & CPCB via Kaggle\\\hline
   Wind & daily mean wind speed & km/h & ERA5 (Open-Meteo)\\\hline
   Humidity & daily mean relative humidity & \% & ERA5 (Open-Meteo)\\\hline
+  Temperature & daily mean air temperature & $^\circ$C & ERA5 (Open-Meteo)\\\hline
+  Rain & daily total precipitation & mm & ERA5 (Open-Meteo)\\\hline
   \end{tabular}}\caption{Variables, 1 Jan 2015 -- 1 Jul 2020 (\nDays\ days).}
   \end{table}
   \begin{itemize}
     \item \textbf{Weekly means} (weeks ending Sunday): \nWeeks\ weeks; seasonal period $s=52$.
-    \item \textbf{Modelling years 2015--2019}; the 2020 weeks appear only in the final what-if.
+    \item \textbf{Modelling years 2015--2019}; the 2020 weeks appear only in the side investigation.
   \end{itemize}
-  \note{Explain the three variables and their units. Wind is the daily mean wind speed in kilometres per hour and humidity is relative humidity in percent. The weather is a reanalysis for one point in Delhi, so it is modelled weather rather than a station measurement. We use weekly means so that the seasonal period is fifty-two, which the seasonal models need. Two PM2.5 days were missing and were interpolated. Stress that 2020 is kept out of every estimate.}
+  \note{Explain the three variables and their units. Wind is the daily mean wind speed in kilometres per hour, humidity is relative humidity in percent, temperature is the daily mean air temperature in degrees Celsius and rain is the daily total precipitation in millimetres. The weather is a reanalysis for one point in Delhi, so it is modelled weather rather than a station measurement. We use weekly means so that the seasonal period is fifty-two, which the seasonal models need. Two PM2.5 days were missing and were interpolated. Stress that 2020 is kept out of every estimate.}
 \end{frame}
 
 \begin{frame}{Our Approach}
@@ -122,17 +124,17 @@
     \node[box] (b) at (1,0) {2. Identify\\ \tiny ACF/PACF, ADF/KPSS};
     \node[box] (c) at (2,0) {3. Estimate\\ \tiny 3 models, 2 benchmarks};
     \node[box] (d) at (3,0) {4. Check\\ \tiny residuals};
-    \node[box] (e) at (4,0) {5. Forecast\\ \tiny a full year ahead};
+    \node[box] (e) at (4,0) {5. Forecast\\ \tiny 1 week to 1 year ahead};
     \node[box] (f) at (5,0) {6. Evaluate\\ \tiny MAE, DM test};
     \foreach \u/\v in {a/b,b/c,c/d,d/e,e/f}{\draw[arr] (\u) -- (\v);}
     \draw[arr,dashed] (d.south) -- ++(0,-0.5) -| (c.south);
-    \node[wide] (g) at (1,-2.3) {Branch: do wind and humidity help?\\ \tiny VAR, Granger test};
-    \node[wide] (h) at (5,-2.3) {Final check: 2020\\ \tiny what-if};
+    \node[wide] (g) at (1,-2.3) {Branch: does weather help?\\ \tiny wind, humidity, temperature, rain: VAR, Granger test};
+    \node[wide] (h) at (5,-2.3) {Side investigation: 2020 lockdown\\ \tiny what-if};
     \draw[arr,gold!80!black] (b.south) -- (g.north); \draw[arr,gold!80!black] (f.south) -- (h.north);
   \end{tikzpicture}
   \vspace{4pt}
   \begin{itemize}\small\item If the residual check fails, we go back and change the model (dashed arrow).\end{itemize}
-  \note{This is the road map of the talk, the Box-Jenkins procedure. Look at the data and choose a transformation, identify the model structure with the ACF and PACF, estimate the models, check the residuals and go back if they are not white noise, then forecast and evaluate on data the model has not seen. We fit three models and two simple benchmarks, and then also average their forecasts. Two branches hang off the main line: the weather question and the 2020 what-if. Point to each box as you say it, so the audience knows where we are at every later slide.}
+  \note{This is the road map of the talk, the Box-Jenkins procedure. Look at the data and choose a transformation, identify the model structure with the ACF and PACF, estimate the models, check the residuals and go back if they are not white noise, then forecast and evaluate on data the model has not seen. We fit three models and two simple benchmarks, and then also average their forecasts. We forecast at several horizons, from one week to a full year ahead. Two side branches hang off the main line: the weather question, and the 2020 lockdown, which is a side investigation and not part of the main comparison. Point to each box as you say it, so the audience knows where we are at every later slide.}
 \end{frame}
 
 % ================= 2. EXPLORING THE DATA =================
@@ -163,7 +165,7 @@
     \item \textbf{Top} (weekly log PM$_{2.5}$, 2015--18; band $\pm1.96/\sqrt n$): ACF \acfOne\ at lag 1, \textbf{negative} at lag 26 ($\acfHalf$), positive at lag 52 ($\acfYear$): a yearly wave. PACF: spikes at lags 1--2 only.
     \item \textbf{Bottom}, after $\nabla_{52}x_t=x_t-x_{t-52}$: the wave is gone, but the ACF at lag 52 turns negative, a sign of over-differencing. We use $d=0$, $D=1$.
   \end{itemize}
-  \note{How to read the plots: each bar is the correlation of the series with itself a given number of weeks earlier; the grey band is what we expect from pure noise. Top left, the ACF of the weekly log series. It does not die out. It starts at \acfOne at lag one, dips below zero at lag twenty-six, half a year, and climbs back to a positive peak at lag fifty-two, one year. That is the signature of a seasonal series, whose mean depends on the time of year, so the series is not stationary in the way an ordinary ARMA model needs. Top right, the PACF has two large spikes at lags one and two and little after that: short-run autoregressive behaviour on top of the seasonal pattern. Bottom row: the same plots after a seasonal difference, subtracting the value of the same week one year earlier. The long wave in the ACF is gone. But the autocorrelation at lag fifty-two is now negative, which is a typical symptom of over-differencing; it comes back when we look at the SARIMA residuals. An extra ordinary difference would make this worse, so we use no ordinary difference and one seasonal difference.}
+  \note{How to read the plots. The ACF shows, for each lag on the horizontal axis, how strongly the series is correlated with itself that many weeks earlier. The PACF shows the same after removing the effect of the shorter lags. The grey band is where a bar would land by chance for pure noise, so only bars outside it matter. Top left, the ACF of the weekly log series. It does not die out quickly. It starts at \acfOne at lag one, dips below zero around lag twenty-six, half a year, and climbs back to a positive peak at lag fifty-two, one year. That wave is the signature of a seasonal series, whose level depends on the time of year, so we cannot model it as an ordinary stationary series. Top right, the PACF has big spikes at lags one and two and little afterwards. That points to short-run autoregressive behaviour, an AR of order one or two, on top of the seasonal pattern. Bottom row: the same plots after a seasonal difference, that is, subtracting the value of the same week one year earlier. The long wave in the ACF is gone, so the seasonal difference did its job. But now the autocorrelation at lag fifty-two is negative. That is a typical sign of over-differencing, and it tells us to add a seasonal moving-average term to the model. An extra ordinary difference would make this worse, so we use no ordinary difference and one seasonal difference. This is how the SARIMA structure on the next slides is chosen.}
 \end{frame}
 
 \begin{frame}{Unit-Root Tests: ADF and KPSS}
@@ -172,10 +174,10 @@
   \end{itemize}
   \begin{table}\centering\small\adjustbox{max width=\linewidth}{\input{tables/stationarity.tex}}\caption{ADF and KPSS, weekly series, 2015--18.}\end{table}
   \begin{itemize}\small
-    \item Log PM$_{2.5}$ passes both tests: \textbf{no unit root}, so no ordinary difference is needed ($d=0$). The yearly cycle is handled by seasonal terms ($D=1$), not by these tests.
-    \item After the seasonal difference both tests also pass (ADF $p=\adfPDiff$, KPSS \kpssDiff).
+    \item For log PM$_{2.5}$ the two tests \textbf{agree}: ADF rejects a unit root and KPSS does not reject stationarity. So there is no unit root and no ordinary difference is needed ($d=0$).
+    \item They cannot see a regular yearly cycle; that is decided from the ACF ($D=1$). After the seasonal difference both tests still agree (ADF $p=\adfPDiff$, KPSS \kpssDiff).
   \end{itemize}
-  \note{Two tests with opposite null hypotheses. ADF has a unit root as its null, so we want it to reject, and KPSS has stationarity as its null, so we want it not to reject. For log PM2.5 ADF rejects with a tiny p-value, \adfPLog, and KPSS does not reject. Conclusion: there is no unit root and no slow trend that needs an ordinary difference, so d is zero. These tests are built to find unit roots, not a seasonal mean that moves up and down every year, so the seasonal part is decided from the ACF on the previous slide, which gives one seasonal difference, D equal to one. After the seasonal difference both tests still pass, ADF p of \adfPDiff and KPSS statistic \kpssDiff.}
+  \note{Two tests with opposite null hypotheses. ADF has a unit root as its null, so we want it to reject. KPSS has stationarity as its null, so we want it not to reject. If they disagreed we would have an inconclusive result and would have to look closer; here they agree, which is the clear case. For log PM2.5 ADF rejects with a tiny p-value, \adfPLog, and KPSS does not reject, so there is no unit root and no slow trend that needs an ordinary difference. That means d is zero. These tests are built to find unit roots, not a seasonal mean that moves up and down every year, so the seasonal part is decided from the ACF on the previous slide, which gives one seasonal difference, D equal to one. After the seasonal difference both tests still agree, with an ADF p-value of \adfPDiff and a KPSS statistic of \kpssDiff.}
 \end{frame}
 
 % ================= 4. THE MODELS =================
@@ -186,7 +188,7 @@
   \textbf{Method} & \textbf{Idea} & \textbf{Chosen on earlier data}\\\hline
   \multicolumn{3}{|l|}{\textit{Benchmarks (calendar only)}}\\\hline
   Seasonal naive & same week one year ago & nothing\\\hline
-  Seasonal mean & average of that calendar week over all training years & nothing\\\hline
+  Seasonal mean & average of that calendar week over all earlier years & nothing\\\hline
   \multicolumn{3}{|l|}{\textit{Models}}\\\hline
   Holt--Winters & smoothed level + 52-week seasonal index & $\alpha,\delta$, start values\\\hline
   SARIMA & seasonal difference + ARMA terms, $(p,0,q)(P,1,Q)_{52}$ & orders $p,q,P,Q$ by AIC\\\hline
@@ -195,31 +197,31 @@
   Equal-weight average & average of seasonal mean, Holt--Winters, SARIMA, harmonic & nothing\\\hline
   \end{tabular}}\caption{All methods work on log PM$_{2.5}$; forecasts are $\exp(\hat\mu)$, the median.}
   \end{table}
-  \note{All competitors in one table. The two benchmarks use only the calendar. The seasonal naive forecast repeats last year's value for the same week, including whatever noise it had that year. The seasonal mean averages that week over all training years, on the log scale, so the noise is averaged out. A worked example: for week \exWeek, in mid January, the four training years gave \exYa, \exYb, \exYc and \exYd micrograms, so the naive forecast is \exNaive and the seasonal mean is about \exMean. The three models are Holt-Winters, SARIMA and harmonic regression, described on the next slide. The right column says what each method chooses from earlier data only, at each forecast origin. The combination simply averages the log forecasts of four of them. All methods are fitted to log PM2.5 and converted back with the exponential, which gives the median of the original PM2.5.}
+  \note{All competitors in one table, and what to expect from each. Benchmarks first, because every model has to beat them to be worth using. The seasonal naive forecast repeats last year's value for the same week, including whatever noise it had that year. Its strength is that it needs no fitting; its weakness is that it copies the noise. The seasonal mean averages that week over all earlier years on the log scale, so the noise is averaged out. A worked example: for week \exWeek, in mid January, the four training years gave \exYa, \exYb, \exYc and \exYd micrograms, so the naive forecast is \exNaive and the seasonal mean is about \exMean. We expect this to be very hard to beat a year ahead. Holt-Winters keeps a running level and a seasonal pattern. Its strength is that it adapts as new weeks arrive; its weakness is that with the seasonal smoothing near zero it hardly updates the seasonal pattern. SARIMA removes the yearly pattern by differencing and models the rest. Its strength is that it uses the recent past well at short horizons; its weakness is that it needs several years of history. Harmonic regression describes the yearly shape as a smooth curve. Its strength is that it averages out the noise and is stable; its weakness is that the shape is fixed. The combination averages four forecasts so that their different mistakes partly cancel, though that is not guaranteed. The right column says what each method chooses from earlier data only, at each forecast origin. All methods are fitted to log PM2.5 and converted back with the exponential, which gives the median of the original PM2.5.}
 \end{frame}
 
 \begin{frame}{The Three Models}
   \begin{itemize}
     \item \textbf{Holt--Winters}: keeps a running level and a 52-week seasonal pattern and updates both as new weeks arrive. Fitted $\hat\alpha\approx\hwAlpha$, $\hat\delta\approx\hwGamma$: the seasonal pattern is learnt once and barely updated.\\[4pt]
-    \item \textbf{SARIMA}: subtracts the value from one year earlier to remove the yearly pattern, then models what is left with autoregressive and moving-average terms. Orders are chosen by AIC at each origin.\\[4pt]
+    \item \textbf{SARIMA}$(p,0,q)(P,1,Q)_{52}$: predicts the change from the same week last year (the seasonal difference) from its own recent values (AR, $p$ terms) and recent errors (MA, $q$ terms), plus the same at yearly lags ($P$, $Q$). Orders are chosen by AIC at each origin.\\[4pt]
     \item \textbf{Harmonic regression}: writes the yearly shape as a smooth curve of $K$ sines and cosines ($K=\kHarmLo$--\kHarmHi, chosen by AIC) and lets the leftover errors follow an ARMA model.
   \end{itemize}
   \vspace{4pt}\small Equations and settings are in the backup slides.
-  \note{A plain description of the three models; the equations are in the backup slides if someone asks. Holt-Winters keeps a running level and a seasonal pattern for each of the fifty-two weeks of the year and updates both when a new week arrives. The fitted seasonal smoothing parameter is \hwGamma, essentially zero, so the seasonal pattern is learnt once and then kept while the level moves; the level parameter is \hwAlpha. SARIMA removes the yearly pattern by subtracting the value from one year earlier and then models the leftover with autoregressive and moving-average terms. We search a small grid of orders and take the smallest AIC, using only earlier data. Harmonic regression puts the seasonal pattern into a regression instead of differencing it: a smooth curve built from K sines and cosines with a one year period. AIC chose K between \kHarmLo and \kHarmHi, below the upper limit of ten, so the search was not cut off. The leftover errors are autocorrelated, so they get an ARMA model.}
+  \note{A plain description of the three models; the equations are in the backup slides if someone asks. Holt-Winters keeps a running level and a seasonal pattern for each of the fifty-two weeks of the year and updates both when a new week arrives. The fitted seasonal smoothing parameter is \hwGamma, essentially zero, so the seasonal pattern is learnt once and then kept while the level moves; the level parameter is \hwAlpha. It should do well when the level drifts, because the level keeps following the data. SARIMA works on the change from the same week last year. It then predicts that change from the last few weeks, which is the autoregressive part, and from the last few forecast errors, which is the moving-average part, and it does the same at yearly lags with the seasonal terms. Read a SARIMA with orders one, zero, one and zero, one, one and period fifty-two aloud like this: one autoregressive term and one moving-average term for the short run, no ordinary difference, one seasonal difference, no seasonal autoregressive term and one seasonal moving-average term. We search a small grid of orders and take the smallest AIC, which rewards fit but penalises the number of parameters, using only earlier data. We expect SARIMA to be strong a few weeks ahead, and weaker when there is little history. Harmonic regression puts the seasonal pattern into a regression instead of differencing it: a smooth curve built from K sines and cosines with a one year period. AIC chose K between \kHarmLo and \kHarmHi, below the upper limit of ten, so the search was not cut off. The leftover errors are autocorrelated, so they get an ARMA model. Its strong point is a stable, smooth seasonal shape, so we expect it to be solid at every horizon.}
 \end{frame}
 
 \begin{frame}{Checking the Residuals: SARIMA}
-  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/sarima_resid.pdf}\caption{Residuals and residual ACF of SARIMA$(1,0,1)(0,1,1)_{52}$, 2015--18, from the second year on.}\end{figure}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/sarima_resid.pdf}\caption{Residuals and residual ACF of SARIMA$(1,0,1)(0,1,1)_{52}$, 2015--18, from the second year on. Orange: lag 52.}\end{figure}
   \begin{itemize}\small
-    \item \textbf{Ljung--Box} tests whether the residuals are white noise: yes at lags 10 and 26 ($p=\lbTen$, $\lbTwentySix$); at lag 52, $p=\lbFiftyTwo$, so some yearly pattern is left.
+    \item \textbf{Ljung--Box} is a joint test of the first $h$ autocorrelations: up to lag 10 and 26 they look like noise ($p=\lbTen$, $\lbTwentySix$); up to lag 52, $p=\lbFiftyTwo$, so some yearly structure remains.
     \item The seasonal MA coefficient is $\hat\Theta=\sarMA$, about $-1$: the seasonal difference removes more than needed, so SARIMA is unstable with little data.
   \end{itemize}
-  \note{Box-Jenkins says to check the residuals of the chosen model. How to read the plots: on the left the residuals over time should look like noise around zero, and on the right the residual ACF bars should stay inside the grey band. The residuals start in the second year, because a seasonal difference needs one year of history. The Ljung-Box test asks whether the residuals are white noise, that is, whether any autocorrelation is left; a small p-value says there is. At lags ten and twenty-six the p-values are \lbTen and \lbTwentySix, so the short-run structure has been captured. At lag fifty-two the p-value is \lbFiftyTwo, so a yearly pattern is still left. The second finding is the seasonal moving-average coefficient of \sarMA, close to minus one. That means the seasonal difference removes more than it should, the same over-differencing sign as the negative autocorrelation at lag fifty-two. In practice this makes SARIMA unstable when there are few years of data, which we see in 2017.}
+  \note{Box-Jenkins says to check the residuals of the chosen model. How to read the plots: on the left the residuals over time should look like noise around zero, and on the right the residual ACF bars should stay inside the grey band. The residuals start in the second year, because a seasonal difference needs one year of history. The Ljung-Box test is a joint test. At lag h it asks whether all of the first h autocorrelations are zero together, not whether the single bar at lag h is. A small p-value says some autocorrelation is left somewhere up to that lag. Up to lag ten and up to lag twenty-six the p-values are \lbTen and \lbTwentySix, so there is no sign of leftover structure in the short and medium run. Up to lag fifty-two the p-value is \lbFiftyTwo, so once the yearly lag is included something is left; look at the bars close to the orange line at lag fifty-two. The second finding is the seasonal moving-average coefficient of \sarMA, close to minus one. That means the seasonal difference removes more than it should, the same over-differencing sign as the negative autocorrelation at lag fifty-two. In practice this makes SARIMA unstable when there are few years of data, which we see in 2017.}
 \end{frame}
 
 % ================= 5. HOW WE EVALUATE =================
 \section{How We Evaluate}
-\begin{frame}{Backtest Design: Three Forecast Origins}
+\begin{frame}{Backtest Design: Year-Ahead and Rolling Origins}
   \centering\vspace{0.2cm}
   \begin{tikzpicture}[x=0.55cm,y=0.55cm,font=\scriptsize]
     \foreach \i/\tr/\te/\lab in {0/4/2/{origin 1: fit on 2015--16, forecast 2017}, 1/6/2/{origin 2: fit on 2015--17, forecast 2018}, 2/8/2/{origin 3: fit on 2015--18, forecast 2019}}{
@@ -229,8 +231,9 @@
   \begin{itemize}\small
     \item Blue = data the model may use; gold = the \textbf{52 weeks it must forecast}. The window \emph{expands} at each origin.
     \item At every origin each model is refitted and \textbf{all choices (orders, $K$) are redone on earlier data only}. 2018 and 2019 are the main test years; 2017 (two training years) is a stress test.
+    \item \textbf{Rolling study}: every week of 2018--19 is also an origin. Parameters are re-estimated once a year, the state is updated each week, and forecasts are scored 1, 4, 13, 26 and 52 weeks ahead.
   \end{itemize}
-  \note{We cannot judge a forecasting model on the data it was fitted to. So we stand at the end of 2016 and forecast the whole of 2017, then stand at the end of 2017 and forecast 2018, then at the end of 2018 and forecast 2019. In the picture blue is the data available and gold is the fifty-two weeks to forecast. At each origin every model is fitted again from scratch using only earlier years, including the choice of orders and K. The horizon is fifty-two weeks. With three test years we make careful claims, and the first test year has only two years of training data, so we read it as a stress test and give most weight to 2018 and 2019.}
+  \note{We cannot judge a forecasting model on the data it was fitted to. So we stand at the end of 2016 and forecast the whole of 2017, then stand at the end of 2017 and forecast 2018, then at the end of 2018 and forecast 2019. In the picture blue is the data available and gold is the fifty-two weeks to forecast. At each origin every model is fitted again from scratch using only earlier years, including the choice of orders and K. The horizon is fifty-two weeks. The same models are also evaluated on rolling origins: every week of 2018 and 2019 is a forecast origin, the parameters are re-estimated once a year on earlier data, the model state is updated with each new week, and each origin is scored at one, four, thirteen, twenty-six and fifty-two weeks ahead; the seasonal mean is recomputed at every origin so all methods have the same information. With three test years we make careful claims, and the first test year has only two years of training data, so we read it as a stress test and give most weight to 2018 and 2019.}
 \end{frame}
 
 \begin{frame}{How We Score: Errors, Coverage and the DM Test}
@@ -258,84 +261,112 @@
 
 \begin{frame}{Errors by Year}
   \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_mae.pdf}\caption{52-week MAE by forecast year and model.}\end{figure}
-  \begin{itemize}\small\item SARIMA: \maeSarimaEighteen\ in 2018 but \textbf{worst in 2017} (\maeSarimaSeventeen). Holt--Winters: \maeHWSeventeen\ in 2017, \maeHWEighteen\ in 2018, \maeHWNineteen\ in 2019: unstable. The seasonal mean, harmonic regression and combination are steady.\end{itemize}
-  \note{This bar chart summarises the MAE of every model in each test year; lower is better. Read it by colour: grey is 2017, green 2018, blue 2019. The tall grey bar is SARIMA in 2017, \maeSarimaSeventeen: with only two training years the seasonal difference leaves one year of information and the forecast becomes unstable. Holt-Winters also swings from year to year, \maeHWSeventeen, \maeHWEighteen and \maeHWNineteen. The seasonal mean, harmonic regression and the combination stay in a narrow band. The seasonal naive is consistently worse than the seasonal mean.}
+  \begin{itemize}\small\item SARIMA is \textbf{worst in 2017} (\maeSarimaSeventeen): with two training years AIC chose SARIMA$\sarSeventeenOrder_{52}$ with seasonal AR coefficient \sarSeventeenSeasAR, so it extrapolates the 2015$\to$2016 rise (forecast mean \sarSeventeenFcMean\ vs actual \sarSeventeenActMean\ \ugm{}). Holt--Winters: \maeHWSeventeen, \maeHWEighteen, \maeHWNineteen\ (unstable).\end{itemize}
+  \note{This bar chart summarises the MAE of every model in each forecast year, for the year-ahead forecasts; lower is better. Read it by colour: grey is 2017, green 2018, blue 2019. The tall grey bar is SARIMA in 2017, \maeSarimaSeventeen. The reason is differencing combined with too little history. With only two training years the seasonal difference leaves one year of information, and AIC picked a model with a seasonal autoregressive coefficient of \sarSeventeenSeasAR, almost one. Such a model forecasts roughly last year plus the change from the year before. The year before that, 2016, was much worse than 2015, because of the November 2016 smog episode, so SARIMA extrapolated the rise: its mean forecast for 2017 was \sarSeventeenFcMean against an actual mean of \sarSeventeenActMean, with peaks near \sarSeventeenPeak micrograms. It is a modelling weakness of seasonal differencing on short data, not a bug. Holt-Winters also swings from year to year, \maeHWSeventeen, \maeHWEighteen and \maeHWNineteen. The seasonal mean, harmonic regression and the combination stay in a narrow band. The seasonal naive is consistently worse than the seasonal mean.}
 \end{frame}
 
 \begin{frame}{The Key Table}
-  \begin{table}\centering\small\adjustbox{max width=\linewidth}{\input{tables/key.tex}}\caption{MAE and ME in \ugm{} over 2018--19 ($e=$ actual $-$ forecast); DM $p$-value against the seasonal mean; coverage of the 95\% interval in 2019.}\end{table}
+  \begin{table}\centering\small\adjustbox{max width=\linewidth}{\input{tables/key.tex}}\caption{Year-ahead forecasts. MAE and ME in \ugm{} over 2018--19 ($e=$ actual $-$ forecast); DM $p$-value against the seasonal mean; coverage of the 95\% interval in 2019.}\end{table}
   \begin{itemize}\small
-    \item Lowest MAE 2018--19: \textbf{\bestAvgModel} (\maeCombAvg) against \maeMeanAvg\ for the seasonal mean. \textbf{Not significantly better} (DM $p=\dmPComb$); SARIMA, harmonic and Holt--Winters have $p\ge\dmPSarima$. Only the naive forecast is significantly worse ($p=\dmPNaive$).
+    \item Lowest MAE 2018--19: \textbf{\bestAvgModel} (\maeCombAvg) against \maeMeanAvg\ for the seasonal mean, but \textbf{not significantly better} (DM $p=\dmPComb$). SARIMA, harmonic and Holt--Winters have $p\ge\dmPSarima$. Only the naive forecast is significantly \emph{worse} than the seasonal mean ($p=\dmPNaive$).
     \item ME is negative for \textbf{every} model: all over-predict.
   \end{itemize}
-  \note{The key table. Each row is a model, with the average MAE over 2018 and 2019, the mean error, the Diebold-Mariano p-value against the seasonal mean and the 2019 interval coverage. The combination has the lowest MAE, \maeCombAvg against \maeMeanAvg for the seasonal mean, a difference of about \dmDComb micrograms. That is a small gain and the test does not call it significant at five percent, p of \dmPComb. SARIMA, harmonic regression and Holt-Winters cannot be told apart from the seasonal mean either. Only the seasonal naive is significantly worse, p of \dmPNaive. ME is negative for every model: forecasts are too high on average. Coverage in 2019 is between \covMinNineteen and \covMaxNineteen percent, below the nominal ninety-five, because the level drifted down and the intervals are too narrow.}
+  \note{The key table, for year-ahead forecasts. Each row is a model, with the average MAE over 2018 and 2019, the mean error, the Diebold-Mariano p-value against the seasonal mean and the 2019 interval coverage. Note what the test compares: every model against the seasonal mean, the average of each calendar week over earlier years, and not against the naive forecast. The combination has the lowest MAE, \maeCombAvg against \maeMeanAvg for the seasonal mean, a difference of about \dmDComb micrograms. That is a small gain and the test does not call it significant at five percent, p of \dmPComb. SARIMA, harmonic regression and Holt-Winters cannot be told apart from the seasonal mean either. Only the seasonal naive, last year's week copied forward, is significantly worse, p of \dmPNaive. So no model is clearly better than the plain calendar average a year ahead. ME is negative for every model: forecasts are too high on average. Coverage in 2019 is between \covMinNineteen and \covMaxNineteen percent, below the nominal ninety-five, because the level drifted down and the intervals are too narrow.}
 \end{frame}
 
-\begin{frame}{What the Results Mean}
-  \begin{itemize}
-    \item \textbf{Q1: no method clearly beats the seasonal mean.} A year ahead almost all predictable signal is the calendar ($F_S=\Fs$); short-run dynamics die out within weeks. The combination's small edge is not significant.
-    \item \textbf{SARIMA} ties with the seasonal mean (\maeSarimaAvg\ vs \maeMeanAvg) but does badly in 2017 (\maeSarimaSeventeen): it needs more history than two years.
-    \item \textbf{Intervals} are too narrow when the level drifts: coverage \covMinSeventeen--\covMaxSeventeen\% in 2017 and \covMinNineteen--\covMaxNineteen\% in 2019 (nominal 95\%).
-    \item \textbf{No model} foresees the level drift (ME $<0$) or a one-off shock such as 2020.
+
+\begin{frame}{How Far Ahead Can We Beat the Calendar?}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_horizon.pdf}\caption{MAE as a percentage of the seasonal mean's MAE, rolling forecasts 2018--19 (below 100\% = better than the calendar average).}\end{figure}
+  \begin{itemize}\small
+    \item \textbf{1 week}: all models beat the seasonal mean (combination \horPctCombOne\%, SARIMA \horPctSarimaOne\%, harmonic \horPctHarmOne\%). \textbf{4 weeks}: smaller gains (\horPctCombFour\% to \horPctHWFour\%).
+    \item \textbf{13 weeks and beyond}: no model is consistently better; the seasonal naive forecast is always worse.
   \end{itemize}
-  \note{Pull the results together. For question one: nothing beats the calendar average by a significant margin. A year ahead the signal is the calendar, with a seasonal strength of \Fs, and the short-run autocorrelation has long died out by fifty-two weeks. The combination has the lowest average error but only by about one microgram and the test does not support calling it better. SARIMA ties with the seasonal mean on three years of data, \maeSarimaAvg against \maeMeanAvg, but does badly with two training years, \maeSarimaSeventeen, which the residual check had hinted at. The intervals are too narrow in the stress year and in 2019 because the level drifted. And none of the models can see slow changes in the level or sudden events, which leads into the 2020 section.}
+  \note{This is the central picture for question one. How to read the plot: the horizontal axis is how far ahead we forecast, from one week to fifty-two weeks. The vertical axis is each model's average error as a percentage of the error of the seasonal mean, which is the dashed line at one hundred. Below the line means better than the calendar average. At each horizon, every week of 2018 and 2019 is a forecast origin: the model parameters were estimated on earlier data, and the model state is updated with all data up to the origin, and the seasonal mean is also recomputed from all data up to the origin, so every method has the same information. One week ahead every model is below the line: the combination has \horPctCombOne percent, SARIMA \horPctSarimaOne and harmonic regression \horPctHarmOne; the recent past is informative at this horizon. Four weeks ahead the gains shrink, the combination is at \horPctCombFour percent. At thirteen weeks the models are at about the same level as the calendar average. At twenty-six and fifty-two weeks Holt-Winters and the combination are somewhat below the line, because they keep following the level while the seasonal mean does not; but SARIMA and harmonic regression are not, and the result at thirteen weeks does not support a steady advantage, so we treat the long-horizon gains as uncertain. The seasonal naive forecast is above the line at every horizon: copying last year's noise is worse than averaging. The takeaway: the models beat the calendar average by roughly ten to eighteen percent up to about a month ahead, and beyond that the calendar average is very hard to beat.}
 \end{frame}
+
+\begin{frame}{Horizon Study: Errors and Significance}
+  \begin{table}\centering\small\adjustbox{max width=\linewidth}{\input{tables/horizon.tex}}\caption{MAE (\ugm{}) by horizon; $^{*}$ = significantly lower than the seasonal mean (DM, $p<0.05$). Forecasts per horizon: \horNOne, \horNFour, \horNThirteen, \horNTwentySix, \horNFiftyTwo.}\end{table}
+  \begin{itemize}\small
+    \item \textbf{1 week}: combination, SARIMA and harmonic are significantly better than the seasonal mean; \textbf{4 weeks}: only the combination.
+    \item At 26 and 52 weeks Holt--Winters and the combination are lower, but with few forecasts the $p$-values are approximate and the gain is not repeated at 13 weeks.
+  \end{itemize}
+  \note{The same study as a table, with the average error in micrograms for each method and horizon, and a star where the Diebold-Mariano test says a model is significantly better than the seasonal mean. The last row of the caption gives the number of forecasts at each horizon: the number falls with the horizon, from \horNOne at one week to \horNFiftyTwo at fifty-two weeks, because later targets need an origin early enough. Persistence, which repeats last week's value, is worse than the calendar average even one week ahead and gets much worse as the horizon grows; it is only a reference. One week ahead the combination is at \horMaeCombOne, SARIMA \horMaeSarimaOne and harmonic regression \horMaeHarmOne against \horMaeMeanOne for the seasonal mean; the p-value for the combination is below one hundredth, and for SARIMA and harmonic regression \horPSarimaOne and \horPHarmOne. Four weeks ahead only the combination is significant, \horPCombFour. At thirteen weeks no model is below the seasonal mean, \horMaeMeanThirteen. At twenty-six weeks Holt-Winters and the combination are significantly lower, but they are not at thirteen weeks and the test at long horizons uses few, overlapping forecasts, so its p-values are only approximate. We therefore do not claim a long-horizon advantage.}
+\end{frame}
+
+\begin{frame}{What This Means for Q1}
+  \begin{itemize}
+    \item \textbf{Up to about a month ahead} the models are ahead of the calendar average, because recent weeks carry information: \horPctCombOne\% of its error for the combination at 1 week (significant for the combination, SARIMA and harmonic), \horPctCombFour\% at 4 weeks (significant for the combination only).
+    \item \textbf{A year ahead}, almost all predictable signal is the calendar ($F_S=\Fs$): no method is significantly better than the seasonal mean (best: \bestAvgModel, DM $p=\dmPComb$), and the naive forecast is significantly worse.
+    \item SARIMA ties with the seasonal mean on three years but does badly in 2017 (\maeSarimaSeventeen): it needs more history than two years.
+    \item \textbf{Intervals} are too narrow when the level drifts: coverage \covMinSeventeen--\covMaxSeventeen\% in 2017 and \covMinNineteen--\covMaxNineteen\% in 2019 (nominal 95\%). No model foresees the level drift (ME $<0$).
+  \end{itemize}
+  \note{Pull the results together. The answer to question one depends on the horizon. Up to about a month ahead, the models beat the calendar average, because the last few weeks carry real information about the next few: the combination is at \horPctCombOne percent of the seasonal mean's error one week ahead and \horPctCombFour percent four weeks ahead. A year ahead, the picture is the one from the key table: nothing is significantly better than the seasonal mean. The signal that is left that far ahead is the calendar, with a seasonal strength of \Fs, and short-run autocorrelation has died out. SARIMA ties with the seasonal mean on three years of data but does badly with two, which the residual check had hinted at. The intervals are too narrow in the stress year and in 2019 because the level drifted, and no model can see slow changes in the level or sudden events, which leads into the side investigation on 2020 at the end.}
+\end{frame}
+
 
 % ================= 7. WEATHER =================
 \section{Does Weather Help?}
 \begin{frame}{The Weather Variables}
-  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/weather_weekly.pdf}\caption{Weekly PM$_{2.5}$, wind speed and relative humidity, 2015--2019.}\end{figure}
-  \begin{itemize}\small\item All three follow the yearly calendar, so raw correlations with PM$_{2.5}$ (Spearman: wind $\spearWind$, humidity $\spearRh$) partly just say ``it is winter''.\end{itemize}
-  \note{Before using the weather we show it. How to read the plot: the top panel is the weekly PM2.5 series, the middle panel wind speed in kilometres per hour and the bottom panel relative humidity in percent, all from 2015 to 2019. All three have yearly patterns. The raw Spearman correlations of PM2.5 with wind and with humidity are weak and negative, \spearWind and \spearRh. Because everything follows the calendar, a raw correlation partly just says it is winter, so we have to remove the seasonal cycle first.}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/weather_weekly.pdf}\caption{Weekly PM$_{2.5}$, wind (km/h), relative humidity (\%), temperature ($^\circ$C) and rain (mm), 2015--2019.}\end{figure}
+  \begin{itemize}\small\item All of them follow the yearly calendar, so raw correlations with PM$_{2.5}$ (Spearman: wind $\spearWind$, humidity $\spearRh$) partly just say ``it is winter''.\end{itemize}
+  \note{Before using the weather we show it. How to read the plot: five panels with the same time axis, 2015 to 2019. The top panel is the weekly PM2.5 series, then wind speed in kilometres per hour, relative humidity in percent, temperature in degrees Celsius and weekly rain in millimetres. All of them have yearly patterns: temperature and rain are the most regular. These four are the candidate drivers we test. The raw Spearman correlations of PM2.5 with wind and with humidity are weak and negative, \spearWind and \spearRh. Because everything follows the calendar, a raw correlation partly just says it is winter, so we have to remove the seasonal cycle first.}
 \end{frame}
 
 \begin{frame}{Remove the Seasonal Cycle First}
   \begin{figure}\centering\includegraphics[width=\linewidth]{fig/deseason.pdf}\caption{Daily log PM$_{2.5}$, its seasonal mean (average of each calendar day over the years) and the anomaly (difference).}\end{figure}
-  \begin{itemize}\small\item \textbf{Anomaly} = value $-$ seasonal mean of that day: how unusual the day is for the time of year. We test whether \emph{unusual} wind and humidity go with \emph{unusual} PM$_{2.5}$.\end{itemize}
-  \note{How to read the plot: the top panel is the daily log PM2.5 in grey with its seasonal mean in blue, the average of each calendar day of the year over the five years, smoothed over a month. The bottom panel is the difference, the anomaly: how much higher or lower than usual that day is for that time of year. Without this step any test would mostly detect that wind, humidity and PM2.5 all change with the season. The bottom panel has no yearly cycle left, and that is the series we use for the VAR. We do the same for wind and humidity.}
+  \begin{itemize}\small\item \textbf{Anomaly} = value $-$ seasonal mean of that day: how unusual the day is for the time of year. We test whether \emph{unusual} weather goes with \emph{unusual} PM$_{2.5}$.\end{itemize}
+  \note{How to read the plot: the top panel is the daily log PM2.5 in grey with its seasonal mean in blue, the average of each calendar day of the year over the five years, smoothed over a month. The bottom panel is the difference, the anomaly: how much higher or lower than usual that day is for that time of year. Without this step any test would mostly detect that the weather variables and PM2.5 all change with the season. The bottom panel has no yearly cycle left, and that is the series we use for the VAR. We do the same for wind, humidity, temperature and rain.}
 \end{frame}
 
 \begin{frame}{The VAR Model}
-  \[ \mathbf y_t=\mathbf c+A_1\mathbf y_{t-1}+\dots+A_p\mathbf y_{t-p}+\mathbf u_t,\qquad \mathbf y_t=(W_t,H_t,P_t)^{\top} \]
+  \[ \mathbf y_t=\mathbf c+A_1\mathbf y_{t-1}+\dots+A_p\mathbf y_{t-p}+\mathbf u_t,\qquad \mathbf y_t=(W_t,H_t,T_t,R_t,P_t)^{\top} \]
   \begin{itemize}
-    \item $W$ = wind anomaly, $H$ = humidity anomaly, $P$ = log PM$_{2.5}$ anomaly (daily, 2015--19). Each variable is regressed on the last $p$ days of \emph{all three}.
-    \item \textbf{Lag choice}: AIC is lowest at $p=\varLagAic$ and BIC at $p=\varLagBic$; we use $p=\varLagAic$.
+    \item $W$ wind, $H$ humidity, $T$ temperature, $R$ rain and $P$ log PM$_{2.5}$: daily anomalies, 2015--19. Each variable is regressed on the last $p$ days of \emph{all} of them.
+    \item \textbf{Lag choice} (wind--humidity--PM$_{2.5}$ system): AIC is lowest at $p=\varLagAic$ and BIC at $p=\varLagBic$; we use $p=\varLagAic$, also when temperature and rain are added.
     \item The VAR residuals pass the portmanteau test for white noise ($p=\portP$).
   \end{itemize}
-  \note{A VAR is the multivariate version of an autoregression: each variable is regressed on the last p days of itself and of the other variables. Here the three variables are the daily anomalies of wind, humidity and log PM2.5. The number of lags p is chosen with AIC and BIC, which we computed for p from zero to ten; AIC reaches its minimum at \varLagAic lags and BIC at \varLagBic, and we use the AIC choice. Then we check that the residuals are white noise with a portmanteau test, which they pass, p of \portP. The VAR is the model in which the Granger tests on the next slide are carried out.}
+  \note{A VAR is the multivariate version of an autoregression: each variable is regressed on the last p days of itself and of the other variables. Here the variables are the daily anomalies of wind, humidity, temperature, rain and log PM2.5. The number of lags p is chosen with AIC and BIC, computed for p from zero to ten on the system with wind, humidity and PM2.5; AIC reaches its minimum at \varLagAic lags and BIC at \varLagBic, and we use the AIC choice, also after adding temperature and rain. Then we check that the residuals are white noise with a portmanteau test, which they pass, p of \portP. The VAR is the model in which the Granger tests on the next slide are carried out.}
 \end{frame}
 
 \begin{frame}{Granger Causality: Daily Scale}
   \small
-  $P_t=c+\sum_{i=1}^{4}a_iP_{t-i}+\sum_{i=1}^{4}b_iW_{t-i}+\sum_{i=1}^{4}d_iH_{t-i}+u_t$; \ $H_0:\ b_1=\dots=b_4=0$ (the past of wind adds nothing once the past of $P$ and $H$ is known), tested with an $F$-test.
-  \begin{table}\centering\scriptsize\adjustbox{max width=\linewidth}{\input{tables/granger.tex}}\caption{Granger $F$-tests, VAR(4), daily anomalies, 2015--19.}\end{table}
-  \begin{itemize}\small\item Wind and humidity each help predict PM$_{2.5}$ ($p<10^{-8}$), also with temperature and rain added; the reverse direction is not significant. This is about \emph{prediction}, not proof of physical cause.\end{itemize}
-  \note{Granger causality is a prediction question: after using the past of PM2.5 and humidity, does the past of wind still improve the prediction of PM2.5? It is tested by checking whether the four wind coefficients in the PM2.5 equation are jointly zero, with an F-test, the usual test for a group of regression coefficients. Rejecting means the past of wind adds information; it does not mean wind is the only driver. How to read the table: each row is a direction, with its F statistic and p-value. The p-values for wind and for humidity are far below any threshold, \gWindP and \gRhP, also when temperature and rain are added. The reverse tests, PM2.5 to wind and PM2.5 to humidity, are not significant, which is physically sensible: pollution does not change tomorrow's wind, while wind disperses pollution.}
+  $P_t=c+\sum_{i=1}^{\varLagAic}\big(a_iP_{t-i}+b_iW_{t-i}+d_iH_{t-i}+f_iT_{t-i}+g_iR_{t-i}\big)+u_t$. \ $H_0:\ b_1=\dots=b_{\varLagAic}=0$ (the past of wind adds nothing once the past of the other variables is known), $F$-test; likewise for each variable.
+  \begin{table}\centering\scriptsize\adjustbox{max width=\linewidth}{\input{tables/granger.tex}}\caption{Granger $F$-tests, daily anomalies, 2015--19.}\end{table}
+  \begin{itemize}\small
+    \item Wind, humidity and temperature each help predict PM$_{2.5}$ ($p<10^{-8}$); \textbf{rain does not} ($p=\gRainPc$). All four together: $p<10^{-12}$.
+    \item The other direction is much weaker ($p=\gRevAllP$). This is about \emph{prediction}, not proof of physical cause.
+  \end{itemize}
+  \note{Granger causality is a prediction question: after using the past of PM2.5 and of the other variables, does the past of wind still improve the prediction of PM2.5? It is tested by checking whether the lagged wind coefficients in the PM2.5 equation are jointly zero, with an F-test, the usual test for a group of regression coefficients. Rejecting means the past of wind adds information; it does not mean wind is the only driver. How to read the table: each row is a direction, with its F statistic and p-value. Wind, humidity and temperature each have p-values far below any threshold: \gWindPc, \gRhPc and \gTempPc, each tested with the other weather variables in the model. Rain does not help, with a p-value of \gRainPc. All four weather variables together give \gAllP. The reverse test, PM2.5 to the four weather variables, is much weaker, \gRevAllP; wind and humidity alone, tested the other way round, give \gRevWindP and \gRevRhP. So pollution hardly feeds back on the weather, while wind disperses pollution.}
 \end{frame}
 
-\begin{frame}{The Weekly Scale and One-Week Forecasts}
+\begin{frame}{From Days to Weeks: Does Weather Help a Forecast?}
+  \begin{table}\centering\scriptsize\adjustbox{max width=\linewidth}{\input{tables/nested.tex}}\caption{Weekly regressions of the PM$_{2.5}$ anomaly, 2015--19 ($R^2$).}\end{table}
+  \begin{itemize}\small
+    \item Our forecasts use weekly means, so we ask the same question weekly. Adding last week's wind and humidity to last week's PM$_{2.5}$ moves $R^2$ from \nestRone\ to \nestRtwo\ ($p=\nestP$); adding all four weather variables to \nestRfour\ ($p=\nestPfour$): \textbf{no real gain}.
+    \item Only the weather of the \emph{same} week is related to PM$_{2.5}$ (daily effects averaged), and that is not known in advance.
+  \end{itemize}
+  \note{This slide connects the daily result to the forecasting question. We have seen that weather helps over days. But our forecasts use weekly means and look at least a week ahead, so the useful question is whether last week's weather adds anything to last week's PM2.5. How to read the table: each row is a regression of the weekly PM2.5 anomaly, and the second column is how much of its variation the regression explains. The first row uses only last week's PM2.5 and explains \nestRone. Adding last week's wind and humidity raises this to \nestRtwo, with a p-value of \nestP; adding temperature and rain as well gives \nestRfour, with a p-value of \nestPfour. Neither gain is significant. The last two rows use the weather of the same week, which would explain more, \nestRsameFour with all four variables, but a week's weather is not known before the week, so it can only help a forecast if it is itself forecast. The conclusion: over days weather helps, but its information is used up inside a week.}
+\end{frame}
+
+\begin{frame}{One-Week Forecasts with Weather}
   \begin{figure}\centering\includegraphics[width=\linewidth]{fig/fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19 (lower is better).}\end{figure}
   \begin{itemize}\small
-    \item \textbf{Weekly test}: adding last week's wind and humidity to last week's PM$_{2.5}$ moves $R^2$ from \nestRone\ to \nestRtwo\ ($F$-test $p=\nestP$): nothing.
-    \item \textbf{One week ahead}: no weather \oneNo, last week's weather \oneLag\ (\textbf{worse} by $\oneLagPct\%$, $p=\oneLagP$); same-week weather (not known in advance) \oneOracle.
-    \item Weather matters \textbf{within days}; its information is used up inside a week.
+    \item No weather: \oneNo\ (seasonal mean \oneMean, persistence \onePers). Last week's wind and humidity: \oneLag\ (worse by $\oneLagPct\%$, $p=\oneLagP$); all four variables: \oneLagFour\ ($p=\oneLagFourP$): \textbf{no gain}.
+    \item Same-week weather (not known in advance): \oneOracle\ with wind and humidity ($\oneOraclePct\%$, $p=\oneOracleP$, not significant); \oneOracleFour\ with all four: even a perfect weather forecast would add little, and more variables add noise.
   \end{itemize}
-  \note{The forecasting problem uses weekly data, so we repeat the question at the weekly scale. First regress weekly deseasonalised PM2.5 on last week's PM2.5, then add last week's wind and humidity: R squared goes from \nestRone to \nestRtwo and the F-test p-value is \nestP, so nothing is added. The same-week weather has R squared \nestRsame, but a week's weather is not known before the week. Then the direct forecasting test. How to read the bar chart: each bar is the one-week-ahead MAE of a model, lower is better; persistence repeats last week and is the weakest. The harmonic model with no weather has \oneNo; adding last week's weather, which we could really know, makes it slightly worse, \oneLag, and the test says that is significant at five percent: the extra coefficients add noise. Only the same-week weather, \oneOracle, helps, and it is not known in advance. This reconciles the two results: wind and humidity change PM2.5 from one day to the next, but over a week the effect is gone, so for weekly or yearly forecasts weather has nothing to add. A year-ahead forecast would also need a weather forecast first. Limits: the weather is a reanalysis at one grid point, and drivers such as stubble burning are unmeasured.}
+  \note{This is the forecasting version of the weather question. How to read the bar chart: each bar is the one-week-ahead average error of a model, lower is better. The first two grey bars are benchmarks: persistence repeats last week, and the seasonal mean uses the calendar. The blue bar is the harmonic model using only the history of PM2.5, with an error of \oneNo. The two green bars add the weather of last week, which we could really know: wind and humidity give \oneLag, and all four variables give \oneLagFour. Neither is better, and the first is slightly worse; the extra coefficients add noise. The two orange bars use the weather of the very week being forecast, which is not known in advance. With wind and humidity that gives \oneOracle, a gain of about seven percent that is not statistically significant, p of \oneOracleP; with all four variables it gives \oneOracleFour, which is worse than no weather at all, because the extra coefficients are estimated from limited data and add noise. So temperature and rain do not rescue the forecast: last week's weather has nothing to add, and even a perfect weather forecast would add only a little. This reconciles the two results: wind, humidity and temperature change PM2.5 from one day to the next, but over a week the effect is gone. Limits: the weather is a reanalysis at one grid point, and drivers such as stubble burning are unmeasured.}
 \end{frame}
 
 % ================= 8. 2020 =================
-\section{2020: What If?}
-\begin{frame}{Why 2020 Is a What-If, Not a Forecast}
+\section{Side Investigation: 2020}
+\begin{frame}{Side Investigation: the 2020 Lockdown}
   \begin{itemize}
-    \item A model fitted on 2015--2019 knows nothing about the lockdown (began 25 March 2020). After March its path is \textbf{``business as usual''}.
-    \item Two uses of 2020:
-    \begin{enumerate}
-      \item \textbf{January--February}: a genuine out-of-sample test, like 2017--19.
-      \item \textbf{The ten weeks ending 29 March -- 31 May}: actual versus business as usual estimates how much \emph{lower} PM$_{2.5}$ was. Descriptive, not causal.
-    \end{enumerate}
+    \item 2020 is an \textbf{outlier by construction}: a model fitted on 2015--2019 knows nothing about the lockdown (began 25 March 2020). It is not a forecasting question; we use the models as a \textbf{``business as usual''} baseline.
+    \item \textbf{January--February}: still a genuine out-of-sample test, like 2017--19.
+    \item \textbf{The ten weeks ending 29 March -- 31 May}: how far below the baseline was PM$_{2.5}$? Descriptive, not causal.
     \item Yardsticks: how large \emph{ten-week} gaps are in 2017--19 (no lockdown), and the same weeks of 2019.
   \end{itemize}
-  \note{A model trained on 2015 to 2019 cannot know that a lockdown is coming, so we are not claiming to forecast 2020. We use the model as a business-as-usual baseline. Before the lockdown, January and February, the comparison is a real forecast test. After the twenty-fifth of March, the difference between what happened and the baseline is our estimate of how much lower PM2.5 was than normal. To know whether a gap is large we need a yardstick, so we compute how large the same ten-week gap is in the three earlier years, when there was no lockdown, and in the same calendar weeks of 2019.}
+  \note{This is a side investigation, not one of our questions. The lockdown is an outlier by construction, so we do not try to forecast it. A model trained on 2015 to 2019 cannot know that a lockdown is coming, so after the twenty-fifth of March its forecast is a business-as-usual baseline. Before the lockdown, January and February, the comparison is still a real forecast test. After it, the gap between what happened and the baseline shows how big an unpredictable gap the lockdown created. To judge whether a gap is large we need a yardstick, so we compute how large the same ten-week gap is in the three earlier years, when there was no lockdown, and in the same calendar weeks of 2019. Present it as an investigation of how unpredictable the gap was, not as a causal effect.}
 \end{frame}
 
 \begin{frame}{2020: Forecast and Actual}
@@ -345,31 +376,35 @@
 \end{frame}
 
 \begin{frame}{Is That Gap Unusual?}
-  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/lock_gap.pdf}\caption{Grey dots: the 10-week gap for every window in 2017--19 (no lockdown). Orange: 2020 lockdown weeks. Blue diamond: same weeks of 2019.}\end{figure}
-  \begin{itemize}\small\item For the seasonal mean, harmonic regression, combination and naive, \textbf{no ordinary window} was as low (harmonic: usual \lockUsualLo\% to \lockUsualHi\%, lowest \lockWinMinHarm\%). After removing the pre-lockdown bias the gap is \lockAdjMax\% to \lockAdjMin\%. Descriptive only.\end{itemize}
-  \note{This answers whether the lockdown drop is just forecast error. How to read the plot: each grey dot is the ten-week gap between actual and forecast for one window in 2017, 2018 or 2019, so the grey cloud shows how wrong the business-as-usual forecast typically is. The orange dots are the 2020 lockdown weeks. For the seasonal mean, harmonic regression, the combination and the naive forecast the orange dots sit below every grey dot. For Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few grey dots reach as low: \lockShareHW and \lockShareSarima percent of windows. The blue diamond is the same calendar weeks of 2019, moderately negative because of the downward drift. Part of the gap is the models' pre-lockdown bias; removing it leaves \lockAdjMax to \lockAdjMin percent, still below ordinary windows for four of the six models. We call it descriptive, not causal: the weather in 2020 and other events also differed.}
+  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/lock_gap.pdf}\caption{Grey: 10-week gap of every window in 2017--19. Orange: 2020 lockdown. Blue: same weeks of 2019.}\end{figure}
+  \begin{itemize}\small
+    \item A normal ten-week stretch misses by about \lockUsualLo\% to \lockUsualHi\% (harmonic, 5th to 95th percentile). The lockdown gap, \lockGapHarm\%, is lower than every ordinary window for four of the six models.
+    \item Even after removing each model's pre-lockdown overshoot the gap is \lockAdjMax\% to \lockAdjMin\%. Descriptive only.
+  \end{itemize}
+  \note{This shows whether the lockdown drop is more than the usual forecast miss. How to read the plot: the horizontal axis lists the models and the vertical axis is the gap in percent between the actual ten-week mean and the forecast, so zero means the forecast was right and negative means the actual was lower. Each grey dot is the ten-week gap for one window in 2017, 2018 or 2019, so the grey cloud shows how wrong the business-as-usual forecast typically is: from about \lockUsualLo to \lockUsualHi percent for the harmonic model. The orange dots are the 2020 lockdown weeks, at about \lockGapHarm percent for the harmonic model. For the seasonal mean, harmonic regression, the combination and the naive forecast the orange dots sit below every grey dot. For Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few grey dots reach as low: \lockShareHW and \lockShareSarima percent of windows. The blue diamond is the same calendar weeks of 2019, moderately negative because of the downward drift. Part of the gap is the models' pre-lockdown bias; removing it leaves \lockAdjMax to \lockAdjMin percent, still below ordinary windows for four of the six models. We call it descriptive, not causal: the weather in 2020 and other events also differed.}
 \end{frame}
 
 % ================= 9. CONCLUSION =================
 \section{Conclusion}
 \begin{frame}{Answers to Our Questions}
   \begin{itemize}
-    \item \textbf{Q1 (forecasting):} Year-ahead weekly PM$_{2.5}$ is almost entirely the yearly cycle ($F_S=\Fs$). The combination (\maeCombAvg), SARIMA (\maeSarimaAvg), harmonic regression (\maeHarmAvg), the seasonal mean (\maeMeanAvg) and Holt--Winters (\maeHWAvg\ \ugm{}) are indistinguishable (DM $p\ge\dmPComb$); only the naive forecast is significantly worse. SARIMA is the least stable (\maeSarimaSeventeen\ in 2017).
-    \item \textbf{Q2 (weather):} Wind and humidity help predict PM$_{2.5}$ \textbf{over days} ($p<10^{-8}$) but add nothing at the weekly scale and slightly worsen one-week forecasts.
-    \item \textbf{Q3 (2020):} PM$_{2.5}$ in the lockdown weeks was \lockGapMax\% to \lockGapMin\% below business as usual (\lockAdjMax\% to \lockAdjMin\% after the models' earlier bias): beyond ordinary forecast error for four of the six models; descriptive, not causal.
+    \item \textbf{Q1 (forecasting):} Models are ahead of the calendar average up to about a month (\horPctCombOne\% of its error for the combination at 1 week, \horPctCombFour\% at 4 weeks), but not beyond. A year ahead the combination (\maeCombAvg), SARIMA (\maeSarimaAvg), harmonic regression (\maeHarmAvg), the seasonal mean (\maeMeanAvg) and Holt--Winters (\maeHWAvg\ \ugm{}) are indistinguishable (DM $p\ge\dmPComb$); only the naive forecast is worse.
+    \item \textbf{Q2 (weather):} Wind, humidity and temperature help predict PM$_{2.5}$ \textbf{over days} ($p<10^{-8}$), rain does not; but weather adds nothing at the weekly scale and does not improve one-week forecasts.
+    \item \textbf{Side investigation (2020):} the lockdown gap, \lockGapMax\% to \lockGapMin\% (\lockAdjMax\% to \lockAdjMin\% after the models' earlier bias), was beyond ordinary forecast error for four of the six models; descriptive, not causal.
   \end{itemize}
-  \note{Give the three answers in one breath each. For forecasting: nothing beats the calendar average by a significant margin; the combination has the lowest error, \maeCombAvg, but only about one microgram better, and SARIMA is the least reliable with short data. For weather: it helps over days, not over weeks. For 2020: PM2.5 in the lockdown weeks was about \lockGapMax to \lockGapMin percent below the business-as-usual projection, \lockAdjMax to \lockAdjMin after allowing for the models' earlier bias, beyond the usual forecasting error for four of the six models, but we do not call it causal.}
+  \note{Give the answers in one breath each. For forecasting: the answer depends on the horizon. Up to about a month ahead the models beat the calendar average, the combination by about \horPctCombOne percent of its error at one week; beyond that nothing beats it. A year ahead the combination has the lowest error, \maeCombAvg, but only about one microgram better than the calendar average and not significantly. For weather: wind, humidity and temperature help over days, rain does not, and none of them helps a weekly or one-week-ahead forecast. For 2020, which we treat as a side investigation: PM2.5 in the lockdown weeks was about \lockGapMax to \lockGapMin percent below the business-as-usual projection, \lockAdjMax to \lockAdjMin after allowing for the models' earlier bias, beyond the usual forecasting error for four of the six models, but we do not call it causal.}
 \end{frame}
 
 \begin{frame}{Limitations}
   \begin{itemize}
-    \item Three test years only, so similar models cannot be ranked with confidence.
+    \item Three year-ahead test years and about two years of rolling forecasts: similar models cannot be ranked with confidence, and long-horizon significance tests are approximate.
     \item The level drifted down (ME $<0$) and the number of monitoring stations changed; constant-level models cannot follow this.
     \item One city; ERA5 weather from one grid point; stubble burning and boundary-layer height are not measured.
+    \item The weather tests use forecasts made with weather already known; a real forecast would need a weather forecast.
     \item The 2020 gap depends on the business-as-usual level and is not causal.
     \item Code, data and results: \url{https://github.com/LuciferK47/PM_2.5}
   \end{itemize}
-  \note{What we cannot claim. Three test years are too few to rank similar models. The downward drift and the changing station network are not captured by models with a constant level. It is one city, and the weather comes from a reanalysis at one point. And the lockdown gap depends on the assumed business-as-usual level. The repository link has all code, data and results, and the report has the full references.}
+  \note{What we cannot claim. The year-ahead test has three years and the rolling study about two, so similar models cannot be ranked with confidence, and the significance tests at long horizons use few overlapping forecasts. The downward drift and the changing station network are not captured by models with a constant level. It is one city, and the weather comes from a reanalysis at one point. A real weather-aided forecast would need a weather forecast, which we did not model. And the lockdown gap depends on the assumed business-as-usual level. The repository link has all code, data and results, and the report has the full references.}
 \end{frame}
 
 \begin{frame}{Conclusion \& Acknowledgement}
@@ -410,8 +445,8 @@
 \begin{frame}{Backup: Harmonic Regression}
   \footnotesize
   \[ x_t=c+\sum_{k=1}^{K}\Big[a_k\sin\tfrac{2\pi kt}{m}+b_k\cos\tfrac{2\pi kt}{m}\Big]+\eta_t,\qquad \eta_t\sim\mathrm{ARMA}(p,q) \]
-  \begin{figure}\centering\includegraphics[width=\linewidth]{fig/harmonic_k.pdf}\caption{Fitted yearly curve for $K=1,2,4$ against the seasonal mean (2015--18).}\end{figure}
-  \begin{itemize}\small\item A regression with $m=365.25/7$ and ARMA errors; $K\le10$ and $(p,q)$ are chosen by AIC at each origin ($K=\kHarmLo$--\kHarmHi). Only $2K$ parameters, so the curve is a smooth version of the yearly shape.\end{itemize}
+  \begin{figure}\centering\includegraphics[width=0.9\linewidth]{fig/harmonic_k.pdf}\caption{Fitted yearly curve for $K=1,2,4$ against the seasonal mean (2015--18).}\end{figure}
+  \begin{itemize}\footnotesize\item A regression with $m=365.25/7$ and ARMA errors; $K\le10$ and $(p,q)$ are chosen by AIC at each origin ($K=\kHarmLo$--\kHarmHi). Only $2K$ parameters, so the curve is a smooth version of the yearly shape.\end{itemize}
   \note{Backup, only if asked. How to read the plot: the grey line is the seasonal mean by calendar week and the coloured lines are fitted yearly curves. With K equal to one the curve is a single wave, with K of four it already follows the sharp winter peak. AIC chooses K up to ten and the ARMA orders at each origin; it picked \kHarmLo to \kHarmHi pairs, so the search was not cut off by its upper limit. The leftover errors are autocorrelated, as the PACF showed, so they get an ARMA model; this is a regression with autocorrelated errors. Because the curve has only two K parameters it is a smooth version of the average yearly shape.}
 \end{frame}
 
@@ -421,7 +456,7 @@
   \[ \mathrm{DM}=\frac{\bar d}{\sqrt{\widehat V/N}},\qquad \widehat V=\hat\gamma_0+2\sum_{j=1}^{12}\Big(1-\tfrac{j}{13}\Big)\hat\gamma_j \]
   \begin{itemize}
     \item $\hat\gamma_j$ is the autocovariance of $d_t$ at lag $j$; the Bartlett weights allow for errors of a 52-step forecast that are correlated from week to week.
-    \item The window of 12 lags is a standard but arbitrary choice. We pool 2018--19 ($N=104$ weeks) and compare with the seasonal mean.
+    \item The window of 12 lags is a standard but arbitrary choice. We pool 2018--19 ($N=104$ weeks) and compare with the seasonal mean. For the rolling study the window is $h-1$ lags (at most $N/3$): errors of $h$-step forecasts at consecutive origins overlap.
   \end{itemize}
   \note{Backup, only if asked. For each week take the absolute error of a model and subtract the absolute error of the seasonal mean. If the two are equally good the mean of this difference is zero. The statistic divides the mean difference by its standard error; because the weekly differences are correlated, the variance is a long-run variance that adds the autocovariances with Bartlett weights, here up to twelve lags. The choice of twelve lags is standard but arbitrary. We pool 2018 and 2019 and compare every model with the seasonal mean.}
 \end{frame}

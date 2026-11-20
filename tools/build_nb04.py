@@ -180,7 +180,7 @@ Benchmarks: **persistence** (last week's value) and the **seasonal mean**. Becau
 code('''def weather_frame(train_end):
     """Weekly wind / humidity anomalies from a seasonal mean fitted on data up to train_end only."""
     ref = weekly.loc[:train_end]; out = {}
-    for c in ("wind", "rh"):
+    for c in ("wind", "rh", "temp", "precip"):
         clim = ref[c].groupby(week_index(ref.index)).mean().reindex(range(1, 53)).interpolate(limit_direction="both")
         an = weekly[c] - clim.reindex(week_index(weekly.index)).to_numpy()
         out[f"{c}_same"] = an; out[f"{c}_lag1"] = an.shift(1)
@@ -196,7 +196,9 @@ def one_step(year, cols):
     start = upto.index[upto.index > pd.Timestamp(origin)][0]
     return full.get_prediction(start=start, dynamic=False).predicted_mean, fit
 
-variants = {"Harmonic, no weather": [], "+ last week's weather": ["wind_lag1", "rh_lag1"], "+ same-week weather (oracle)": ["wind_same", "rh_same"]}
+variants = {"Harmonic, no weather": [], "+ last week's weather": ["wind_lag1", "rh_lag1"], "+ same-week weather (oracle)": ["wind_same", "rh_same"],
+            "+ last week's weather, all four": ["wind_lag1", "rh_lag1", "temp_lag1", "precip_lag1"],
+            "+ same-week weather, all four": ["wind_same", "rh_same", "temp_same", "precip_same"]}
 errs, rows = {}, []
 for year in (2018, 2019):
     origin = F.ORIGINS[year]; tr = y.loc[:origin]

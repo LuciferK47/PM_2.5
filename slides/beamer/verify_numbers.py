@@ -171,6 +171,12 @@ Fw, pw = granger("pm25", "wind", ["rh"]); Fh, ph = granger("pm25", "rh", ["wind"
 check("Granger wind -> PM2.5 and humidity -> PM2.5 significant, p < 1e-9", pw < 1e-9 and ph < 1e-9 and mn("gWindP") < 1e-9 and mn("gRhP") < 1e-9, f"{pw:.1e} / {ph:.1e}")
 Fw_, pw_ = granger("pm25", "wind", ["rh", "temp", "rain"]); Fh_, ph_ = granger("pm25", "rh", ["wind", "temp", "rain"])
 check("Granger with temperature and rain controls still significant", pw_ < 1e-6 and ph_ < 1e-6 and mn("gWindPc") < 1e-6 and mn("gRhPc") < 1e-6, f"{pw_:.1e} / {ph_:.1e}")
+Ft_, pt_ = granger("pm25", "temp", ["wind", "rh", "rain"]); Fr_, pr_ = granger("pm25", "rain", ["wind", "rh", "temp"])
+check("Granger temperature -> PM2.5 significant, rain -> PM2.5 not (own OLS, 5-variable system)", pt_ < 1e-7 and pr_ > 0.05 and mn("gTempPc") < 1e-7 and close(macros["gRainPc"], f"{pr_:.2f}", 0.006), f"temp {pt_:.1e}, rain {pr_:.2f}")
+y_ = A["pm25"].to_numpy()[4:]; Xr_ = lagged(A, ["pm25"], 4, 4); Xu_ = np.column_stack([Xr_, lagged(A, ["wind", "rh", "temp", "rain"], 4, 4)])
+rr_, _ = ols_rss(y_, Xr_); ru_, ku_ = ols_rss(y_, Xu_); n_ = len(y_)
+Fa_ = ((rr_ - ru_) / 16) / (ru_ / (n_ - ku_)); pa_ = float(stats.f.sf(Fa_, 16, n_ - ku_))
+check("Granger all four weather variables -> PM2.5 (own OLS)", pa_ < 1e-30 and close(Fa_, pd.read_csv(RES / "granger_var_controls.csv").set_index("direction").loc["All four weather variables → PM2.5", "F"], 0.05), f"F={Fa_:.2f}, p={pa_:.1e}")
 Frw, prw = granger("wind", "pm25", ["rh"]); Frh, prh = granger("rh", "pm25", ["wind"])
 check("reverse directions not significant (5%)", prw > 0.05 and prh > 0.05 and mn("gRevWindP") > 0.05 and mn("gRevRhP") > 0.05, f"{prw:.2f} / {prh:.2f}")
 
@@ -278,6 +284,38 @@ bad_ = [(y_, m) for (y_, m), g in oof.groupby(["year", "model"]) if not close(np
 check("one-week MAE table recomputed from saved forecasts", not bad_, str(bad_))
 check("last week's weather does not improve one-week MAE; oracle does (slide claims)", ow.loc["+ last week's weather", "both years"] > ow.loc["Harmonic, no weather", "both years"] > ow.loc["+ same-week weather (oracle)", "both years"])
 
+# ── 8b. horizon study: persistence, seasonal naive and seasonal mean rebuilt from the raw weekly series ──
+hf = pd.read_csv(RES / "fc_horizon_forecasts.csv", parse_dates=["origin", "target"]); ht = pd.read_csv(RES / "fc_horizon.csv")
+check("horizon study: every forecast target is exactly h weeks after its origin; origins from end-2017; targets in 2018-19",
+      bool(((hf.target - hf.origin).dt.days == 7 * hf.h).all()) and hf.origin.min() == pd.Timestamp(ORIG[2018]) and hf.target.max() <= pd.Timestamp("2019-12-29"))
+pe = hf[hf.model == "Persistence"]; nv = hf[hf.model == "Seasonal naive"]
+e_pers = np.abs(raw_w.reindex(pe.target).to_numpy() - raw_w.reindex(pe.origin).to_numpy())
+e_nv = np.abs(raw_w.reindex(nv.target).to_numpy() - raw_w.reindex(nv.target - pd.Timedelta(weeks=52)).to_numpy())
+check("horizon: persistence and seasonal naive forecasts equal the raw values (rebuilt)", close(np.abs(pe.actual.to_numpy() - np.exp(pe.mu.to_numpy())).max() - e_pers.max(), 0, 1e-6) and np.allclose(np.abs(pe.actual.to_numpy() - np.exp(pe.mu.to_numpy())), e_pers, atol=1e-6) and np.allclose(np.abs(nv.actual.to_numpy() - np.exp(nv.mu.to_numpy())), e_nv, atol=1e-6))
+sm_h = hf[hf.model == "Seasonal mean"]
+ok_ = True
+for o_, g_ in sm_h.groupby("origin"):
+    mu_ = seasonal_mean_fc(lw.loc[:o_], pd.DatetimeIndex(g_.target))
+    ok_ &= bool(np.allclose(mu_, g_.mu.to_numpy(), atol=1e-9))
+check("horizon: seasonal mean recomputed at every origin from data up to that origin only", ok_)
+bad_h = []
+for (h_, m_), g_ in hf.groupby(["h", "model"]):
+    if h_ in (1, 4, 13, 26, 52):
+        mae_ = np.abs(g_.actual - np.exp(g_.mu)).mean()
+        if not close(mae_, ht[(ht.h == h_) & (ht.model == m_)].MAE.iloc[0], 0.0006):
+            bad_h.append((h_, m_))
+check("horizon: MAE table recomputed from the saved forecasts", not bad_h, str(bad_h[:4]))
+check("horizon: persistence at h = 1 equals the one-week persistence MAE", close(ht[(ht.h == 1) & (ht.model == "Persistence")].MAE.iloc[0], ow.loc["Persistence", "both years"], 0.001))
+mm_h = lambda m, h: ht[(ht.model == m) & (ht.h == h)].iloc[0]  # noqa: E731
+check("horizon macros (combination at 1 and 4 weeks)", macros["horPctCombOne"] == f"{mm_h('Combination', 1)['MAE % of seasonal mean']:.0f}" and macros["horPctCombFour"] == f"{mm_h('Combination', 4)['MAE % of seasonal mean']:.0f}"
+      and macros["horMaeMeanThirteen"] == f"{mm_h('Seasonal mean', 13).MAE:.1f}")
+check("horizon: slide claims (every model below the seasonal mean at 1 week; none at 13 weeks significantly below; naive above at every horizon)",
+      all(mm_h(m, 1).MAE < mm_h("Seasonal mean", 1).MAE for m in ("Holt-Winters", "SARIMA", "Harmonic regression", "Combination"))
+      and all(not (mm_h(m, 13)["DM p"] < 0.05 and mm_h(m, 13).MAE < mm_h("Seasonal mean", 13).MAE) for m in ("Holt-Winters", "SARIMA", "Harmonic regression", "Combination"))
+      and all(mm_h("Seasonal naive", h).MAE > mm_h("Seasonal mean", h).MAE for h in (1, 4, 13, 26, 52))
+      and mm_h("Combination", 1)["DM p"] < 0.05 and mm_h("SARIMA", 1)["DM p"] < 0.05 and mm_h("Harmonic regression", 1)["DM p"] < 0.05 and mm_h("Combination", 4)["DM p"] < 0.05
+      and mm_h("SARIMA", 4)["DM p"] > 0.05 and mm_h("Harmonic regression", 4)["DM p"] > 0.05 and mm_h("Holt-Winters", 4)["DM p"] > 0.05)
+
 # ── 9. 2020 what-if: seasonal mean rebuilt, lockdown gap and windows ───────────────────────────────────
 f20 = pd.read_csv(RES / "fc_2020_forecasts.csv", parse_dates=["date"]); lk = pd.read_csv(RES / "fc_lockdown.csv", index_col=0)
 idx20 = pd.date_range("2020-01-05", "2020-06-28", freq="W-SUN")
@@ -304,7 +342,7 @@ check("harmonic: no ordinary window as low as the lockdown gap (slide claim)", w
 # ── 10. slides, notes and documents: structure ──────────────────────────────────────────────────────
 main = (Path(__file__).resolve().parent / "main.tex").read_text(); body = main[main.index("\\begin{document}"):]
 frames = body.count("\\begin{frame}"); notes = len(re.findall(r"\\note\{", body))
-check("deck has 24-34 frames (backup included) and every frame has a speaker note", 24 <= frames <= 34 and notes == frames, f"{frames} frames, {notes} notes")
+check("deck has 24-40 frames (backup included) and every frame has a speaker note", 24 <= frames <= 40 and notes == frames, f"{frames} frames, {notes} notes")
 
 
 def balanced(t, i):

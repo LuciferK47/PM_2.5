@@ -1,2 +1,2 @@
-R2 model 0 (last week's PM2.5),"R2 model 1 (+ last week's wind, humidity)",delta R2,F,p_value,n_weeks,R2 same-week weather only
-0.123,0.1281,0.0051,0.7554,0.4709,260,0.1715
+R2 model 0 (last week's PM2.5),"R2 model 1 (+ last week's wind, humidity)",delta R2,F,p_value,n_weeks,R2 same-week weather only,"R2 model 2 (+ last week's wind, humidity, temperature, rain)",p_value all four,R2 same-week all four
+0.123,0.1281,0.0051,0.7554,0.4709,260,0.1715,0.1401,0.2851,0.1892

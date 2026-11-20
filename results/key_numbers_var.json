@@ -15,8 +15,12 @@
     "PM2.5 \u2192 Humidity": 0.617
   },
   "granger_controls": {
-    "Wind \u2192 PM2.5 (with temperature and rain)": 5.13e-27,
-    "Humidity \u2192 PM2.5 (with temperature and rain)": 9.65e-09
+    "Wind \u2192 PM2.5 (with the other weather variables)": 5.13e-27,
+    "Humidity \u2192 PM2.5 (with the other weather variables)": 9.65e-09,
+    "Temperature \u2192 PM2.5 (with the other weather variables)": 4.25e-09,
+    "Rain \u2192 PM2.5 (with the other weather variables)": 0.469,
+    "All four weather variables \u2192 PM2.5": 1.15e-38,
+    "PM2.5 \u2192 all four weather variables": 0.0145
   },
   "weekly_nested": {
     "R2 model 0 (last week's PM2.5)": 0.123,
@@ -25,6 +29,9 @@
     "F": 0.7554,
     "p_value": 0.4709,
     "n_weeks": 260.0,
-    "R2 same-week weather only": 0.1715
+    "R2 same-week weather only": 0.1715,
+    "R2 model 2 (+ last week's wind, humidity, temperature, rain)": 0.1401,
+    "p_value all four": 0.2851,
+    "R2 same-week all four": 0.1892
   }
 }

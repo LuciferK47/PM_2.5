@@ -198,8 +198,8 @@ from statsmodels.tsa.stattools import acf as _acf  # noqa: E402
 fig, axes = new_fig(4.3, ncols=2, width_ratios=[1.3, 1])
 axes[0].plot(tr_y.index[-len(e):], e, color=BLUE, lw=1.2); axes[0].axhline(0, color=INK_2, lw=0.8); axes[0].set_title("Residuals", loc="left")
 axes[0].xaxis.set_major_locator(mdates.YearLocator()); axes[0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-a_ = _acf(e, nlags=40)
-axes[1].vlines(range(1, 41), 0, a_[1:], color=BLUE, lw=1.4); axes[1].axhline(0, color=INK_2, lw=0.8)
+a_ = _acf(e, nlags=60)
+axes[1].vlines(range(1, 61), 0, a_[1:], color=BLUE, lw=1.4); axes[1].axhline(0, color=INK_2, lw=0.8); axes[1].axvline(52, color=ORANGE, ls=":", lw=1.2)
 axes[1].axhspan(-1.96 / np.sqrt(len(e)), 1.96 / np.sqrt(len(e)), color=NEUTRAL, alpha=0.35, lw=0)
 axes[1].set_title("Residual ACF", loc="left"); axes[1].set_xlabel("lag (weeks)")
 save(fig, "sarima_resid")
@@ -207,9 +207,9 @@ save(fig, "sarima_resid")
 # ═══ 4. Weather ═══════════════════════════════════════════════════════════════════════════════════════
 from src.tsa import doy_anomaly, doy_climatology, doy365  # noqa: E402
 w_mod = weekly.loc[:"2019-12-29"]
-fig, axes = new_fig(5.6, nrows=3, sharex=True, single=True)
-for ax, (c, lab, col) in zip(axes, [("pm25", "PM$_{2.5}$", BLUE), ("wind", "Wind km/h", ORANGE), ("rh", "RH %", AQUA)]):
-    ax.plot(w_mod.index, w_mod[c], color=col, lw=1.2); ax.set_ylabel(lab, fontsize=fs(8))
+fig, axes = new_fig(5.9, nrows=5, sharex=True, single=True)
+for ax, (c, lab, col) in zip(axes, [("pm25", "PM$_{2.5}$", BLUE), ("wind", "Wind", ORANGE), ("rh", "Humid.", AQUA), ("temp", "Temp.", "#c0392b"), ("precip", "Rain", "#2e86c1")]):
+    ax.plot(w_mod.index, w_mod[c], color=col, lw=1.2); ax.set_ylabel(lab, fontsize=fs(8), rotation=0, ha="right", va="center")
     ax.tick_params(axis="y", labelsize=fs(7.5))
 save(fig, "weather_weekly")
 
@@ -290,15 +290,30 @@ save(fig, "fc_mae")
 
 # one week ahead
 ow = pd.read_csv(RES / "fc_oneweek.csv", index_col=0)
-fig, ax = new_fig(4.4, single=True)
-labs_ = ["Persistence", "Seasonal\nmean", "Harmonic,\nno weather", "+ last week's\nweather", "+ same-week\n(not known\nin advance)"]
-vals = [ow.loc[m, "both years"] for m in ow.index]
-bars = ax.bar(range(len(vals)), vals, color=[NEUTRAL, NEUTRAL, BLUE, AQUA, ORANGE])
+fig, ax = new_fig(3.9, single=True)
+OW_ORDER = ["Persistence", "Seasonal mean", "Harmonic, no weather", "+ last week's weather", "+ last week's weather, all four", "+ same-week weather (oracle)", "+ same-week weather, all four"]
+OW_LAB = ["Persistence", "Seasonal\nmean", "Harmonic,\nno weather", "+ last wk\nwind, hum.", "+ last wk\nall four", "+ same wk\nwind, hum.\n(unknown)", "+ same wk\nall four\n(unknown)"]
+labs_ = OW_LAB
+vals = [ow.loc[m, "both years"] for m in OW_ORDER]
+bars = ax.bar(range(len(vals)), vals, color=[NEUTRAL, NEUTRAL, BLUE, AQUA, AQUA, ORANGE, ORANGE])
 for i, v in enumerate(vals):
     ax.text(i, v + 0.4, f"{v:.1f}", ha="center", fontsize=fs(8))
 ax.set_xticks(range(len(vals)), labs_, fontsize=fs(7.5), **({} if PROFILE == "deck" else dict(rotation=35, ha="right")))
 ax.set_ylabel("MAE ($\\mu$g/m$^3$)"); ax.set_ylim(0, max(vals) * 1.15)
 save(fig, "fc_oneweek")
+
+# ═══ 5b. Horizon study (rolling origins, 1-52 weeks ahead) ════════════════════════════════════════════
+hz = pd.read_csv(RES / "fc_horizon.csv")
+HZ = (1, 4, 13, 26, 52)
+fig, ax = new_fig(5.0, single=True)
+ax.axhline(100, color=INK_2, lw=1.4, ls="--", label="seasonal mean = 100%")
+for m in ("Seasonal naive", "Holt-Winters", "SARIMA", "Harmonic regression", "Combination"):
+    d_ = hz[hz.model == m].set_index("h")["MAE % of seasonal mean"].reindex(HZ)
+    ax.plot(range(len(HZ)), d_.to_numpy(), marker="o", ms=5, color=COL[m], label=m)
+ax.set_xticks(range(len(HZ)), [f"{h} wk" if h < 52 else "52 wk" for h in HZ]); ax.set_xlabel("forecast horizon")
+ax.set_ylabel("MAE, % of seasonal mean"); ax.set_ylim(75, 130)
+fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=(3 if PROFILE == "deck" else 2), frameon=False, fontsize=fs(8))
+save(fig, "fc_horizon")
 
 # ═══ 6. 2020 what-if ═══════════════════════════════════════════════════════════════════════════════════
 fig, ax = new_fig(4.6, single=True)
@@ -412,21 +427,38 @@ rows = [[str(p), f"{r.AIC:.3f}", f"{r.BIC:.3f}"] for p, r in lg_.iterrows()]
 write("varlag", "lrr", r"\textbf{lag $p$} & \textbf{AIC} & \textbf{BIC}", rows)
 
 gv = pd.read_csv(RES / "granger_var.csv"); gc = pd.read_csv(RES / "granger_var_controls.csv")
+clean = lambda t: tex_pm(t).replace(" (with the other weather variables)", "").replace("All four weather variables", "All four weather").replace("all four weather variables", "all four weather")  # noqa: E731
+rows = [[clean(r["direction"]), f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gc.iterrows()]
+write("granger", "lrr", r"\textbf{Direction (VAR(%d), daily anomalies)} & \textbf{$F$} & \textbf{$p$}" % var["var_lag_aic"], rows)
 rows = [[tex_pm(r["direction"]), f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gv.iterrows()]
-rows += [[tex_pm(r["direction"]).replace("(with temperature and rain)", r"(+ temp., rain)"), f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gc.iterrows()]
-write("granger", "lrr", r"\textbf{Direction (VAR(4), daily anomalies)} & \textbf{$F$} & \textbf{$p$}", rows)
+rows += [[clean(r["direction"]) + " (5-variable VAR)", f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gc.iterrows()]
+write("granger_full", "lrr", r"\textbf{Direction (daily anomalies)} & \textbf{$F$} & \textbf{$p$}", rows)
 
 nst = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
 rows = [[r"$P_t$ on $P_{t-1}$", f"{nst.iloc[0]:.3f}", "--"],
         [r"$+\,W_{t-1},H_{t-1}$ (last week's weather)", f"{nst.iloc[1]:.3f}", f"$F={nst['F']:.2f}$, $p={nst['p_value']:.2f}$"],
-        [r"weather of the same week only", f"{nst['R2 same-week weather only']:.3f}", "not known in advance"]]
+        [r"$+\,W,H,T,R$ of last week (wind, humidity, temp., rain)", f"{nst.iloc[7]:.3f}", f"$p={nst['p_value all four']:.2f}$"],
+        [r"weather of the same week only ($W,H$)", f"{nst['R2 same-week weather only']:.3f}", "not known in advance"],
+        [r"same week, all four ($W,H,T,R$)", f"{nst['R2 same-week all four']:.3f}", "not known in advance"]]
 write("nested", "lrr", r"\textbf{Weekly regression (anomalies)} & \textbf{$R^2$} & \textbf{test}", rows)
 
 row_names = {"Persistence": "Persistence", "Seasonal mean": "Seasonal mean", "Harmonic, no weather": "Harmonic, no weather",
-             "+ last week's weather": "+ last week's weather", "+ same-week weather (oracle)": "+ same-week weather (unknown)"}
+             "+ last week's weather": "+ last week's wind, humidity", "+ same-week weather (oracle)": "+ same-week wind, humidity (unknown)",
+             "+ last week's weather, all four": "+ last week's all four weather", "+ same-week weather, all four": "+ same-week all four (unknown)"}
 rows = [[row_names[m], f"{r['2018']:.1f}", f"{r['2019']:.1f}", f"{r['both years']:.1f}", ("--" if np.isnan(r["DM p vs no weather"]) else f"{r['DM p vs no weather']:.2f}")]
-        for m, r in ow.iterrows()]
+        for m, r in ow.loc[OW_ORDER].iterrows()]
 write("oneweek", "lrrrr", r"\textbf{One-week-ahead model} & \textbf{MAE 2018} & \textbf{MAE 2019} & \textbf{MAE both} & \textbf{DM $p$}", rows)
+
+hz_models = ["Persistence", "Seasonal naive", "Seasonal mean", "Holt-Winters", "SARIMA", "Harmonic regression", "Combination"]
+rows = []
+for m in hz_models:
+    cells = []
+    for h in HZ:
+        r_ = hz[(hz.model == m) & (hz.h == h)].iloc[0]
+        star = "$^{*}$" if (m != "Seasonal mean" and r_["DM p"] < 0.05 and r_["MAE"] < hz[(hz.model == "Seasonal mean") & (hz.h == h)].MAE.iloc[0]) else ""
+        cells.append(f"{r_['MAE']:.1f}{star}")
+    rows.append([m, *cells])
+write("horizon", "lrrrrr", r"\textbf{MAE} & \textbf{1 wk} & \textbf{4 wk} & \textbf{13 wk} & \textbf{26 wk} & \textbf{52 wk}", rows)
 
 rows = []
 for m in MODELS:
@@ -452,7 +484,10 @@ nums = {
     "spearWind": neg(var["spearman_pm25_wind"], 2), "spearRh": neg(var["spearman_pm25_rh"], 2),
     "gWindP": sci(var["granger"]["Wind → PM2.5"]), "gRhP": sci(var["granger"]["Humidity → PM2.5"]), "gBothP": sci(var["granger"]["Wind + Humidity → PM2.5"]),
     "gRevWindP": f"{var['granger']['PM2.5 → Wind']:.2f}", "gRevRhP": f"{var['granger']['PM2.5 → Humidity']:.2f}",
-    "gWindPc": sci(var["granger_controls"]["Wind → PM2.5 (with temperature and rain)"]), "gRhPc": sci(var["granger_controls"]["Humidity → PM2.5 (with temperature and rain)"]),
+    "gWindPc": sci(var["granger_controls"]["Wind → PM2.5 (with the other weather variables)"]), "gRhPc": sci(var["granger_controls"]["Humidity → PM2.5 (with the other weather variables)"]),
+    "gTempPc": sci(var["granger_controls"]["Temperature → PM2.5 (with the other weather variables)"]), "gRainPc": f"{var['granger_controls']['Rain → PM2.5 (with the other weather variables)']:.2f}",
+    "gAllP": sci(var["granger_controls"]["All four weather variables → PM2.5"]), "gRevAllP": f"{var['granger_controls']['PM2.5 → all four weather variables']:.3f}",
+    "nestRfour": f"{nst.iloc[7]:.3f}", "nestPfour": f"{nst['p_value all four']:.2f}", "nestRsameFour": f"{nst['R2 same-week all four']:.2f}",
     "nestRone": f"{nst.iloc[0]:.3f}", "nestRtwo": f"{nst.iloc[1]:.3f}", "nestDR": f"{nst['delta R2']:.3f}", "nestP": f"{nst['p_value']:.2f}", "nestRsame": f"{nst['R2 same-week weather only']:.2f}",
     "sarMA": neg(fcn["sarima_seasonal_ma"], 2), "sarMASE": f"{fcn['sarima_seasonal_ma_se']:.0f}",
     "lbAll": sci(fcn["lb_all_lag10"]), "lbTen": f"{fcn['lb_drop_lag10']:.2f}", "lbTwentySix": f"{fcn['lb_drop_lag26']:.2f}", "lbFiftyTwo": f"{fcn['lb_drop_lag52']:.3f}",
@@ -476,12 +511,29 @@ for m, sh in SHORT.items():
     if not np.isnan(wd.loc[m, "2019"]):
         nums[f"width{sh}Nineteen"] = f"{wd.loc[m, '2019']:.0f}"; nums[f"width{sh}Seventeen"] = f"{wd.loc[m, '2017']:.0f}"
 nums["hwGamma"] = sci(float(specs[(specs.fold == 2019) & (specs.model == "Holt-Winters")].gamma.iloc[0]))
+s17 = specs[(specs.fold == 2017) & (specs.model == "SARIMA")].iloc[0]
+r17 = F._fit(SARIMAX(y.loc[:F.ORIGINS[2017]], order=(int(s17.p), 0, int(s17.q)), seasonal_order=(int(s17.P), 1, int(s17.Q), 52)))
+o17 = fb[(fb.fold == 2017) & (fb.model == "SARIMA")]
+nums.update({"sarSeventeenSeasAR": f"{r17.params['ar.S.L52']:.2f}", "sarSeventeenFcMean": f"{np.exp(o17.mu).mean():.0f}", "sarSeventeenActMean": f"{o17.actual.mean():.0f}",
+             "sarSeventeenPeak": f"{np.exp(o17.mu).max():.0f}", "sarSeventeenOrder": f"({int(s17.p)},0,{int(s17.q)})({int(s17.P)},1,{int(s17.Q)})"})
 nums["hwAlpha"] = f"{float(specs[(specs.fold == 2019) & (specs.model == 'Holt-Winters')].alpha.iloc[0]):.2f}"
 # one week ahead
 nums.update({"onePers": f"{ow.loc['Persistence', 'both years']:.1f}", "oneMean": f"{ow.loc['Seasonal mean', 'both years']:.1f}", "oneNo": f"{ow.loc['Harmonic, no weather', 'both years']:.1f}",
              "oneLag": f"{ow.loc[chr(43) + ' last week' + chr(39) + 's weather', 'both years']:.1f}", "oneOracle": f"{ow.loc['+ same-week weather (oracle)', 'both years']:.1f}",
              "oneLagPct": neg(ow.loc["+ last week's weather", "change vs no weather (%)"]), "oneOraclePct": neg(ow.loc["+ same-week weather (oracle)", "change vs no weather (%)"]),
+             "oneLagFour": f"{ow.loc[OW_ORDER[4], 'both years']:.1f}", "oneLagFourPct": neg(ow.loc[OW_ORDER[4], "change vs no weather (%)"]), "oneLagFourP": f"{ow.loc[OW_ORDER[4], 'DM p vs no weather']:.2f}",
+             "oneOracleFour": f"{ow.loc[OW_ORDER[6], 'both years']:.1f}", "oneOracleFourPct": neg(ow.loc[OW_ORDER[6], "change vs no weather (%)"]), "oneOracleFourP": f"{ow.loc[OW_ORDER[6], 'DM p vs no weather']:.2f}",
              "oneLagP": f"{ow.loc[chr(43) + ' last week' + chr(39) + 's weather', 'DM p vs no weather']:.2f}", "oneOracleP": f"{ow.loc['+ same-week weather (oracle)', 'DM p vs no weather']:.2f}"})
+# horizon study
+HZN = {1: "One", 4: "Four", 13: "Thirteen", 26: "TwentySix", 52: "FiftyTwo"}
+for h, hn in HZN.items():
+    nums[f"horN{hn}"] = str(int(hz[hz.h == h].n.iloc[0]))
+    for m, sh in SHORT.items():
+        r_ = hz[(hz.model == m) & (hz.h == h)].iloc[0]
+        nums[f"horMae{sh}{hn}"] = f"{r_['MAE']:.1f}"; nums[f"horPct{sh}{hn}"] = f"{r_['MAE % of seasonal mean']:.0f}"
+        nums[f"horP{sh}{hn}"] = "--" if m == "Seasonal mean" else f"{r_['DM p']:.2f}"
+    r_ = hz[(hz.model == "Persistence") & (hz.h == h)].iloc[0]
+    nums[f"horMaePers{hn}"] = f"{r_['MAE']:.1f}"; nums[f"horPctPers{hn}"] = f"{r_['MAE % of seasonal mean']:.0f}"
 # 2020
 H = lk.loc["Harmonic regression"]; Sm = lk.loc["Seasonal mean"]
 nums.update({"lockActual": f"{H['actual lockdown mean']:.0f}", "lockFcHarm": f"{H['forecast lockdown mean']:.0f}", "lockFcMean": f"{Sm['forecast lockdown mean']:.0f}",

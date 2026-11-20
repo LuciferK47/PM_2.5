@@ -10,7 +10,9 @@
     "Seasonal mean": 24.79,
     "Harmonic, no weather": 21.51,
     "+ last week's weather": 22.08,
-    "+ same-week weather (oracle)": 19.96
+    "+ same-week weather (oracle)": 19.96,
+    "+ last week's weather, all four": 22.16,
+    "+ same-week weather, all four": 22.92
   },
   "lockdown_gap_range": [
     -49.9,

@@ -39,7 +39,7 @@ use_style()
 daily = pd.read_csv(PROCESSED / "delhi_daily.csv", index_col="Date", parse_dates=True).asfreq("D")
 weekly = pd.read_csv(PROCESSED / "delhi_weekly.csv", index_col="Date", parse_dates=True)
 d = daily.loc[:"2019-12-31"]; w = weekly.loc[:"2019-12-29"]
-NAMES = {"wind": "Wind", "rh": "Humidity", "pm25": "PM2.5"}
+NAMES = {"wind": "Wind", "rh": "Humidity", "pm25": "PM2.5", "temp": "Temperature", "rain": "Rain"}
 key = {"n_days_var": len(d), "n_weeks_var": len(w)}
 d[["wind", "rh", "pm25", "temp", "precip"]].describe().round(1)''')
 
@@ -109,12 +109,17 @@ granger = pd.DataFrame(rows); granger.to_csv(RESULTS / "granger_var.csv", index=
 key["granger"] = {r["direction"]: r["p_value"] for r in rows}
 granger.assign(p_value=granger.p_value.map("{:.2e}".format))''')
 
-code('''# robustness: add temperature and rain anomalies to the system (5 variables), same lag
-m5 = VAR(anom[["wind", "rh", "pm25", "temp", "rain"]]); r5 = m5.fit(p)
+code('''# all four weather variables in one VAR (wind, humidity, temperature, rain + PM2.5), same lag: each weather variable's past
+# is tested with the past of the other three held in the model
+m5 = VAR(anom[["wind", "rh", "temp", "rain", "pm25"]]); r5 = m5.fit(p)
 rows5 = []
-for causing in ("wind", "rh"):
+for causing in ("wind", "rh", "temp", "rain"):
     t = r5.test_causality("pm25", causing, kind="f")
-    rows5.append({"direction": f"{NAMES[causing]} → PM2.5 (with temperature and rain)", "F": round(float(t.test_statistic), 2), "p_value": float(t.pvalue)})
+    rows5.append({"direction": f"{NAMES[causing]} → PM2.5 (with the other weather variables)", "F": round(float(t.test_statistic), 2), "p_value": float(t.pvalue)})
+t = r5.test_causality("pm25", ["wind", "rh", "temp", "rain"], kind="f")
+rows5.append({"direction": "All four weather variables → PM2.5", "F": round(float(t.test_statistic), 2), "p_value": float(t.pvalue)})
+t = r5.test_causality(["wind", "rh", "temp", "rain"], "pm25", kind="f")
+rows5.append({"direction": "PM2.5 → all four weather variables", "F": round(float(t.test_statistic), 2), "p_value": float(t.pvalue)})
 rob = pd.DataFrame(rows5); rob.to_csv(RESULTS / "granger_var_controls.csv", index=False)
 key["granger_controls"] = {r["direction"]: r["p_value"] for r in rows5}
 rob.assign(p_value=rob.p_value.map("{:.2e}".format))''')
@@ -132,17 +137,22 @@ We deseasonalise the weekly series (subtract the average of the same week of the
 * **Model 1:** $P_t = c + a\\,P_{t-1} + b\\,W_{t-1} + d\\,H_{t-1} + e_t$
 
 and also report the *same-week* regression $P_t$ on $W_t, H_t$ (weather observed in the same week: only possible with hindsight).""")
-code('''wk = w[["log_pm25", "wind", "rh"]].copy()
+code('''wk = w[["log_pm25", "wind", "rh", "temp", "precip"]].copy()
 wk_an = wk - wk.groupby(week_index(wk.index)).transform("mean").to_numpy()
 L = pd.concat([wk_an["log_pm25"].shift(1), wk_an["wind"].shift(1), wk_an["rh"].shift(1)], axis=1, keys=["pm25_l1", "wind_l1", "rh_l1"])
-dfm = pd.concat([wk_an["log_pm25"].rename("pm25"), L, wk_an[["wind", "rh"]]], axis=1).dropna()
+L4 = pd.concat([wk_an["temp"].shift(1), wk_an["precip"].shift(1)], axis=1, keys=["temp_l1", "rain_l1"])
+dfm = pd.concat([wk_an["log_pm25"].rename("pm25"), L, L4, wk_an[["wind", "rh"]], wk_an[["temp", "precip"]].rename(columns={"precip": "rain"})], axis=1).dropna()
 m0 = sm.OLS(dfm["pm25"], sm.add_constant(dfm[["pm25_l1"]])).fit()
 m1 = sm.OLS(dfm["pm25"], sm.add_constant(dfm[["pm25_l1", "wind_l1", "rh_l1"]])).fit()
 ftest = m1.compare_f_test(m0)                       # (F, p, df_diff)
 same = sm.OLS(dfm["pm25"], sm.add_constant(dfm[["wind", "rh"]])).fit()
+m2 = sm.OLS(dfm["pm25"], sm.add_constant(dfm[["pm25_l1", "wind_l1", "rh_l1", "temp_l1", "rain_l1"]])).fit()
+ftest2 = m2.compare_f_test(m0)
+same4 = sm.OLS(dfm["pm25"], sm.add_constant(dfm[["wind", "rh", "temp", "rain"]])).fit()
 nested = pd.DataFrame({"R2 model 0 (last week's PM2.5)": [m0.rsquared], "R2 model 1 (+ last week's wind, humidity)": [m1.rsquared],
                        "delta R2": [m1.rsquared - m0.rsquared], "F": [ftest[0]], "p_value": [ftest[1]], "n_weeks": [len(dfm)],
-                       "R2 same-week weather only": [same.rsquared]})
+                       "R2 same-week weather only": [same.rsquared],
+                       "R2 model 2 (+ last week's wind, humidity, temperature, rain)": [m2.rsquared], "p_value all four": [ftest2[1]], "R2 same-week all four": [same4.rsquared]})
 nested.round(4).to_csv(RESULTS / "weekly_lag_nested.csv", index=False)
 key["weekly_nested"] = {k: round(float(v), 4) for k, v in nested.iloc[0].items()}
 print(key["weekly_nested"]); nested.round(4)''')

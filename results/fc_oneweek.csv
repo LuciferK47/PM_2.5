@@ -4,3 +4,5 @@ Seasonal mean,21.772,27.818,24.795,0.044,15.253
 "Harmonic, no weather",19.581,23.446,21.513,,0.0
 + last week's weather,20.62,23.533,22.077,0.037,2.618
 + same-week weather (oracle),16.806,23.11,19.958,0.084,-7.231
+"+ last week's weather, all four",20.727,23.588,22.157,0.024,2.992
+"+ same-week weather, all four",20.999,24.843,22.921,0.315,6.544

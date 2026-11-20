@@ -1,3 +1,7 @@
 direction,F,p_value
-Wind → PM2.5 (with temperature and rain),32.59,5.132109784819962e-27
-Humidity → PM2.5 (with temperature and rain),10.81,9.647912104239325e-09
+Wind → PM2.5 (with the other weather variables),32.59,5.132109784818722e-27
+Humidity → PM2.5 (with the other weather variables),10.81,9.647912104230872e-09
+Temperature → PM2.5 (with the other weather variables),11.24,4.251690909881303e-09
+Rain → PM2.5 (with the other weather variables),0.89,0.46903163720119634
+All four weather variables → PM2.5,14.15,1.1454026214448956e-38
+PM2.5 → all four weather variables,1.92,0.014538693132368604
