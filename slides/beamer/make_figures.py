@@ -152,6 +152,17 @@ fig, axes = new_fig(4.6, ncols=2)
 acf_panel(axes[0], acf_["52-week difference"].to_numpy(), "ACF after seasonal difference", eda["n_weeks_train"] - 52)
 acf_panel(axes[1], pacf_["52-week difference"].to_numpy(), "PACF after seasonal difference", eda["n_weeks_train"] - 52)
 save(fig, "acf_pacf_d52")
+fig, axes = new_fig(6.5, nrows=2, ncols=2, sharey=True)
+for j, (col, nn, lab) in enumerate((("log PM2.5", eda["n_weeks_train"], "log PM$_{2.5}$"), ("52-week difference", eda["n_weeks_train"] - 52, "$\\nabla_{52}$ log PM$_{2.5}$"))):
+    acf_panel(axes[j, 0], acf_[col].to_numpy(), "ACF of " + lab, nn)
+    acf_panel(axes[j, 1], pacf_[col].to_numpy(), "PACF of " + lab, nn)
+for xx in (26, 52):
+    axes[0, 0].axvline(xx, color=ORANGE, ls=":", lw=1.2)
+for ax in axes[0]:
+    ax.set_xlabel("")
+for ax in axes.ravel():
+    ax.set_ylim(-0.7, 1)
+save(fig, "acf_grid")
 
 # ═══ 2. Benchmarks and the harmonic curve ══════════════════════════════════════════════════════════════
 from src.tsa import week_index  # noqa: E402
@@ -184,8 +195,8 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX  # noqa: E402
 rD = F._fit(SARIMAX(tr_y, order=(1, 0, 1), seasonal_order=(0, 1, 1, 52)))
 e = pd.Series(np.asarray(rD.resid), index=tr_y.index).iloc[int(rD.loglikelihood_burn):]
 from statsmodels.tsa.stattools import acf as _acf  # noqa: E402
-fig, axes = new_fig(3.2, ncols=2, width_ratios=[1.3, 1])
-axes[0].plot(tr_y.index[-len(e):], e, color=BLUE, lw=1.2); axes[0].axhline(0, color=INK_2, lw=0.8); axes[0].set_title("Residuals (first 52 dropped)", loc="left")
+fig, axes = new_fig(4.3, ncols=2, width_ratios=[1.3, 1])
+axes[0].plot(tr_y.index[-len(e):], e, color=BLUE, lw=1.2); axes[0].axhline(0, color=INK_2, lw=0.8); axes[0].set_title("Residuals", loc="left")
 axes[0].xaxis.set_major_locator(mdates.YearLocator()); axes[0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 a_ = _acf(e, nlags=40)
 axes[1].vlines(range(1, 41), 0, a_[1:], color=BLUE, lw=1.4); axes[1].axhline(0, color=INK_2, lw=0.8)
@@ -227,7 +238,7 @@ def panel(ax, fold, m, title=None, band=True):
     if band and o.sd.notna().all():
         ax.fill_between(o.date, np.exp(o.mu - 1.96 * o.sd), np.exp(o.mu + 1.96 * o.sd), color=COL[m], alpha=0.16, lw=0)
     ax.plot(o.date, np.exp(o.mu), color=COL[m], lw=1.9, label=m)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 7)))
     ax.set_title(title or m, loc="left"); ax.set_ylim(0, 520)
 
 
@@ -237,6 +248,16 @@ for name, trio in (("fc19_1", ("Seasonal naive", "Seasonal mean", "Holt-Winters"
         panel(ax, 2019, m, m + (" (no band)" if m == "Combination" else ""))
     axes[0].set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)")
     save(fig, name)
+
+fig, axes = new_fig(4.5, ncols=3, sharey=True)
+for ax, m in zip(axes, ("Holt-Winters", "SARIMA", "Harmonic regression")):
+    panel(ax, 2019, m, m)
+    sm_ = fb[(fb.fold == 2019) & (fb.model == "Seasonal mean")]
+    ax.plot(sm_.date, np.exp(sm_.mu), color=INK_2, lw=1.2, ls="--", label="seasonal mean")
+axes[0].set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)")
+h_, l_ = axes[0].get_legend_handles_labels()
+fig.legend([h_[0], axes[1].get_lines()[-1], h_[1]], ["actual 2019", "seasonal mean", "forecast (95% band)"], loc="outside upper center", ncols=3, frameon=False, fontsize=fs(8))
+save(fig, "fc19_models")
 
 if PROFILE == "report":
     fig, axes = new_fig(8.2, nrows=2, ncols=3, sharex=True, sharey=True)
@@ -270,7 +291,7 @@ save(fig, "fc_mae")
 # one week ahead
 ow = pd.read_csv(RES / "fc_oneweek.csv", index_col=0)
 fig, ax = new_fig(4.4, single=True)
-labs_ = ["Persistence", "Seasonal\nmean", "Harmonic,\nno weather", "+ last week's\nweather", "+ same-week\n(oracle)"]
+labs_ = ["Persistence", "Seasonal\nmean", "Harmonic,\nno weather", "+ last week's\nweather", "+ same-week\n(not known\nin advance)"]
 vals = [ow.loc[m, "both years"] for m in ow.index]
 bars = ax.bar(range(len(vals)), vals, color=[NEUTRAL, NEUTRAL, BLUE, AQUA, ORANGE])
 for i, v in enumerate(vals):
@@ -286,9 +307,9 @@ for m in ("Seasonal mean", "Holt-Winters", "SARIMA", "Harmonic regression"):
     o = f20[f20.model == m]; ax.plot(o.date, np.exp(o.mu), color=COL[m], lw=1.6, label=m)
 ax.plot(a20.date, a20.actual, color="black", lw=1.5, marker="o", ms=3, label="actual 2020")
 ax.axvspan(LOCK0, LOCK1, color=NEUTRAL, alpha=0.3, lw=0)
-ax.text(LOCK0 + (LOCK1 - LOCK0) / 2, 12, "lockdown", ha="center", fontsize=fs(8), color=INK_2)
+ax.text(LOCK0 + (LOCK1 - LOCK0) / 2, 285, "lockdown", ha="center", fontsize=fs(8), color=INK_2)
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
-fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=3, frameon=False, fontsize=fs(8)); ax.set_ylim(0, 420)
+fig.legend(*ax.get_legend_handles_labels(), loc="outside upper center", ncols=3, frameon=False, fontsize=fs(8)); ax.set_ylim(0, 320)
 save(fig, "fc_lockdown")
 
 win = pd.read_csv(RES / "fc_lockdown_windows.csv"); lk = pd.read_csv(RES / "fc_lockdown.csv", index_col=0)
@@ -375,8 +396,8 @@ rows = []
 for m in MODELS:
     p_ = "--" if m == "Seasonal mean" else f"{dmt.loc[m, 'DM p-value']:.2f}"
     c_ = "--" if np.isnan(cov.loc[m, "2019"]) else f"{100 * cov.loc[m, '2019']:.0f}\\%"
-    rows.append([m, f"{mm_.loc[m, '2017']:.1f}", f"{mm_.loc[m, 'mean 2018-19']:.1f}", neg(me_.loc[m, "mean 2018-19"]), p_, c_])
-write("key", "lrrrrr", r"\textbf{Model} & \textbf{MAE 2017} & \textbf{MAE 18--19} & \textbf{ME 18--19} & \textbf{DM $p$ vs mean} & \textbf{coverage 2019}", rows)
+    rows.append([m, f"{mm_.loc[m, 'mean 2018-19']:.1f}", neg(me_.loc[m, "mean 2018-19"]), p_, c_])
+write("key", "lrrrr", r"\textbf{Model} & \textbf{MAE 18--19} & \textbf{ME 18--19} & \textbf{DM $p$ vs mean} & \textbf{coverage 2019}", rows)
 rows = [[m, neg(r["mean MAE difference vs seasonal mean"]), neg(r["DM"], 2), f"{r['DM p-value']:.3f}", f"[{neg(r['bootstrap lo95'])}, {neg(r['bootstrap hi95'])}]"] for m, r in dmt.iterrows()]
 write("dm_full", "lrrrr", r"\textbf{Model vs seasonal mean} & \textbf{mean diff.} & \textbf{DM} & \textbf{$p$} & \textbf{bootstrap 95\%}", rows)
 rows = [r[:4] for r in rows]
@@ -398,11 +419,11 @@ write("granger", "lrr", r"\textbf{Direction (VAR(4), daily anomalies)} & \textbf
 nst = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
 rows = [[r"$P_t$ on $P_{t-1}$", f"{nst.iloc[0]:.3f}", "--"],
         [r"$+\,W_{t-1},H_{t-1}$ (last week's weather)", f"{nst.iloc[1]:.3f}", f"$F={nst['F']:.2f}$, $p={nst['p_value']:.2f}$"],
-        [r"weather of the same week only", f"{nst['R2 same-week weather only']:.3f}", "hindsight"]]
+        [r"weather of the same week only", f"{nst['R2 same-week weather only']:.3f}", "not known in advance"]]
 write("nested", "lrr", r"\textbf{Weekly regression (anomalies)} & \textbf{$R^2$} & \textbf{test}", rows)
 
 row_names = {"Persistence": "Persistence", "Seasonal mean": "Seasonal mean", "Harmonic, no weather": "Harmonic, no weather",
-             "+ last week's weather": "+ last week's weather", "+ same-week weather (oracle)": "+ same-week weather (oracle)"}
+             "+ last week's weather": "+ last week's weather", "+ same-week weather (oracle)": "+ same-week weather (unknown)"}
 rows = [[row_names[m], f"{r['2018']:.1f}", f"{r['2019']:.1f}", f"{r['both years']:.1f}", ("--" if np.isnan(r["DM p vs no weather"]) else f"{r['DM p vs no weather']:.2f}")]
         for m, r in ow.iterrows()]
 write("oneweek", "lrrrr", r"\textbf{One-week-ahead model} & \textbf{MAE 2018} & \textbf{MAE 2019} & \textbf{MAE both} & \textbf{DM $p$}", rows)

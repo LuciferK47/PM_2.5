@@ -304,7 +304,7 @@ check("harmonic: no ordinary window as low as the lockdown gap (slide claim)", w
 # ── 10. slides, notes and documents: structure ──────────────────────────────────────────────────────
 main = (Path(__file__).resolve().parent / "main.tex").read_text(); body = main[main.index("\\begin{document}"):]
 frames = body.count("\\begin{frame}"); notes = len(re.findall(r"\\note\{", body))
-check("deck has 33-38 frames and every frame has a speaker note", 33 <= frames <= 38 and notes == frames, f"{frames} frames, {notes} notes")
+check("deck has 24-34 frames (backup included) and every frame has a speaker note", 24 <= frames <= 34 and notes == frames, f"{frames} frames, {notes} notes")
 
 
 def balanced(t, i):
@@ -329,6 +329,8 @@ forbidden = ["Wold", "Levene", "ARCH", "HAC", "Newey", "impulse", "FEVD", "Winkl
 slide_text = re.sub(r"\\note\{", "\\note{", body)
 hits = [w for w in forbidden if w in re.sub(r"\\note\{.*?\}\s*\n\\end\{frame\}", "", body, flags=re.S)]
 check("no out-of-syllabus terms on the slides", not hits, str(hits))
+tone = [w for w in ("Lecture", "course", "curriculum", "handout", "artifact", "not direction", "earlier draft", "oracle", "hindsight", "first 52") if w.lower() in re.sub(r"\\[A-Za-z]+", "", body).lower()]
+check("no lecture numbers, 'course' wording or admission-style phrases on the slides or in the notes", not tone, str(tone))
 tabs_ok = all((TAB / f"{n}.tex").read_text().startswith("\\begin{tabular}") for n in ("acc", "key", "dm", "cover", "lock", "oneweek", "granger", "stationarity"))
 check("generated tables exist and are boxed tabulars", tabs_ok)
 docs = (ROOT / "README.md").read_text() + (ROOT / "HANDOFF.md").read_text()

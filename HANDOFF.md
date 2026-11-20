@@ -163,6 +163,7 @@ The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slid
 | Ljung-Box with 2 degrees of freedom deducted | 3 (ar, ma, seasonal ma) | Matches the three fitted ARMA parameters |
 | Poor-days share computed on all days incl. 2020 | 2015-2019 only (54%) | The label said 2015-2019 |
 | 46 dense slides without notes | slide-by-slide notes (`SPEAKER_NOTES.md`, `notes.tex`) | Each slide has a structure and a script |
+| 57-page deck with section-overview slides, lecture numbers and one slide per model | 28 slides + 4 backup slides: one plain slide for the three models, one 2x2 ACF/PACF slide, one 2019-forecast slide, lecture numbers and "course" wording removed; equations, AIC table, harmonic curve and DM formula moved to the backup | Shorter, no jargon; backup is used only if asked |
 
 ## 8. Likely viva questions (short answers)
 
@@ -180,7 +181,7 @@ The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slid
 12. **What does the DM test say?** No model is significantly better than the seasonal mean (the combination's 0.9 edge has p = 0.08); only the seasonal naive is significantly worse (p = 0.03).
 13. **What is a Granger test? What is the null?** F-test that the past of X adds no prediction of Y beyond Y's (and the other variables') past. Not a physical cause.
 14. **Why did you deseasonalise first?** All three series share the seasonal cycle; otherwise the test mostly detects "it is winter".
-15. **How did you pick VAR(4)?** AIC minimum at 4, BIC at 2 (table on slide); residuals pass the portmanteau test.
+15. **How did you pick VAR(4)?** AIC minimum at 4, BIC at 2 (VAR slide; lag table in the report); residuals pass the portmanteau test.
 16. **Weather predicts daily but not weekly; contradiction?** Different time scales; the daily effect is gone within a week.
 17. **Why do you call the 2020 result a what-if?** A model fitted on 2015-2019 cannot predict a lockdown; after March it is a business-as-usual baseline.
 18. **How do you know the lockdown gap is not just forecast error?** Compare with the ten-week gaps in 2017-19 (harmonic: -31% to +24%, lowest -35%) and with the same weeks of 2019 (-15%).
