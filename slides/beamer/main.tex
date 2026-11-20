@@ -113,8 +113,9 @@
 
 \begin{frame}{Our Approach}
   \centering\vspace{0.1cm}
-  \begin{tikzpicture}[x=1.9cm,y=1.0cm,font=\scriptsize,
-    box/.style={draw=deepblue,fill=lav!50,rounded corners=2pt,minimum width=1.7cm,minimum height=0.85cm,align=center,text width=1.6cm},
+  \begin{tikzpicture}[x=1.95cm,y=1.0cm,font=\scriptsize,
+    box/.style={draw=deepblue,fill=lav!50,rounded corners=2pt,minimum width=1.65cm,minimum height=1.2cm,align=center,text width=1.55cm},
+    wide/.style={box,fill=gold!25,draw=gold!80!black,text width=3.3cm,minimum width=3.4cm,minimum height=1.1cm},
     arr/.style={-{Stealth},thick,deepblue}]
     \node[box] (a) at (0,0) {1. Explore\\ \tiny plots, STL, log};
     \node[box] (b) at (1,0) {2. Identify\\ \tiny ACF/PACF, ADF/KPSS};
@@ -124,9 +125,9 @@
     \node[box] (f) at (5,0) {6. Evaluate\\ \tiny MAE, DM test};
     \foreach \u/\v in {a/b,b/c,c/d,d/e,e/f}{\draw[arr] (\u) -- (\v);}
     \draw[arr,dashed] (d.south) -- ++(0,-0.5) -| (c.south);
-    \node[box,fill=gold!25,draw=gold!80!black,text width=3.3cm,minimum width=3.4cm] (g) at (1.5,-2.0) {Branch: do wind and humidity help?\\ \tiny VAR, Granger test};
-    \node[box,fill=gold!25,draw=gold!80!black,text width=3.3cm,minimum width=3.4cm] (h) at (4.5,-2.0) {Final check: 2020\\ \tiny what-if};
-    \draw[arr,gold!80!black] (b.south) |- (g.west); \draw[arr,gold!80!black] (f.south) -- (h.north);
+    \node[wide] (g) at (1,-2.3) {Branch: do wind and humidity help?\\ \tiny VAR, Granger test};
+    \node[wide] (h) at (5,-2.3) {Final check: 2020\\ \tiny what-if};
+    \draw[arr,gold!80!black] (b.south) -- (g.north); \draw[arr,gold!80!black] (f.south) -- (h.north);
   \end{tikzpicture}
   \vspace{4pt}
   \begin{itemize}\small\item If the residual check fails, we go back and change the model (dashed arrow).\end{itemize}
