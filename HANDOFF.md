@@ -1,282 +1,218 @@
 # Handoff: Delhi PM2.5 time-series project (MATH F428)
 
-Written for a teammate who has to present and defend this project without having built it. Read sections 1-3 first (30 minutes), then use 4 (theory) and 8 (viva questions) as reference. Every number below comes from a file in `results/` (named in the text) and was re-checked against it; if a number and a results file ever disagree, the file wins.
+For a teammate who has to present and defend this project. Read sections 1-4 first (about 20 minutes); sections 5-8 are look-up material. Instructor: Prof. Anupama Sharma. Authors: Kushagra Singh, Yatin JM, Aryan Choudhary.
 
-Authors: Kushagra Singh, Yatin JM, Aryan Choudhary. Course instructor: Prof. Anupama Sharma.
+**This is the curriculum-aligned version.** An earlier version used many methods that are not in the course (HAC/Newey-West tests, impulse responses, variance decomposition, block bootstrap, Winkler score, an LSTM, calibrated intervals, daily simulation, PM2.5 bands). After review we rebuilt the project around what the lectures cover (decomposition, ACF/PACF, ADF/KPSS, SARIMA under Box-Jenkins, Holt-Winters, regression with ARMA errors, forecast evaluation, Diebold-Mariano, forecast combination) plus the VAR/Granger test from the course handout. The only extra tool is a block bootstrap used as a robustness line in the report.
 
 ---
 
 ## 1. What the project is
 
-**One paragraph.** Delhi's PM2.5 (fine particles) has a huge yearly cycle: winter averages 213 ug/m3, the monsoon 48 ug/m3 (4.4x), and 52% of days are in the "Poor or worse" PM2.5 band. We asked two questions. **Q1 (explain):** do wind and humidity predict PM2.5, and over what horizon? **Q2 (forecast):** how well can PM2.5 be forecast one week and 52 weeks ahead, and what does a model fitted before 2020 say about the 2020 lockdown? Answers: weather predicts PM2.5 over a few days, robustly, but adds nothing detectable at the weekly scale; for 52-week forecasts the plain calendar average (climatology) is hard to beat, and no model was significantly better; the 2020 lockdown shows up as a large gap (about 43%) below the model's no-lockdown projection, but that size is model-relative and not a causal estimate.
+**Data.** Daily PM2.5 for Delhi (CPCB stations via Kaggle) and ERA5 weather (wind speed, relative humidity, temperature, rain), 1 Jan 2015 to 1 Jul 2020 (2,009 days). We work with **weekly means** (weeks ending Sunday): 287 weeks, seasonal period 52. Modelling years are 2015-2019; 2020 is used only in a final what-if.
 
-**Scope.** The data end on 1 July 2020, so this is a **historical forecasting study**: backtests for 2017, 2018, 2019 and a month-by-month outlook for 2020 made from data to December 2019. It is not a current air-quality advisory.
+**Three questions.**
+1. **Q1.** Which of the course's forecasting methods forecasts weekly PM2.5 best **52 weeks ahead**, using only the series itself?
+2. **Q2.** Do wind speed and relative humidity help (predict PM2.5, and improve a forecast)?
+3. **Q3.** A model fitted on 2015-2019 cannot know about the 2020 lockdown. Used as a "business as usual" baseline, how far below it was PM2.5 in the lockdown weeks?
 
-**What is *not* claimed** (say this proactively in a viva): not that weather causes pollution (Granger is predictive); not that any model beats climatology; not that the lockdown "caused" a 43% drop; not that the decline 2016-2019 is certainly real (station network changed); not anything about neural networks in general (our LSTM is tiny and untuned); not that the PM2.5 bands equal the official AQI.
+**The story in one paragraph.** PM2.5 in Delhi has a huge yearly cycle (winter 217 vs monsoon 48 ug/m3, seasonal strength 0.90). The variance grows with the level, so we take logs. The ACF shows a yearly wave, so the series is not stationary in the mean (ADF/KPSS do not see this: they look for unit roots). We compare six methods on three expanding-window origins (forecast 2017, 2018, 2019, each 52 weeks). The seasonal mean, SARIMA, harmonic regression and the combination are statistically indistinguishable (MAE 24.3-25.5 in 2018-19); the seasonal naive and Holt-Winters are significantly worse; SARIMA fails with only two training years (MAE 72.3 in 2017). Wind and humidity Granger-cause PM2.5 over days (p about 1e-29 and 1e-11) but add nothing at the weekly scale (p = 0.47) and make one-week forecasts slightly worse (+2.8%, p = 0.03). In the 2020 lockdown weeks PM2.5 was 44-50% below the business-as-usual forecast (35-41% after adjusting for the models' earlier bias), beyond the ordinary ten-week error of the better models. This is descriptive, not causal.
 
-**Deliverables.** `slides/beamer/main.tex` (final deck), `report/report.tex` (final report, 7 pages), notebooks 01-04, `src/` (library code), `results/` (all tables), `README.md` (overview). PDFs are not tracked; build them (section 3).
+**What the project does not claim.** It is a historical study (data end in July 2020), not an advisory. Granger causality is predictive, not physical. The lockdown number is model-relative.
 
----
+## 2. Data and its quirks
 
-## 2. Data, and its quirks
-
-| Item | Detail | File |
-|---|---|---|
-| PM2.5, NO2, SO2 (city daily) | CPCB records via Kaggle `rohanrao/air-quality-data-in-india` (`city_day.csv`), Delhi, 2015-01-01 to 2020-07-01, **2,009 days** | `data/raw/city_day.csv` |
-| Station-level PM2.5 | `station_day.csv` + `stations.csv` (same dataset) | `data/raw/` |
-| Weather | ERA5 reanalysis via Open-Meteo, one grid cell at 28.61N, 77.21E: wind, relative humidity, temperature, rain | `data/raw/delhi_weather_openmeteo.json` |
-| Processed daily / weekly | merged tables used by all notebooks | `data/processed/delhi_daily.csv`, `delhi_weekly.csv` |
-
-**Cleaning and construction**
-- 2 missing PM2.5 days were interpolated (`results/missing_report.csv`).
-- **Weekly series:** 287 weekly means, weeks end on **Sunday** (pandas `W-SUN`), 2015-01-04 to 2020-06-28. The forecasting target is the **log** of the weekly mean.
-- **Training years** for all headline statistics are 2015-2018 (209 weeks). Using the full sample for "headline" numbers was an earlier mistake (test-year leakage); full-sample values appear only as a comparison.
-
-**Quirks you must know**
-1. **Week index.** Climatology needs "which week of the year is this". `src/tsa.py: week_index` maps each Sunday-ending week to 1..52 using the week's Thursday on a fixed 365-day calendar; **week 53 is folded into week 52**. Seasonal naive uses "52 weeks earlier", which is not the same calendar week in 53-week years.
-2. **Leap years.** `doy365` maps 29 Feb to day 59 and shifts later leap-year days by -1, so day-of-year climatologies line up across years.
-3. **Station count changes.** Stations reporting PM2.5: 10 (2015), 8 (2016), 17 (2017), 37 (2018), 37 (2019) (`results/key_numbers_eda.json`). The city series is the mean over stations (correlation 0.995 with the station-mean series), so a mix effect is possible. The fixed six-station panel (DL002, DL013, DL019, DL021, DL028, DL031; at least 60 days in each year) is thin in 2017 (125 days).
-4. **The fold boundaries.** A 52-week forecast from origin 2016-12-25 ends 2017-12-24, not 31 Dec. Folds are "52 weeks after the origin", labelled by the year they mostly cover.
-5. **The 2020 data include the lockdown** (from 25 March 2020). Lockdown weeks never enter model selection.
-6. **PM2.5 bands are not the AQI.** The official CPCB AQI is the maximum sub-index over pollutants. We use only the PM2.5 breakpoints (24-hour, ug/m3): Good 0-30, Satisfactory 31-60, Moderate 61-90, Poor 91-120, Very Poor 121-250, Severe above 250 (`src/aqi.py`). "Poor or worse" means above 90.
-
----
+| Item | Detail |
+|---|---|
+| PM2.5 | CPCB `city_day.csv` (Kaggle `rohanrao/air-quality-data-in-india`), Delhi, mean over reporting stations. Two missing days are interpolated (gaps up to 3 days). |
+| Weather | Open-Meteo ERA5 archive at 28.61N 77.21E. **Wind = wind speed at 10 m in km/h (not direction).** Humidity = relative humidity in %. A reanalysis at one grid point, not a station measurement. |
+| Weekly series | Weeks end on Sunday; weeks with fewer than 4 PM2.5 days are dropped (the partial last week), leaving 287. |
+| Calendar week | `week_index` (in `src/tsa.py`) = day-of-year of the week's Thursday on a 365-day scale, in 7-day blocks, capped at 52: week 53 folds into week 52 and Feb 29 is mapped to Feb 28. |
+| Station count | The Delhi value is the mean over reporting stations; the count went 10, 8, 17, 37, 37 (2015-2019). Part of the 2016-19 decline may be a change of station mix. Listed as a limitation, not analysed. |
+| 2020 | The lockdown began 25 March 2020. The ten Sunday-ending weeks 29 Mar - 31 May cover 23 Mar - 31 May. 2020 is never used to fit or select anything. |
 
 ## 3. Repository map and how to run it
 
 ```
-data/raw, data/processed     inputs (section 2)
-src/data.py, tsa.py, aqi.py, forecast.py, plots.py    library code
-notebooks/01_data_prep, 02_eda, 03_var_granger, 04_forecasting    executed, outputs saved
-results/                     every CSV/JSON table (fc_* = forecasting)
-figures/                     PNG figures from the notebooks
-slides/beamer/               main.tex (deck), make_figures.py, verify_numbers.py, tables/*.tex, fig/*.pdf (deck), fig_report/*.pdf (report)
-report/report.tex            final report source
-tools/build_nb04.py          regenerates notebook 04 from code
+data/raw/          city_day.csv, station_day.csv, stations.csv, delhi_weather_openmeteo.json
+data/processed/    delhi_daily.csv, delhi_weekly.csv
+src/               data.py, tsa.py (ADF/KPSS, day-of-year anomaly, week index),
+                   forecast.py (the six models, backtest, metrics, DM test, block bootstrap)
+notebooks/         01_data_prep, 02_eda, 03_var_granger, 04_forecasting (executed)
+tools/             build_nb02.py, build_nb03.py, build_nb04.py (regenerate the notebooks),
+                   extract_notes.py (SPEAKER_NOTES.md from the slides)
+results/           CSV/JSON; fc_* files belong to the forecasting study
+slides/beamer/     main.tex (deck), notes.tex (notes version), make_figures.py, verify_numbers.py, tables/
+report/            report.tex
+SPEAKER_NOTES.md   what to say on each slide
 ```
 
-**Order to run** (see `README.md` for the full commands): create the environment from `requirements.txt` (Python 3.12, statsmodels 0.15.0 etc.), download the three Kaggle files into `data/raw/` (needs a Kaggle token), run the notebooks in order 01 to 04, then `python slides/beamer/make_figures.py` and `PROFILE=report python slides/beamer/make_figures.py` (the second writes the column-sized `fig_report/*.pdf`; the first writes `fig/*.pdf`, `tables/*.tex`, and `tables/numbers.tex` - the macros every slide and report number comes from), `python slides/beamer/verify_numbers.py` (independent re-derivation of the numbers; must end "checks passed"), then `tectonic main.tex` and `tectonic report/report.tex`.
+**Order to run** (full commands in `README.md`): create the environment from `requirements.txt` (Python 3.12), download the Kaggle files into `data/raw/`, run notebooks 01 to 04 (04 takes 15-25 minutes because SARIMA with period 52 is slow; it uses 8 processes), then
 
-**Things that bite**
-- Notebook 04 takes roughly 10-12 minutes. It sets `OMP_NUM_THREADS=1` itself; without that, BLAS threads oversubscribe the parallel jobs and it crawls.
-- **Never edit numbers in `main.tex` or `report.tex` by hand.** Every number is a macro from `tables/numbers.tex` or a generated table. If a result changes, re-run `make_figures.py`, then `verify_numbers.py`.
-- **Monte-Carlo noise.** Simulated quantities (lockdown gap, band-day counts, interval bounds) vary by about 0.3 percentage points between re-runs because simulation paths are not bit-reproducible across runs. The backtest MAEs, Granger tables and station tables are deterministic.
-- `tools/build_nb04.py` is the source of notebook 04. Edit the builder, rebuild, then execute; editing the notebook alone is lost on the next rebuild.
-- `verify_numbers.py` skips (does not fail) the two web-link checks when offline.
-- `*.pdf` is git-ignored on purpose.
+```
+cd slides/beamer
+python make_figures.py                   # deck figures (slide size), tables/*.tex and numbers.tex
+PROFILE=report python make_figures.py    # report figures (column / page width)
+python verify_numbers.py                 # independent re-derivation; must end "checks passed"
+tectonic main.tex                        # deck
+tectonic notes.tex                       # speaker notes (slide thumbnail + text)
+cd ../../report && tectonic report.tex
+python ../tools/extract_notes.py         # writes ../SPEAKER_NOTES.md
+```
 
----
+Every number on the slides and in the report is a macro in `tables/numbers.tex` or a generated table; nothing is typed by hand. `verify_numbers.py` recomputes them from the raw files with separate code (own OLS for the Granger and weekly tests, own seasonal-mean and naive forecasts, own error metrics, own Diebold-Mariano statistic) and fails on any mismatch.
 
 ## 4. Theory primer: what each method is, why we used it, what to watch for
 
-### 4.1 Time-series basics we rely on
-- **Stationarity.** A series is (weakly) stationary if its mean, variance and autocorrelations do not change over time. Many models assume it. **Wold's decomposition:** any stationary process = a deterministic part + an infinite moving average of white noise. This is why a *deterministic* seasonal pattern (Fourier terms) is a legitimate alternative to differencing it away.
-- **ADF test** (Dickey-Fuller, 1979): H0 = unit root (non-stationary). **KPSS** (Kwiatkowski et al., 1992): H0 = stationary. They have **opposite nulls**, so we use both; agreement is informative, disagreement is a warning. On weekly log PM2.5, training years: ADF statistic -4.28 (5% critical value -2.88, p 4.8e-4); KPSS p-value 0.10 (does not reject). The seasonal difference is also stationary (ADF -4.53). Differencing a second time gives lag-1 autocorrelation -0.46: **over-differencing**. (`results/stationarity_train.csv`)
-- **Trap:** KPSS on the *raw level* "rejects stationarity" mostly because of the seasonal cycle, so it says nothing about a trend. We look at annual means of the *deseasonalised* series for that (`results/annual_drift.csv`): PM2.5 falls about 25% from 2016 to 2019, so the level is **not** constant.
-- **Log transform.** Raw PM2.5 is right-skewed (skew 1.70) and its monthly spread grows with its level (max/min monthly SD 7.9x; correlation of monthly mean and SD 0.95). After the log: skew -0.08, ratio 1.3x. A Box-Cox transform (lambda about 0.1 on training weeks) is close to the log, so the log is the simple choice. (`results/log_justification.csv`)
-- **STL decomposition** (Cleveland et al., 1990): trend + seasonal + remainder by loess. Seasonal strength F_s = 0.90 on the training weeks (0.89 full sample): the cycle explains most of the variance.
-- **ARCH-LM test** (Engle, 1982): tests whether large changes cluster in time (volatility clustering). It falls from 235 (raw) to 36 (log) but is still significant on daily changes; on weekly model residuals ARCH(4) is clean (p 0.87).
+Lecture numbers refer to `Class_Slides/` (handout topics in brackets).
 
-### 4.2 VAR and Granger causality
-- **VAR(p):** each variable is regressed on p lags of all variables. We use three deseasonalised daily series (wind W, humidity H, log PM2.5 P). "Deseasonalised" means minus the day-of-year climatology. VAR(4) is the AIC minimum (BIC picks 2); the VAR is stable (max eigenvalue modulus 0.81); Portmanteau test on residuals p = 0.168 (`results/var_lag_selection.csv`, `key_numbers_var.json`).
-- **Granger causality** (Granger, 1969): W "Granger-causes" P if past W improves the prediction of P beyond the past of P (and H). Test in the P equation: H0 = all coefficients on lagged W are zero (Wald/F test). **It is a statement about prediction, not physical cause.** Unmeasured common drivers (boundary-layer height, stubble burning, fireworks) can create Granger causality.
-- **HAC errors** (Newey-West, 1987): the plain F test assumes independent, equal-variance errors; daily residuals are autocorrelated and heteroskedastic, so we also report a Wald test with heteroskedasticity-and-autocorrelation-consistent covariance. We implemented the HAC covariance by hand in `verify_numbers.py` as an independent check.
-- **Results** (`results/granger_hac*.csv`): wind to PM2.5 p = 6.0e-20, humidity to PM2.5 p = 3.5e-11 (4 lags). Robust: with rain and temperature 9.1e-18 and 6.8e-8; with a linear trend 5.5e-20 and 1.3e-11; with a climatology fitted on 2015-2018 only 6.9e-20 and 2.6e-11. Rain adds nothing once wind and humidity are in (p 0.88). Season-specific tests are all below 1e-3 (largest: winter humidity 5.4e-4). **Season interactions are weak** (monsoon x humidity p 0.20; winter x wind p 0.03), so "humidity matters only in the monsoon" is a correlation pattern, not a difference in predictive content.
-- **Reverse direction** (PM2.5 to weather) is absent for humidity and weak for wind (significant only at lag orders 1-2, p 0.038 and 0.015; not in the full VAR, p 0.12). Possible reason: a shared multi-day stagnation regime. We call it unproven.
-- **Impulse responses.** A "shock" is the part of today's value the past does not predict. A one-SD wind shock (2.5 km/h) changes PM2.5 on day 1 by -12% (weather ordered first) or -6% (PM2.5 first); humidity (5.4% RH) by -7% or -4% (`results/irf_orderings.csv`). **Cholesky IRFs depend on variable ordering** (weather first allows same-day effects), so we report the range, 6-12% for wind and 4-7% for humidity. The **generalised IRF** (Pesaran and Shin, 1998) does not depend on ordering and lies inside that range (day 1: -12.0% and -5.2%).
-- **FEVD** (forecast-error variance decomposition): weather shocks explain 6-30% of the 14-day forecast-error variance of PM2.5, again depending on the ordering (30% weather-first: 20.5% wind plus 9.5% humidity).
-- **Weekly horizon test** (`results/weekly_lag_nested.csv`): regress this week's PM2.5 on last week's PM2.5 (R2 0.134), then add last week's wind and humidity (R2 0.139): delta R2 = 0.005, joint HAC Wald p = 0.51. We compare **nested** models; an earlier version compared non-nested R2s, which is invalid.
+### 4.1 Components, log and Box-Cox (Lectures 04-07)
+A series = trend + seasonal + remainder. **Additive:** x = T + S + R. **Multiplicative:** x = T x S x R; taking logs makes it additive. *Check used here:* compute the mean and SD of PM2.5 within each calendar month; if the SD rises with the mean (correlation 0.94 raw, -0.09 after log), the structure is multiplicative and the log is right. Box-Cox with lambda near 0 (we get 0.11 on training weeks) is the same idea. *Watch for:* a transformation changes the scale; it does not remove trend or seasonality. Forecasts of log PM2.5 give the **median** after exp(); the mean is exp(mu + sigma^2/2).
 
-### 4.3 The forecasting models (`src/forecast.py`)
-Everything forecasts the weekly **log** PM2.5, with no weather inputs (future weather is unknown at 52 weeks and weekly weather adds nothing).
-- **Climatology** (benchmark): mean log PM2.5 of each calendar week 1..52 over the training years.
-- **Seasonal naive:** the value 52 weeks earlier.
-- **Climatology + AR(1):** climatology plus an AR(1) on the anomalies.
-- **Linear regression:** OLS on 3 Fourier pairs and a linear trend; its predictive sd includes parameter uncertainty, sd_h^2 = s^2 (1 + x_h'(X'X)^-1 x_h), so it widens with the horizon.
-- **Dynamic harmonic regression (DHR)**, the "Fourier + ARMA" model (Hyndman and Athanasopoulos, FPP3, section 10.5): y_t = c + delta*t + sum_k [alpha_k sin(2 pi k t/m) + beta_k cos(2 pi k t/m)] + eta_t, with m = 365.25/7 weeks and ARMA(p,q) errors eta_t. **Why:** a weekly series has a period of about 52.18, which pure SARIMA handles badly (it needs a 52-lag seasonal operator that burns 52 observations); Fourier terms use about 10 parameters for the whole cycle and allow non-integer periods. The **level** is constant, linear, or a **random walk** (then the errors are ARIMA(p,1,q), so "ARMA" in the label covers both). Selection (inside every training window, never using later data): K in 1..5 and (p,q) from a grid by **AICc** within each level type (AICc = AIC + 2k(k+1)/(n-k-1), Hurvich and Tsai, 1989), then the level type by validation on the last 52 training weeks. Fits that do not converge are rejected and counted.
-- **SARIMA:** (1,0,1)(0,1,1)_52 (**D=1**, seasonal difference) and (1,0,1)(1,0,0)_52 with a constant (**D=0**).
-- **LSTM** (Hochreiter and Schmidhuber, 1997): one layer, 16 units, 8-week lag, trained to predict the next anomaly (vs training climatology) from the last 8 anomalies and calendar sin/cos features; forecasts are **recursive** (each prediction is fed back). Seeded and deterministic. **Each input row pairs an anomaly with the calendar features of its own week** (a first version paired it with the next week's, an alignment bug found by an outside audit). Its interval is an in-sample heuristic and optimistic.
-- **Median vs mean.** If log y ~ N(mu, sigma^2), then exp(mu) is the **median** of y and the mean is exp(mu + sigma^2/2). MAE is computed against the median; RMSE against the mean.
+### 4.2 STL and seasonal strength (Lectures 06-07)
+STL splits weekly log PM2.5 into trend, seasonal (period 52) and remainder with LOESS smoothing. **Seasonal strength** F_S = max(0, 1 - Var(R)/Var(S + R)): 0 means no seasonality, 1 means purely seasonal; ours is 0.90. Trend strength F_T = 0.18. It is computed from the STL output, nothing more. We fit STL on 2015-2019 only: including 2020 would bend the end of the trend because of the lockdown.
 
-### 4.4 Diagnostics: the diffuse-initialisation artifact
-A state-space SARIMA with D=1 initialises its first 52 seasonal states **diffusely**, so its first 52 in-sample residuals equal roughly the series level (about 5 on the log scale) and are huge. The first draft ran Ljung-Box (Ljung and Box, 1978) on all residuals and got p about 0 at every lag. With the burn-in removed (`res.loglikelihood_burn` = 52) the residuals pass at lags 10 and 26 (p 0.49, 0.10) but not at lag 52 (p 0.016) (`results/fc_diagnostics.csv`). The seasonal MA coefficient is -0.988 (near the invertibility boundary of -1) with a standard error of about 8 that is **unstable across refits**: the parameter is not identified, a sign of *possible* over-differencing, not a proof that the seasonal difference is unnecessary.
+### 4.3 Stationarity, ACF, PACF, ADF, KPSS (Lectures 08-12)
+A stationary series has constant mean, variance and autocovariance. The **ACF** of log PM2.5 decays slowly, is -0.43 at lag 26 and +0.68 at lag 52: a yearly wave, so the mean depends on the season. The PACF has spikes at lags 1-2 only. **ADF**: null is a unit root (reject for stationarity). **KPSS**: null is stationarity (reject for a unit root). Our series rejects ADF (p = 5e-4) and does not reject KPSS (0.058 < 0.463), yet it is seasonal: *these tests detect unit roots and slow trends, not a regular seasonal swing, so the ACF is the informative tool.* The seasonal difference x_t - x_{t-52} removes the wave; its ACF at lag 52 turns negative (-0.34), the first hint of over-differencing.
 
-### 4.5 Evaluation design
-- **Expanding-window (rolling-origin) backtest** (Tashman, 2000): origins at the end of 2016, 2017, 2018; each forecasts the next 52 weeks; every model is refit and **reselected** at each origin using only earlier data. 2018 and 2019 are the main evidence; 2017 (two training years) is a stress test.
-- **Metrics:** MAE (ug/m3, original scale); coverage of the 95% interval exp(mu +/- 1.96 sd); mean interval width; **Winkler interval score** W = (u - l) + (2/alpha)(l - y)1{y < l} + (2/alpha)(y - u)1{y > u}, alpha = 0.05 (lower is better; it rewards narrow intervals that still cover, Winkler 1972; Gneiting and Raftery 2007).
-- **Why a block bootstrap and not Diebold-Mariano (DM) for 52-week comparisons.** The 52 errors of one forecast path are strongly dependent, not 52 replications. We resample **circular moving blocks of 8 weeks within each forecast year** (so no block crosses two origins) and report a 95% interval for the mean paired absolute-error difference to climatology; if the interval contains 0 we write "indistinguishable". Three origins are few, so even this is conditional. **DM with the Harvey-Leybourne-Newbold correction** is used only for genuine one-step-ahead forecasts (the one-week experiment).
-- **Bootstrap detail that matters:** the first version resampled non-circular blocks, which under-samples the first and last weeks and gave biased intervals (it wrongly declared the linear variant "better"). The final version is circular within each year.
+### 4.4 Decomposition-based benchmarks (Lecture 06)
+- **Seasonal naive:** forecast = value of the same week one year earlier (includes last year's noise).
+- **Seasonal mean** (we call it that; the earlier name "climatology" confused people): for calendar week w, the average of log PM2.5 over all training years. It is the classical decomposition's seasonal index. It differs from the naive forecast because it averages all years. Example, week 3: training values 188, 272, 238, 197 -> naive 197, seasonal mean 221.
 
-### 4.6 The 2020 outlook, calibration and the lockdown study
-- **Simulation.** Fit the headline procedure on 2015-2019, simulate 5,000 weekly log paths (53 weeks so every calendar day is covered), apply the calibration, convert to daily values by adding a **whole within-week offset vector** (Monday to Sunday, taken from a training week of the same month and constructed so mean(exp(offset)) = 1), so each simulated week averages exactly to its simulated weekly mean. Monthly means and band-day counts are computed from the same daily paths. Bands are PM2.5 sub-index bands.
-- **Calibration rule** (fixed before 2019 was scored): standardised log errors z = (log y - mu)/sigma on the earlier folds; scale sigma separately for winter and other months with shrinkage toward the pooled value (26 pseudo-weeks); re-centre only if the bias has the same sign and exceeds 0.5 SD in both folds. In 2019 the mean z was -0.66 and -0.45, so no re-centring. **Honest trade-off:** rescaling lifts 2019 coverage from 90% to 96%, but the mean width grows from 125 to 179 ug/m3 and the Winkler score *worsens* (175 to 193); it buys coverage, not sharper intervals. A smooth shrunk shift defined *after* seeing 2019 removes the level bias (bias -8.5 to +4.3, Winkler 161) but is only a sensitivity.
-- **Lockdown.** Compare actual weekly PM2.5 in the ten Sunday-ending weeks 29 Mar - 31 May 2020 (these cover 23 Mar - 31 May, including two pre-lockdown days) with the no-lockdown projection. Headline: actual mean 48.7 vs model median 85.5, about **43% lower** (95% interval 32-52%); 38% if the model is given the actual 2020 weather ("oracle weather", unknowable in advance). **Why not causal:** the model was already about 11% too high in the 12 weeks before the lockdown; adjusting for that gives about 36%; a constant or random-walk level gives 43-51%; a placebo on the same weeks of 2019 gives 15% with an interval spanning zero (`results/fc_lockdown_sensitivity.csv`). The sign is robust; the size is model-relative. The "95% interval" is model predictive uncertainty, not a confidence bound on a causal effect.
+### 4.5 Holt-Winters (Lectures 22-23)
+Additive seasonal exponential smoothing on log PM2.5, m = 52: level L_t = alpha(x_t - I_{t-m}) + (1-alpha)L_{t-1}; seasonal index I_t = delta(x_t - L_t) + (1-delta)I_{t-m}; forecast = L_t + I_{t-m+h}. A damped trend is allowed and chosen by AIC (it never wins). *Peculiarity:* with 2-4 years of data the fitted seasonal smoothing parameter is about 0 (7e-5 at the 2019 origin), so the seasonal index stays at its initial heuristic estimate and the forecast over-predicts the winter peak. This is why it is significantly worse than the seasonal mean.
 
----
+### 4.6 SARIMA and Box-Jenkins (Lectures 15-21, 24-29)
+SARIMA(p,d,q)(P,D,Q)_s with seasonal difference (1-B^52). We use d = 0, D = 1 and choose (p,q,P,Q) from a small grid by **AIC** (AIC = 2r - 2 ln L, r parameters, L the likelihood; BIC uses r ln n). *Box-Jenkins:* identify (ACF/PACF, differencing) -> estimate -> check residuals (Ljung-Box) -> forecast. Prediction intervals use the psi-weights: Var = sigma^2(1 + sum psi_j^2) (Lecture 28).
+*Peculiarities (important, expect questions):*
+1. **Diffuse initialisation.** A state-space model with D = 1 starts with a diffuse prior on its first 52 seasonal states, so the first 52 "residuals" equal the series itself. Ljung-Box with them kept gives p of about 0 at every lag; with them dropped it passes at lags 10 and 26 (p = 0.60, 0.13) and is borderline at 52 (p = 0.020). The first version of the project mistook this artifact for a bad model.
+2. **Seasonal MA coefficient -0.99** with a standard error of about 8: on the boundary of invertibility, not identified. A seasonal MA(1) near -1 is the standard sign of over-differencing (the yearly pattern is fixed, so differencing injects artificial MA structure). This motivates modelling the seasonal pattern directly.
+3. **Short data.** With two training years the seasonal difference leaves one year of information; SARIMA's 2017 MAE is 72.3 (seasonal mean 31.0) and its interval covers only 23% of weeks.
+
+### 4.7 Harmonic regression with ARMA errors (Lectures 13-16; FPP3 sec. 10.5)
+x_t = c + sum_k [a_k sin(2 pi k t/m) + b_k cos(2 pi k t/m)] + eta_t, eta_t ~ ARMA(p,q), m = 365.25/7. A regression with autocorrelated errors in which the yearly shape has only 2K parameters (K <= 5, chosen with (p,q) by AIC). *"Doesn't a Fourier fit just reproduce the past?"* No: K pairs are 2K numbers describing a smooth curve (K = 1 is one wave, K = 4 already follows the winter peak), versus 52 free values for the seasonal mean. It is the direct alternative to differencing.
+
+### 4.8 Forecast combination (Lecture 30)
+Equal-weight average of the log forecasts of the seasonal mean, Holt-Winters, SARIMA and harmonic regression. No interval (we only combine point forecasts). The lecture notes that a combination is not guaranteed to be better than every member.
+
+### 4.9 Evaluation: expanding-window backtest, error measures, intervals (Lectures 23, 28, 30)
+Three origins (end of 2016, 2017, 2018) forecast the next 52 weeks. At every origin each model is refitted and **all choices are redone with earlier data only**. Errors e = actual - forecast on the original scale: **ME** (bias; negative = over-prediction), **MAE**, **RMSE**, **MAPE**. **Coverage** = share of test weeks inside the 95% interval exp(mu +/- 1.96 sd). Only three test years: honest conclusions are "cannot be told apart", not rankings. 2019 was looked at in earlier project iterations (all selection in the code uses only earlier data).
+
+### 4.10 Diebold-Mariano test (Lecture 30)
+d_t = |e_a| - |e_b|; H0: E(d_t) = 0; DM = mean(d)/sqrt(V/N). Errors of a 52-step forecast are strongly autocorrelated, so V is a long-run variance with a Bartlett kernel (12 lags). A large p means "cannot be told apart", not "equal". We pool 2018-19 and compare with the seasonal mean. For one-step forecasts the Harvey-Leybourne-Newbold small-sample version is used. As a robustness check the report also gives an 8-week circular block bootstrap interval of the same difference.
+
+### 4.11 VAR and Granger causality (handout lectures 35-37)
+**Anomalies:** subtract each calendar day's smoothed average over the five years (the seasonal mean of that day). Needed because wind, humidity and PM2.5 all follow the calendar; without it any test mostly detects "it is winter". **VAR(p):** each of (wind, humidity, log PM2.5) is regressed on the last p days of all three. p is chosen by AIC (4) and BIC (2); we use 4; the residuals pass a portmanteau test (p = 0.17). **Granger test:** in the PM2.5 equation, H0: all lag-1..p wind coefficients are zero, tested by an F-test. Rejection means wind's past improves the *prediction* of PM2.5 given PM2.5's and humidity's past; it is not proof of a physical cause, and it does not say wind is the only driver. Reverse directions (PM2.5 -> wind, humidity) are not significant (p = 0.12, 0.62).
+**Weekly scale:** on deseasonalised weekly data, adding last week's wind and humidity to last week's PM2.5 changes R^2 from 0.123 to 0.128 (F-test p = 0.47): nothing. Same-week weather has R^2 = 0.17 but is only known with hindsight.
+**One week ahead:** harmonic model one-step forecasts: no weather 22.4, + last week's weather 23.0 (+2.8%, DM p = 0.03: slightly *worse*), + same-week weather (oracle, unusable) 20.9; persistence 30.7, seasonal mean 24.8.
+**Reconciling "weather predicts" with "weather adds nothing":** different time scales. Weather moves PM2.5 over a few days; the effect is gone within a week, so for weekly or yearly forecasts it adds nothing (a yearly forecast would also need a weather forecast first).
+
+### 4.12 The 2020 what-if (Q3)
+A model fitted on 2015-2019 cannot predict a lockdown. We use 2020 two ways: **January-February** is a genuine out-of-sample test (MAE 30-45, larger than in 2017-19 because actual values already ran 6-18% below the forecasts, the same level bias seen in earlier years); **the ten lockdown weeks** compare actual (49 ug/m3) with the business-as-usual forecast (86-97 depending on the model): gap -44% to -50%; after removing each model's Jan-Mar bias, -35% to -41%. *Yardstick:* the same ten-week gap for every window of the 2017-19 backtests (harmonic model: 5th-95th percentile -31% to +24%, lowest -35%) and for the same calendar weeks of 2019 (-4% to -25%). For the seasonal mean, harmonic regression, combination and naive no ordinary window is as low as 2020; for Holt-Winters and SARIMA, whose 2017 forecasts were poor, a few are (8% and 1%). Descriptive, not causal.
 
 ## 5. Results (numbers and where they live)
 
-| Result | Value | File |
+| Item | Value | File |
 |---|---|---|
-| Poor-or-worse days | 52% of 2,009 days | `key_numbers_eda.json` |
-| Winter vs monsoon mean | 213 vs 48 ug/m3 (4.4x) | same |
-| Seasonal strength (STL) | 0.90 (training) | same |
-| 4-lag HAC Granger p, wind / humidity | 6.0e-20 / 3.5e-11 | `granger_hac.csv` |
-| Weekly nested test | R2 0.134 to 0.139, delta 0.005, p 0.51 | `weekly_lag_nested.csv` |
-| MAE 2017 / 2018 / 2019, selected DHR | 31.5 / 23.4 / 25.7 | `fc_backtest_mae.csv` |
-| MAE, climatology | 31.0 / 21.8 / 27.8 | same |
-| MAE, SARIMA D=1 | 53.8 / 21.1 / 27.5 | same |
-| MAE, SARIMA D=0 (+constant) | 44.9 / 42.8 / 44.1 | same |
-| MAE, small LSTM (after the alignment fix) | 36.3 / 28.3 / 54.3 | same |
-| MAE, linear regression | 35.9 / 20.0 / 24.9 | same |
-| Selected minus climatology, 2018-19 | -0.2 ug/m3, 95% interval [-2.9, +2.8]: indistinguishable | `fc_loss_diff.csv` |
-| Linear-trend DHR, mean 2018-19 | 21.9 vs 24.8 climatology, interval [-6.1, +0.7]: also indistinguishable | same |
-| Raw 95% coverage 2017 / 2018 / 2019 | 69% / 94% / 90% | `fc_backtest_metrics.csv` |
-| One week ahead (MAE change vs 22.4 no-weather) | lagged -2.4%, last 3 days +0.7%, same-week "oracle" +6.9% (p about 0.07) | `fc_oneweek.csv` |
-| 2019 pipeline check | 12/12 monthly means inside; Poor-or-worse 55% predicted vs 45% observed | `key_numbers_forecast.json` |
-| Lockdown | about 43% below projection; 36% adjusted; 37-51% across specs; placebo 15% | `fc_lockdown*.csv` |
-| Station decline 2016-2019 | 25% (all), 20% (fixed panel), 18% (weather-adjusted) | `station_check.csv` |
+| Winter / monsoon mean, ratio | 217 / 48 ug/m3, 4.5x | `results/season_stats.csv`, `key_numbers_eda.json` |
+| Seasonal / trend strength (STL 2015-19) | 0.90 / 0.18 | `key_numbers_eda.json` |
+| Log: corr(monthly mean, SD) raw / log | 0.94 / -0.09 | `log_justification.csv` |
+| ACF lag 1 / 26 / 52 | 0.87 / -0.43 / 0.68 | `acf_weekly_train.csv` |
+| ADF p, KPSS (log level, train) | 5e-4, 0.058 | `stationarity_train.csv` |
+| SARIMA candidates AIC (A, B, C, D) | 79.9, 73.2, 45.2, 39.4 | `fc_sarima_identification.csv` |
+| Seasonal MA coefficient | -0.99 (SE about 8) | `key_numbers_forecast.json` |
+| MAE 2017 / 2018 / 2019 | naive 38.4/29.0/30.3; mean 31.0/21.8/27.8; HW 51.5/24.2/34.3; SARIMA 72.3/21.1/27.5; harmonic 30.1/23.4/27.6; combination 39.6/21.1/28.3 | `fc_backtest_mae.csv` |
+| ME 2018-19 (all negative) | -8 to -18 | `fc_backtest_me.csv` |
+| DM vs seasonal mean (2018-19) | naive +4.8 (p 0.03), HW +4.4 (0.001), SARIMA -0.5 (0.49), harmonic +0.7 (0.60), combination -0.1 (0.79) | `fc_dm.csv` |
+| Coverage 2017 / 2018 / 2019 | mean 62/92/81, SARIMA 23/94/85, harmonic 67/94/87 (%) | `fc_coverage.csv` |
+| VAR lag AIC / BIC | 4 / 2 | `var_lag_selection.csv` |
+| Granger p: wind, humidity -> PM2.5 | 1e-29, 1e-11 (still < 1e-8 with temperature, rain) | `granger_var.csv`, `granger_var_controls.csv` |
+| Weekly nested test | R^2 0.123 -> 0.128, p = 0.47 | `weekly_lag_nested.csv` |
+| One-week MAE | persistence 30.7, mean 24.8, harmonic 22.4, + last week's weather 23.0, oracle 20.9 | `fc_oneweek.csv` |
+| Lockdown gap (10 weeks) | -44% to -50% (adjusted -35% to -41%) | `fc_lockdown.csv`, `fc_lockdown_windows.csv` |
 
-The "headline" model procedure is DHR with selection inside each window. The 2017 and 2019 folds picked a random-walk level and the 2018 fold a constant level, all with K=5, p=1, q=1; the final 2020 fit (data to 2019) picked a linear level, K=5, AR(1) errors (`key_numbers_forecast.json`: `backtest.specs`, `outlook_2020_spec`).
-
----
+The speaker notes (`SPEAKER_NOTES.md`) repeat the relevant numbers slide by slide.
 
 ## 6. Limitations and peculiarities (the full honest list)
 
-1. **Three annual origins.** Resampling weekly errors cannot create extra test years. "Indistinguishable" only means the bootstrap interval contains 0.
-2. **2019 is not a pristine hold-out.** It was examined in earlier iterations of the project. In the code, selection and calibration use only earlier data, but the *research process* saw 2019. Say "chronologically held out, not pristine".
-3. **Level bias.** 2019 was cleaner than the training years, so forecasts were too high; all five 2019 raw-interval misses were below the lower bound.
-4. **Interval width trade-off.** Calibrated intervals cover more but are wider and score worse on Winkler. The LSTM's intervals are optimistic.
-5. **The lockdown gap** is model-relative and descriptive (section 4.6).
-6. **Granger causality is predictive**; ERA5 is a single grid cell; mixing height, stubble burning and fireworks are unmeasured.
-7. **Station network.** The six-station check is small and thin in 2017; the decline is "consistent with a genuine component, network effect not ruled out".
-8. **SARIMA D=0 without a constant is numerically fragile** (AR root about 0.999). Our no-constant MAEs (76.9 / 61.0 / 92.1) are not reproducible to the decimal across software versions (an audit refit gave 64.8 in 2018 and 81.5-92.1 in 2019). Read it as "60-90, much worse than climatology". With a constant the result is stable. Fit details: `fc_sarima_d0_fit_details.csv`.
-9. **Residual seasonality.** The selected DHR still has autocorrelation at lags 26 and 52 (p 0.001 and 0.009 in the 2019 fold; lag 10 marginal at 0.088).
-10. **Seasonal MA near -1** with an unstable standard error: unidentified, not proof of over-differencing.
-11. **Monte-Carlo noise** of about 0.3 percentage points in simulated quantities.
-12. **One city**, data end July 2020, PM2.5 bands are not the AQI.
+- **Few independent tests.** Three annual origins cannot rank similar models. 2017 has only two training years (stress test). 2019 was looked at in earlier iterations of the project; selection in the code uses only earlier data.
+- **Level drift not modelled.** Annual means fall 22% from 2016 to 2019, so every model over-predicts (ME < 0) and intervals are too narrow in 2019 (81-87% coverage) and 2017 (23-89%). The station count also changed (10 -> 37).
+- **SARIMA is fragile on short data** (see 4.6), and AIC across different differencing is only a rough guide.
+- **Holt-Winters' frozen seasonal index** (alpha-delta fit near 0) is a property of this short sample, not a bug.
+- **Median vs mean.** exp(mu) is the median of PM2.5; MAE is computed on it.
+- **Weather is a reanalysis at one grid point**; boundary-layer height, stubble burning and fireworks are unmeasured. Granger causality is predictive only.
+- **Lockdown gap is model-relative** and descriptive; other things changed in 2020 too. The bias adjustment assumes the pre-lockdown bias would have persisted.
+- **Interval for the combination** is not defined (point forecast only).
+- **Runtime/seeds.** The models are deterministic; the block bootstrap (report robustness line) uses a fixed seed. Notebook 04 takes 15-25 minutes.
 
----
+## 7. What changed from the earlier version (so you can answer "what did you change?")
 
-## 7. What went wrong earlier and how it was fixed
-
-The project was reviewed by three people/LLMs and then audited twice more by Gemini and GPT recomputing from a data pack. Every claim was re-tested against the data before acting; some claims were wrong and were rejected. Be ready to explain any of these.
-
-| Problem | Verdict | Fix |
+| Earlier | Now | Why |
 |---|---|---|
-| Ljung-Box p about 0 at every lag | Real: artifact of 52 diffuse residuals | drop `loglikelihood_burn` residuals |
-| Seasonal MA at -0.988 treated as meaningful | Real: unidentified (SE about 8) | reported as an identification problem |
-| SARIMA D=0 had no constant | Real | added a constant; matched comparison saved |
-| Headline STL/Box-Cox on full sample (used test years) | Real | recomputed on 2015-2018 |
-| Leap-year day-of-year capping | Real (minor) | `doy365` |
-| Weekly R2 comparison of non-nested models | Real | nested test with joint Wald |
-| "p < 1e-10 in every specification", "drives", PM2.5 band called AQI | Real over-claims | exact p-values, "predicts", "PM2.5 sub-index band" |
-| Gemini: "re-anchoring gives 94.2% coverage" | **Rejected**: the data give 90.4% | none |
-| Gemini: shock-bin plot has Jensen bias | **Rejected**: it averages the log change | wording only |
-| Gemini: humidity matters only in the monsoon | **Rejected**: interaction p 0.20 | none |
-| Gemini: ISO-week fold shifts all of 2016 | **Partly**: only 2016-01-03 (ISO week 53) | one consistent `week_index` |
-| LSTM calendar features one week ahead of the anomalies | Real (found in audit round 2) | `lstm_window`; rerun: 36.3 / 28.3 / 54.3 |
-| Checker compared April-June with March-May intervals; skipped a persistence week | Real (audit) | fixed; the checker now has 100+ checks (see the last line of its output) |
-| Block bootstrap joined forecast years | Real | within-fold; then circular (the first fix was biased) |
-| Linear regression and LSTM had constant-width intervals | Real | horizon-specific sd |
-| Monthly means and band-days from different random draws | Real | one set of coherent daily paths |
-| Non-converged fits accepted in AICc search | Real | rejected and counted |
-| Double-rounded MAE macros (27.4 for 27.5; 54.4 for 54.3) | Real | macros read unrounded metrics |
-| "D=0 MAE 39.7 to 30.6 with a constant" had no saved evidence | Real | replaced by the matched table |
-| Over-claims: "matches or slightly beats", "weather adds nothing", "decline is real", "cut PM2.5 by 43%", "pre-declared / pristine 2019" | Real | reworded everywhere |
-
-The `verify_numbers.py` checker re-derives selected numbers (it covers headline tables, macros and several independent refits; it does not re-run every model selection or the station download). "All checks pass" is evidence, not proof.
-
----
+| "Climatology" benchmark | "Seasonal mean", explained with a worked example | The name and definition confused readers; it is the classical seasonal index |
+| Dynamic harmonic regression with level types, AICc, inner validation year | Harmonic regression with ARMA errors, constant level, K and (p,q) by AIC | Matches the course (L29 AIC) and is simpler |
+| Fixed SARIMA(1,0,1)(0,1,1) and a D = 0 variant | SARIMA with orders chosen by AIC from a grid at each origin | The Box-Jenkins identify-estimate-check cycle |
+| Linear regression, Climatology + AR(1), LSTM | Holt-Winters and a forecast combination | In the course (L22-23, L30); the LSTM was not |
+| Winkler score, calibrated intervals, simulation, PM2.5 bands | ME/MAE/RMSE/MAPE, coverage, DM test | In the course (L30, L28) |
+| HAC Wald tests, shocks, impulse responses, FEVD | VAR lag table (AIC/BIC), plain Granger F-tests both ways, weekly nested test | Out of syllabus; the earlier slides read as jargon |
+| 2020 "outlook" with monthly intervals and band-days | 2020 as a what-if against a business-as-usual baseline, with a yardstick | A model fitted before 2020 cannot forecast a lockdown |
+| STL on 2015-2020 weeks (trend bent by 2020) | STL on 2015-2019 | 2020 is not a modelling year |
+| 46 dense slides without notes | slide-by-slide notes (`SPEAKER_NOTES.md`, `notes.tex`) | Each slide has a structure and a script |
 
 ## 8. Likely viva questions (short answers)
 
-1. **Why log?** Raw PM2.5 is skewed and its spread scales with its level; the log stabilises the variance (monthly SD ratio 7.9x to 1.3x) and makes errors multiplicative.
-2. **ADF and KPSS disagree?** They did not: both indicate stationarity of the log series. They have opposite nulls, which is why we use both.
-3. **Why Fourier terms instead of a seasonal difference?** Weekly period is about 52.18, non-integer; a seasonal difference burns 52 of 209 weeks; the cycle looks deterministic; D=1 SARIMA gave an unidentified seasonal MA and collapsed in 2017 (MAE 53.8).
-4. **What is Granger causality here?** Past wind/humidity improve prediction of PM2.5; not a physical-cause claim.
-5. **Why HAC?** Residuals are autocorrelated and heteroskedastic; plain F tests are overconfident.
-6. **Why does the IRF have a range?** Cholesky depends on ordering; we show both orderings and the ordering-free generalised IRF.
-7. **Does weather help forecasting?** Over days, yes in-sample; one week ahead only the same week's weather (unknowable) helps, by 6.9%; lagged weather changes MAE by -2.4%; at weekly lags nothing detectable (p 0.51).
-8. **Is your Fourier model better than climatology?** No: statistically indistinguishable (2018-19: -0.2 ug/m3, interval [-2.9, +2.8]). The linear-trend variant has the lowest 2018-19 MAE but its interval also spans zero.
-9. **Why not a Diebold-Mariano test?** Errors of one 52-step path are not independent replications; we use a within-year circular block bootstrap, and DM only for one-step errors.
-10. **Why is SARIMA D=1 so bad in 2017?** Two training years: after differencing, almost nothing is left to learn the seasonal pattern from.
-11. **Why is the LSTM bad?** About 200 weekly points and a recursive 52-step rollout; it learns little beyond the mean cycle. An alignment bug in the first version was fixed and it is still poor. It is a small baseline, not a verdict on deep learning.
-12. **Did you use the test year to choose anything?** Selection happens inside each training window. But 2019 was examined during development, so it is not a pristine hold-out. The calibration rule was fixed before 2019 was scored; the smooth shift was defined after, so it is only a sensitivity.
-13. **Why do your intervals under-cover in 2017?** Only two training years, large level shifts; coverage 69%. Calibration cannot fix a level bias it cannot see.
-14. **Calibration made intervals worse?** It raised coverage (90% to 96%) but widened them 43% and the Winkler score rose 175 to 193; we report both.
-15. **Is the 43% lockdown drop causal?** No: it is a gap to a model projection. The model was already 11% high before; adjusted 36%; specs 37-51%; the 2019 placebo gives 15% (interval spans 0).
-16. **Is the 2016-19 decline real or a monitor change?** Consistent with a genuine decline (fixed panel -20%, weather-adjusted -18%), but the station count rose from 8-10 to 37 so a network effect is not ruled out.
-17. **Is a band the AQI?** No. The AQI is the maximum sub-index over all pollutants; we use only PM2.5 breakpoints.
-18. **Why median forecasts?** exp(mu) is the median of a lognormal; the mean needs exp(mu + sigma^2/2). MAE is optimal for the median.
-19. **What do the diffuse residuals do?** They make Ljung-Box look terrible (p about 0) when it is fine; drop `loglikelihood_burn` residuals.
-20. **How do you know the numbers are right?** Every slide/report number is a macro from `results/`; `verify_numbers.py` re-derives them (independent HAC, VAR, refits, bootstrap); two outside audits recomputed them from raw data.
-
----
+1. **Why weekly?** Daily data are noisy; weekly means give a clean seasonal period s = 52 for the seasonal models.
+2. **Why log?** Seasonal swings grow with the level (corr. of monthly SD and mean 0.94); after log it is -0.09. Multiplicative -> additive (L06).
+3. **What is F_S and where does it come from?** From the STL decomposition: 1 - Var(remainder)/Var(seasonal + remainder) = 0.90.
+4. **ADF and KPSS pass, yet you say it is non-stationary. Contradiction?** No: they test for a unit root / constant mean, not for a regular yearly swing; the ACF shows the yearly wave.
+5. **Why the seasonal difference, and why is it a problem?** It removes the yearly cycle, but with a fixed yearly pattern it over-differences (seasonal MA = -0.99, ACF at lag 52 = -0.34).
+6. **What is the difference between seasonal naive and seasonal mean?** Naive repeats last year's value; the mean averages that week over all training years (noise averages out).
+7. **Does the Fourier fit just copy the past?** No: 2K parameters describe a smooth curve; the seasonal mean has 52.
+8. **Why is SARIMA not the winner?** Ties with the seasonal mean with three or more years (24.3 vs 24.8) but fails with two (72.3); over-differenced.
+9. **Why is Holt-Winters worse?** Its seasonal smoothing parameter is about 0, so the seasonal index stays at its initial estimate; it over-predicts.
+10. **What do the Ljung-Box results on the first 52 residuals mean?** They are not forecast errors (diffuse initialisation); drop them.
+11. **What does coverage tell you?** Share of weeks inside the 95% interval; ours are too narrow when the level drifts (2019: 81-87%, 2017 SARIMA 23%).
+12. **What does the DM test say?** No model is significantly better than the seasonal mean; naive and Holt-Winters are significantly worse.
+13. **What is a Granger test? What is the null?** F-test that the past of X adds no prediction of Y beyond Y's (and the other variables') past. Not a physical cause.
+14. **Why did you deseasonalise first?** All three series share the seasonal cycle; otherwise the test mostly detects "it is winter".
+15. **How did you pick VAR(4)?** AIC minimum at 4, BIC at 2 (table on slide); residuals pass the portmanteau test.
+16. **Weather predicts daily but not weekly; contradiction?** Different time scales; the daily effect is gone within a week.
+17. **Why do you call the 2020 result a what-if?** A model fitted on 2015-2019 cannot predict a lockdown; after March it is a business-as-usual baseline.
+18. **How do you know the lockdown gap is not just forecast error?** Compare with the ten-week gaps in 2017-19 (harmonic: -31% to +24%, lowest -35%) and with the same weeks of 2019 (-15%).
+19. **Why the median?** exp() of the log forecast is the median; the mean is exp(mu + sigma^2/2).
+20. **What would you do with more time?** More forecast origins/years, model the level drift, add a boundary-layer-height or stubble-burning variable, and check with a longer sample.
 
 ## 9. Glossary
 
-- **AIC / AICc:** model-selection criteria penalising parameters; AICc adds a small-sample correction.
-- **ADF / KPSS:** unit-root test / stationarity test with opposite nulls.
-- **ARMA(p,q):** autoregressive moving-average errors; **ARIMA(p,d,q)** adds d differences.
-- **ARCH-LM:** test for volatility clustering.
-- **Box-Cox:** power transform; the log is its limit at lambda 0.
-- **Burn-in (diffuse):** the first residuals of a state-space model with diffuse initial states; must be dropped before diagnostics.
-- **Climatology:** the average value of each calendar week over the training years.
-- **Coverage:** share of actual values inside the prediction interval.
-- **DHR:** dynamic harmonic regression (Fourier terms plus ARMA errors).
-- **DM / HLN:** Diebold-Mariano forecast-comparison test and its small-sample correction (valid for one-step errors).
-- **Expanding window:** training set grows with each origin; the test period moves forward.
-- **FEVD:** share of a variable's forecast-error variance due to each shock.
-- **Granger causality:** predictive content of one series for another.
-- **HAC:** heteroskedasticity-and-autocorrelation-consistent covariance (Newey-West).
-- **IRF / GIRF:** impulse response (Cholesky, ordering-dependent) / generalised, ordering-free.
-- **Ljung-Box:** residual autocorrelation test.
-- **LSTM:** long short-term memory recurrent neural network.
-- **MAE:** mean absolute error.
-- **Origin:** the last training week; the forecast starts the week after.
-- **Oracle weather:** the actual weather of the forecast week, known only with hindsight.
-- **PM2.5 band:** CPCB PM2.5 breakpoints (not the full AQI).
-- **SARIMA(p,d,q)(P,D,Q)_s:** seasonal ARIMA with seasonal period s.
-- **STL:** seasonal-trend decomposition by loess.
-- **VAR:** vector autoregression.
-- **Winkler score:** interval score combining width and misses (lower is better).
-- **W-SUN:** weekly frequency ending on Sunday.
-
----
+**Anomaly:** value minus its seasonal mean. **AIC/BIC:** information criteria (fit minus parameter penalty), smaller is better. **Business as usual:** the model's path without the lockdown. **Coverage:** share of actual values inside the prediction interval. **DM test:** Diebold-Mariano test of equal forecast accuracy. **ERA5:** ECMWF reanalysis (modelled weather). **Expanding window:** training set grows at each forecast origin. **F_S:** STL seasonal strength. **Granger causality:** predictive usefulness. **Harmonic regression:** regression on sines/cosines of the yearly period. **Holt-Winters:** exponential smoothing with trend and seasonality. **Ljung-Box:** test for leftover autocorrelation in residuals. **ME/MAE/RMSE/MAPE:** mean error/mean absolute error/root mean squared error/mean absolute percentage error. **Median forecast:** exp(forecast of the log). **SARIMA:** seasonal ARIMA. **Seasonal mean:** average of the same calendar week across training years. **Seasonal naive:** same week last year. **STL:** seasonal-trend decomposition using LOESS. **VAR:** vector autoregression.
 
 ## 10. Appendix: references and how each was verified
 
-The report cites 27 references. Each was checked on 17 Nov 2026; treat this table as the audit trail. **Crossref** = the DOI was looked up at `api.crossref.org/works/<doi>` and the authors, title, year, journal, volume, issue and pages compared with the bibliography entry. Crossref gives only the first page for older JSTOR items, so end pages for those were confirmed on a second source (RePEc/EconBiz/Econometric Society pages) as noted.
+The report cites 23 references. **Crossref** = DOI looked up at `api.crossref.org/works/<doi>` and authors, title, year, journal, volume, issue and pages compared with the bibliography entry (first 17 on 17 Nov 2026, the six marked * on 20 Nov 2026).
 
 | # | Reference | How verified | Result |
 |---|---|---|---|
-| 1 | CPCB, National Air Quality Index, Oct 2014 | web search of the NIUA-hosted copy (CPCB report, MoEF&CC, Oct 2014); PM2.5 breakpoints confirmed on IES Arthapedia (citing CPCB): 0-30, 31-60, 61-90, 91-120, 121-250, 250+ | confirmed; the PDF itself could not be fetched, so cited by title and issuer only |
-| 2 | Box, Jenkins, Reinsel, Ljung, *Time Series Analysis: Forecasting and Control*, 5th ed., Wiley, 2015 | confirmed as the 5th ed. in the FPP3 "further reading" entry | confirmed (not checked in Crossref) |
-| 3 | Rao, Kaggle "Air Quality Data in India (2015-2020)" | web search; page returns HTTP 200; title and owner confirmed via mirrors | confirmed |
+| 1 | CPCB, National Air Quality Index, Oct 2014 | web search of the NIUA-hosted copy; PM2.5 breakpoints confirmed on a page citing CPCB | confirmed; PDF not fetchable, cited by title and issuer |
+| 2 | Box, Jenkins, Reinsel, Ljung, *Time Series Analysis: Forecasting and Control*, 5th ed., Wiley, 2015 | confirmed as the course textbook (Handout) | confirmed |
+| 3 | Rao, Kaggle "Air Quality Data in India (2015-2020)" | page returns HTTP 200; title and owner confirmed | confirmed |
 | 4 | Hersbach et al. 2020, ERA5, QJRMS 146(730):1999-2049 | Crossref 10.1002/qj.3803 | match |
-| 5 | Zippenfenig 2023, Open-Meteo.com Weather API, Zenodo | DOI 10.5281/zenodo.7970649 is the concept DOI listed on open-meteo.com/en/licence; resolves via doi.org (HTTP 200); not in Crossref (DataCite) | confirmed; we cite the concept DOI (a version-specific DOI also exists) |
-| 6 | Cleveland et al. 1990, STL, J. Official Statistics 6(1):3-73 | statsmodels and stlplus documentation both cite exactly this; no DOI | confirmed |
+| 5 | Zippenfenig 2023, Open-Meteo.com Weather API, Zenodo | DOI 10.5281/zenodo.7970649 from open-meteo.com licence page; resolves via doi.org; not in Crossref (DataCite) | confirmed (concept DOI) |
+| 6 | Cleveland et al. 1990, STL, J. Official Statistics 6(1):3-73 | statsmodels/stlplus documentation cite exactly this; no DOI | confirmed |
 | 7 | Box and Cox 1964, JRSS-B 26(2):211-243 | Crossref 10.1111/j.2517-6161.1964.tb00553.x | match |
-| 8 | Engle 1982, Econometrica 50(4) | Crossref 10.2307/1912773; pages 987-1007 confirmed via EconBiz/Econometric Society (some databases print 987-1008) | match |
-| 9 | Dickey and Fuller 1979, JASA 74(366a):427-431 | Crossref 10.1080/01621459.1979.10482531 | match (Crossref issue label "366a") |
-| 10 | Kwiatkowski et al. 1992, J. Econometrics 54(1-3):159-178 | Crossref 10.1016/0304-4076(92)90104-Y | match |
-| 11 | Sims 1980, Econometrica 48(1):1-48 | Crossref 10.2307/1912017; pages via Econometric Society | match |
-| 12 | Lutkepohl 2005, New Introduction to Multiple Time Series Analysis, Springer | Crossref 10.1007/978-3-540-27752-1 | match |
-| 13 | Granger 1969, Econometrica 37(3):424-438 | Crossref 10.2307/1912791; pages via RePEc/Econometric Society | match |
-| 14 | Newey and West 1987, Econometrica 55(3):703-708 | Crossref 10.2307/1913610; pages via EconBiz/Stata manual | match |
-| 15 | Pesaran and Shin 1998, Economics Letters 58(1):17-29 | Crossref 10.1016/S0165-1765(97)00214-0 | match |
-| 16 | Hyndman and Athanasopoulos, FPP3, section 10.5 "Dynamic harmonic regression" | otexts.com/fpp3/dhr.html fetched: section 10.5 in chapter "Dynamic regression models"; 3rd edition released Feb 2021 | confirmed (authors not printed on that page; authorship is standard) |
-| 17 | Hurvich and Tsai 1989, Biometrika 76(2):297-307 | Crossref 10.1093/biomet/76.2.297 | match |
-| 18 | Hochreiter and Schmidhuber 1997, Neural Computation 9(8):1735-1780 | Crossref 10.1162/neco.1997.9.8.1735 | match |
-| 19 | Tashman 2000, Int. J. Forecasting 16(4):437-450 | Crossref 10.1016/S0169-2070(00)00065-0 | match |
-| 20 | Winkler 1972, JASA 67(337):187-191 | Crossref 10.1080/01621459.1972.10481224 | match |
-| 21 | Gneiting and Raftery 2007, JASA 102(477):359-378 | Crossref 10.1198/016214506000001437 | match |
-| 22 | Kunsch 1989, Annals of Statistics 17(3):1217-1241 | Crossref 10.1214/aos/1176347265 | match |
-| 23 | Diebold and Mariano 1995, JBES 13(3):253-263 | Crossref 10.1080/07350015.1995.10524599 | match |
-| 24 | Harvey, Leybourne, Newbold 1997, Int. J. Forecasting 13(2):281-291 | Crossref 10.1016/S0169-2070(96)00719-4 | match |
-| 25 | Ljung and Box 1978, Biometrika 65(2):297-303 | Crossref 10.1093/biomet/65.2.297 | match |
-| 26 | Durbin and Koopman, *Time Series Analysis by State Space Methods*, 2nd ed., OUP, 2012 | Crossref 10.1093/acprof:oso/9780199641178.001.0001 (year 2012, monograph) | match; "2nd ed." from the publisher's standard edition statement, not shown by Crossref |
-| 27 | Mahato, Pal, Ghosh 2020, Sci. Total Environ. 730:139086 | Crossref 10.1016/j.scitotenv.2020.139086 | match |
+| 8 | Dickey and Fuller 1979, JASA 74(366a):427-431 | Crossref 10.1080/01621459.1979.10482531 | match |
+| 9 | Kwiatkowski et al. 1992, J. Econometrics 54(1-3):159-178 | Crossref 10.1016/0304-4076(92)90104-Y | match |
+| 10 | Sims 1980, Econometrica 48(1):1-48 | Crossref 10.2307/1912017 | match |
+| 11 | Granger 1969, Econometrica 37(3):424-438 | Crossref 10.2307/1912791 | match |
+| 12 | Hyndman and Athanasopoulos, FPP3, sec. 10.5 | otexts.com/fpp3/dhr.html fetched | confirmed (authorship standard, not printed on the page) |
+| 13 | Tashman 2000, Int. J. Forecasting 16(4):437-450 | Crossref 10.1016/S0169-2070(00)00065-0 | match |
+| 14 | Diebold and Mariano 1995, JBES 13(3):253-263 | Crossref 10.1080/07350015.1995.10524599 | match |
+| 15 | Harvey, Leybourne, Newbold 1997, Int. J. Forecasting 13(2):281-291 | Crossref 10.1016/S0169-2070(96)00719-4 | match |
+| 16 | Ljung and Box 1978, Biometrika 65(2):297-303 | Crossref 10.1093/biomet/65.2.297 | match |
+| 17 | Mahato, Pal, Ghosh 2020, Sci. Total Environ. 730:139086 | Crossref 10.1016/j.scitotenv.2020.139086 | match |
+| 18* | Holt 2004, Int. J. Forecasting 20(1):5-10 (reprint of the 1957 memorandum) | Crossref 10.1016/j.ijforecast.2003.09.015 | match |
+| 19* | Winters 1960, Management Science 6(3):324-342 | Crossref 10.1287/mnsc.6.3.324 | match |
+| 20* | Akaike 1974, IEEE Trans. Automatic Control 19(6):716-723 | Crossref 10.1109/TAC.1974.1100705 | match |
+| 21* | Schwarz 1978, Ann. Statist. 6(2):461-464 | Crossref 10.1214/aos/1176344136 | match |
+| 22* | Box and Pierce 1970, JASA 65(332):1509-1526 | Crossref 10.1080/01621459.1970.10481180 | match |
+| 23* | Bates and Granger 1969, J. Oper. Res. Soc. 20(4):451-468 | Crossref 10.1057/jors.1969.103 | match |
 
-Not cited because not verified: the Politis-Romano stationary bootstrap and Seabold-Perktold (statsmodels) were considered; the latter verified in Crossref (10.25080/Majora-92bf1922-011) but is not cited in the final report, so add it if you cite the software.
+References from the earlier version that are no longer cited (Engle 1982, Newey-West 1987, Pesaran-Shin 1998, Lutkepohl 2005, Hurvich-Tsai 1989, Hochreiter-Schmidhuber 1997, Winkler 1972, Gneiting-Raftery 2007, Kunsch 1989, Durbin-Koopman 2012) were dropped together with the methods they supported.

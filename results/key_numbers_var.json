@@ -1,41 +1,30 @@
 {
-  "var_sample": "2015-01-01 to 2019-12-31 (1826 days)",
+  "n_days_var": 1826,
+  "n_weeks_var": 261,
+  "spearman_pm25_wind": -0.22,
+  "spearman_pm25_rh": -0.26,
   "var_lag_aic": 4,
   "var_lag_bic": 2,
   "var_stable": true,
   "portmanteau_p": 0.168,
-  "max_eigen_modulus": 0.813,
-  "irf": {
-    "wind": {
-      "peak_pct": -12.0,
-      "peak_day": 1,
-      "shock_sd": 2.54,
-      "unit": "km/h"
-    },
-    "rh": {
-      "peak_pct": -6.7,
-      "peak_day": 1,
-      "shock_sd": 5.43,
-      "unit": "% RH"
-    }
-  },
-  "fevd_weather_share_h14": 30.0,
-  "fevd_wind_h14": 20.5,
-  "fevd_rh_h14": 9.5,
   "granger": {
-    "Wind → PM2.5": 1.08e-29,
-    "Humidity → PM2.5": 1.16e-11,
-    "Wind + Humidity → PM2.5": 2.76e-33,
-    "PM2.5 → Wind": 0.122,
-    "PM2.5 → Humidity": 0.617
+    "Wind \u2192 PM2.5": 1.08e-29,
+    "Humidity \u2192 PM2.5": 1.16e-11,
+    "Wind + Humidity \u2192 PM2.5": 2.76e-33,
+    "PM2.5 \u2192 Wind": 0.122,
+    "PM2.5 \u2192 Humidity": 0.617
   },
-  "granger_hac": {
-    "Wind → PM2.5 | PM2.5, wind, humidity": 5.95e-20,
-    "Humidity → PM2.5 | PM2.5, wind, humidity": 3.52e-11,
-    "Wind → PM2.5 | + rain control": 2.81e-19,
-    "Humidity → PM2.5 | + rain control": 3.04e-08,
-    "Rain → PM2.5 | + rain control": 0.877,
-    "PM2.5 → Wind | PM2.5, wind, humidity": 0.0956,
-    "PM2.5 → Humidity | PM2.5, wind, humidity": 0.546
+  "granger_controls": {
+    "Wind \u2192 PM2.5 (with temperature and rain)": 5.13e-27,
+    "Humidity \u2192 PM2.5 (with temperature and rain)": 9.65e-09
+  },
+  "weekly_nested": {
+    "R2 model 0 (last week's PM2.5)": 0.123,
+    "R2 model 1 (+ last week's wind, humidity)": 0.1281,
+    "delta R2": 0.0051,
+    "F": 0.7554,
+    "p_value": 0.4709,
+    "n_weeks": 260.0,
+    "R2 same-week weather only": 0.1715
   }
 }

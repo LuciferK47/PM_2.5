@@ -28,7 +28,7 @@
 \setlength{\linenumbersep}{0.35cm}
 \linenumbers
 \pagestyle{fancy}\fancyhf{}\renewcommand{\headrulewidth}{0pt}
-\fancyhead[RE,LO]{\itshape\sffamily\scriptsize Forecasting Delhi's PM$_{2.5}$: Weather, Seasonality and a Rolling-Origin Study}
+\fancyhead[RE,LO]{\itshape\sffamily\scriptsize Forecasting Delhi's PM$_{2.5}$: Seasonal Models, Weather and a Year-Ahead Backtest}
 \fancyfoot[LE]{\sffamily\scriptsize\bfseries\thepage}\fancyfoot[RE,LO]{\sffamily\scriptsize\itshape Singh, K., JM, Y., Choudhary, A.}\fancyfoot[RO]{\sffamily\scriptsize\bfseries\thepage}
 \fancypagestyle{first}{\fancyhf{}\renewcommand{\headrulewidth}{0pt}\fancyfoot[C]{\sffamily\scriptsize BITS Goa \hspace{1.2em}\textbf{Nov 17, 2026}\hspace{1.2em}\textbf{1--\pageref{LastPage}}}}
 \titlecontents{section}[0em]{\addvspace{3pt}\sffamily\bfseries\scriptsize\color{hblue}}{\contentslabel{1.5em}}{}{\titlerule*[0.55pc]{.}\contentspage}
@@ -40,146 +40,116 @@
 \twocolumn[{%
   \thispagestyle{first}
   {\sffamily\bfseries\small MATH F428 - Time Series Analysis and Forecasting}\\[3pt]
-  {\sffamily\bfseries\fontsize{19}{22}\selectfont\color{hblue} Forecasting Delhi's PM$_{2.5}$: Weather, Seasonality\\ and a Rolling-Origin Forecasting Study}\\[5pt]
+  {\sffamily\bfseries\fontsize{19}{22}\selectfont\color{hblue} Forecasting Delhi's PM$_{2.5}$: Seasonal Models,\\ Weather and a Year-Ahead Backtest}\\[5pt]
   {\sffamily\bfseries\small Kushagra Singh$^{a}$, Yatin JM$^{a}$, Aryan Choudhary$^{a}$}\\[2pt]
   {\itshape\scriptsize $^{a}$Birla Institute of Technology and Science, KK Birla Goa Campus}\\[3pt]
   {\footnotesize Guided by Prof.\ Anupama Sharma}\\[6pt]}]
 
-\noindent{\footnotesize\sffamily\bfseries Abstract}{\footnotesize---Delhi's \pmtwo{} follows a very strong yearly cycle and a slowly falling level. We ask whether wind and humidity predict it, and how well it can be forecast one week and 52 weeks ahead. In a VAR on deseasonalised daily data, wind and humidity anomalies Granger-cause \pmtwo{} (HAC Wald $p\approx$ \gWindP{} and \gRhP{}), robustly to rain, temperature and trend controls, but no added predictive value was detected at the weekly scale ($\Delta R^2=\nestDR$, $p=\nestP$). For 52-week forecasts we compare climatology, dynamic harmonic regression (Fourier terms with ARMA errors), SARIMA, linear regression and a small LSTM on three expanding-window origins. In this limited evaluation no model shows a convincing gain over climatology; SARIMA with a seasonal difference is unstable and an earlier residual test was an artifact of diffuse initialisation. Seasonal rescaling lifts 2019 interval coverage from \fcCovRaw\% to \fcCovCal\% at the cost of wider intervals. A 2020 outlook validated on 2019 puts observed lockdown-period \pmtwo{} about \fcLockPct\% below the model's no-lockdown projection, a descriptive gap, not a causal estimate.}
+\noindent{\footnotesize\sffamily\bfseries Abstract}{\footnotesize---Delhi's \pmtwo{} follows a strong yearly cycle ($F_S=\Fs$) and a slowly falling level. Using weekly means for 2015--2019 we compare six forecasting methods taught in the course (seasonal naive, seasonal mean, Holt--Winters, SARIMA, harmonic regression with ARMA errors, and an equal-weight combination) 52 weeks ahead on three expanding-window origins, and ask whether wind speed and humidity help. The seasonal mean, SARIMA, harmonic regression and the combination are statistically indistinguishable in 2018--19 (MAE \maeSarimaAvg--\maeHarmAvg\ \ugm{}), while Holt--Winters and the seasonal naive are significantly worse; SARIMA is the least stable (MAE \maeSarimaSeventeen\ in 2017, with two training years), and its seasonal moving-average coefficient sits at $\hat\Theta=\sarMA$, the sign of over-differencing. In a VAR(\varLagAic) on deseasonalised daily data, wind and humidity Granger-cause \pmtwo{} ($p<10^{-8}$), but last week's weather adds nothing at the weekly scale ($p=\nestP$) and does not improve one-week forecasts. A model fitted on 2015--2019 and run into 2020 is a ``business as usual'' path: \pmtwo{} in the ten lockdown weeks was \lockGapMax\% to \lockGapMin\% below it, beyond the ordinary ten-week forecast error of the better models.}
 
 \vspace{2pt}\nolinenumbers
 {\small\renewcommand{\baselinestretch}{0.9}\tableofcontents}\linenumbers
 
 \section{Introduction}
-\lettrine[lines=2,nindent=0pt]{D}{elhi's} air is unhealthy for much of the year. Daily \pmtwo{} (particles under 2.5 micrometres) exceeds 90~\ugm{}, the lower edge of the Poor band of the national air quality index \cite{cpcb}, on \pctPoor\% of days in our sample, and the pattern repeats every winter. Understanding \emph{why} it varies and \emph{how far ahead} it can be predicted supports warnings and policy.
+\lettrine[lines=2,nindent=0pt]{D}{elhi's} air is unhealthy for much of the year. Over 2015--2019 the daily \pmtwo{} (particles under 2.5 micrometres) averaged \pmMean~\ugm{}, and on \pctPoor\% of days it was in the Poor band or worse of the national air quality index \cite{cpcb}. The pattern repeats every winter. Knowing how far ahead it can be forecast, and whether weather helps, supports warnings and policy.
 
 \subsection{Motivation}
-Pollution is a sequence of correlated observations with a strong seasonal cycle, so ordinary regression assumptions fail and time-series methods are needed. We follow the Box--Jenkins spirit \cite{box}: identify the structure, estimate, check diagnostics, and judge by out-of-sample forecasts. The data end in July 2020, so this is a \emph{historical} forecasting study: backtests for 2017--2019 and an outlook for 2020 made from data to December 2019.
+Weekly \pmtwo{} is a time series with a strong seasonal cycle, short-run autocorrelation and a slowly drifting level, which is the setting of the course: decomposition, stationarity, ARIMA/SARIMA, exponential smoothing and forecast evaluation. We follow the Box--Jenkins procedure \cite{box}: identify, estimate, check the residuals, then forecast and evaluate out of sample. The data end in July 2020, so this is a \emph{historical} study: backtests for 2017--2019 and a ``what if there had been no lockdown'' check for 2020.
 
-\subsection{Contributions}
+\subsection{Questions and Contributions}
 \begin{itemize}\setlength\itemsep{0pt}\setlength\topsep{2pt}
- \item \sech{Explain (Q1).} Whether wind and humidity predict \pmtwo{}, and over what horizon, with robustness checks.
- \item \sech{Forecast (Q2).} Nine models compared on three expanding-window origins with honest uncertainty.
- \item \sech{Corrections.} Two rounds of outside audits found a diagnostic artifact, a missing constant, an LSTM alignment bug and over-claims; all were fixed and the numbers re-derived by a checker.
- \item \sech{2020 outlook and lockdown.} A monthly outlook validated on 2019, and a lockdown gap with sensitivity checks.
+ \item \sech{Q1.} Which course method forecasts weekly \pmtwo{} best 52 weeks ahead, using only the series itself?
+ \item \sech{Q2.} Do wind speed and relative humidity help, on which time scale, and do they improve forecasts?
+ \item \sech{Q3.} How far below a ``business as usual'' path was \pmtwo{} in the 2020 lockdown weeks?
 \end{itemize}
 
 \section{Data Analysis}
 \subsection{Data}
-Daily city-level \pmtwo{} for Delhi, 2015-01-01 to 2020-07-01 (2{,}009 days; two missing days interpolated), comes from the CPCB records in the Kaggle air-quality dataset \cite{kaggle}, which also holds station-level files. Wind, relative humidity, temperature and rain come from the ERA5 reanalysis \cite{era5} served by Open-Meteo \cite{openmeteo} at 28.61N, 77.21E. The forecasting series is 287 weekly means (weeks end on Sunday); all headline statistics use the training years 2015--2018.
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{daily_ts.pdf}\caption{Daily \pmtwo{} in Delhi, 2015--2020, with a 30-day rolling mean.}\label{fig:ts}\end{figure}
+Daily \pmtwo{} for Delhi (mean of the CPCB stations) comes from the Kaggle collection of CPCB records \cite{kaggle}: \nDays\ days from 1 Jan 2015 to 1 Jul 2020, two missing days interpolated. Wind \emph{speed} (km/h, not direction) and relative humidity (\%) are ERA5 reanalysis daily means \cite{era5} for 28.61$^\circ$N, 77.21$^\circ$E via Open-Meteo \cite{openmeteo}. We use weekly means (weeks ending Sunday), \nWeeks\ weeks, so the seasonal period is $s=52$. The \emph{modelling sample} is 2015--2019; identification uses the training years 2015--2018 so 2019 remains an unseen test year. 2020 enters only Section~\ref{sec:2020}.
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{daily_ts.pdf}\caption{Daily \pmtwo{} in Delhi with a 30-day mean; grey: 2020, not used for fitting.}\label{fig:ts}\end{figure}
 
-\subsection{Stationarity Analysis}
-Winters average (Figure~\ref{fig:box}) \winterMean{} \ugm{} against \monsoonMean{} \ugm{} in the monsoon (\ratioWM$\times$); STL decomposition \cite{stl} gives a seasonal strength of $F_s=\Fs$ (Figure~\ref{fig:stl}). Raw \pmtwo{} is right-skewed (\skewRaw) and its monthly spread grows with its level (max/min monthly SD \sdRatioRaw$\times$, ARCH-LM \archRaw); after the log (Table~\ref{tab:log}) \cite{boxcox} the skew is \skewLog{}, the ratio \sdRatioLog$\times$ and ARCH-LM \archLog{} \cite{engle}.
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{stl.pdf}\caption{STL decomposition of weekly log \pmtwo{}.}\label{fig:stl}\end{figure}
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/log_tests.tex}}\caption{Tests before and after the log transform.}\label{tab:log}\end{table}
-Stationarity was tested with ADF \cite{adf} (null: unit root) and KPSS \cite{kpss} (null: stationary), which have opposite nulls, so agreement is informative. Both are consistent with stationarity for the log series and for its seasonal difference (Table~\ref{tab:stat}); a further first difference over-differences (lag-1 autocorrelation \acfOver{}).
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/stationarity.tex}}\caption{ADF and KPSS on weekly log \pmtwo{}, 2015--18.}\label{tab:stat}\end{table}
-\begin{hlbox}
-Hypothesis for modelling: the log series is stationary around a deterministic yearly cycle, so Fourier terms can replace a seasonal difference. KPSS on the raw level is dominated by the cycle and is not informative; the real issue is a slowly falling \emph{level}.
-\end{hlbox}
+\subsection{Seasonality and the Logarithm}
+Winter (Nov--Jan) averages \winterMean~\ugm{} against \monsoonMean~\ugm{} in the monsoon (Jul--Sep), a ratio of \ratioWM. The spread is also much larger in winter: across calendar months the standard deviation of raw \pmtwo{} is correlated \corrRaw\ with the monthly mean (Fig.~\ref{fig:sd}), so the seasonal swings grow with the level and the structure is multiplicative, $x_t=T_t\times S_t\times R_t$. After taking logs the correlation falls to \corrLog\ and the largest/smallest monthly SD ratio from \sdRatioRaw\ to \sdRatioLog\ (Table~\ref{tab:log}); a Box--Cox transformation \cite{boxcox} with $\lambda\approx0.1$ points the same way. All models use $\log$ \pmtwo{}; the point forecast $e^{\hat\mu}$ is therefore the median.
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{mean_sd.pdf}\caption{Monthly SD against monthly mean, raw (left) and log (right).}\label{fig:sd}\end{figure}
+\begin{table}[t]\centering\small\input{../slides/beamer/tables/log_tests.tex}\caption{Raw versus log \pmtwo{}.}\label{tab:log}\end{table}
 
-\subsection{Reviewing Transformations}
-Two routes to a model were considered. \sech{Route 1} treats the cycle as stochastic: take logs, apply a seasonal difference $\Delta_{52}$ (and possibly $\Delta$) and fit a seasonal ARIMA. \sech{Route 2} treats it as deterministic: take logs and model the cycle with a few Fourier terms, leaving ARMA errors for the short-run dynamics. Table~\ref{tab:stat} shows that the seasonal difference is itself stationary, so both routes are admissible; with only \nTrain{} training weeks, however, $\Delta_{52}$ spends 52 observations on differencing and (as Section~4.3 shows) produces an unidentified seasonal parameter, while Fourier terms use about ten parameters for the whole cycle. We therefore carry both routes forward and let the backtest decide.
-\begin{hlbox}
-We also tested whether the level is constant: annual means of the deseasonalised series fall, so we compare a constant, a linear and a random-walk level in the forecasting models rather than assuming one.
-\end{hlbox}
+\subsection{STL Decomposition}
+STL \cite{stl} on weekly log \pmtwo{} for 2015--2019 (period 52) gives $x_t=T_t+S_t+R_t$ (Fig.~\ref{fig:stl}). The seasonal strength $F_S=\max\{0,1-\mathrm{Var}(R)/\mathrm{Var}(S+R)\}=\Fs$, whereas the trend strength is only $F_T=\Ft$. The seasonal component alone moves by a factor of about \seasRatio\ between the best and worst week of the year. Annual means fall by \declAll\% from 2016 to 2019; the number of reporting stations also changed (\stnFirst, \stnSecond\ in 2015--16 to \stnLast\ in 2019), so part of the decline may be a change of station mix.
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{stl.pdf}\caption{STL decomposition of weekly log \pmtwo{}, 2015--2019.}\label{fig:stl}\end{figure}
 
-\subsection{Is the Decline Real?}
-After removing the cycle, annual means fall about \declAll\% from 2016 to 2019, but the number of reporting stations rose from 10 and 8 (2015--16) to 37 (2018--19), so a change in the station mix could create a spurious decline (Figure~\ref{fig:st}). A fixed six-station panel (at least 60 days in every year) falls by \declPanel\%, and the city series after regressing out wind, humidity and temperature by \declWx\%. This is consistent with a genuine component; it does not rule out a network-composition effect, and the panel is thin in 2017 (\panelDaysSev{} days).
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{seasonal_boxplot.pdf}\caption{\pmtwo{} by calendar month.}\label{fig:box}\end{figure}
-\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_station.pdf}\caption{Stations reporting (left) and mean log anomaly by year (right).}\label{fig:st}\end{figure*}
-
-\section{Preliminary Analysis: Does Weather Predict \pmtwo{}?}
-\subsection{Granger Causality in a VAR}
-We deseasonalise daily wind $W$, humidity $H$ and log \pmtwo{} $P$ by their day-of-year climatology (leap-year aware) and fit a VAR(4) (AIC minimum) \cite{sims,lut}. The Granger test \cite{granger} in the \pmtwo{} equation $P_t=c+\sum_{i\le4}a_iP_{t-i}+\sum_{i\le4}b_iW_{t-i}+\sum_{i\le4}d_iH_{t-i}+u_t$ has null $b_1=\dots=b_4=0$, evaluated with a Wald statistic and HAC (Newey--West) errors \cite{neweywest} for autocorrelated, heteroskedastic residuals. Wind and humidity both predict \pmtwo{} (Table~\ref{tab:gr}), with $p\approx$ \gWindP{} and \gRhP{}; rain adds nothing once they are in. The reverse direction is absent for humidity and weak for wind (lag orders 1--2 only), possibly a shared stagnation regime. This is a \emph{predictive} association: mixing height, stubble burning and fireworks are unmeasured.
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/granger4.tex}}\caption{HAC Wald $p$-values for Granger tests into \pmtwo{}.}\label{tab:gr}\end{table}
-
-\subsection{Shocks and Variance Decomposition}
-A one-SD unexpected rise in wind lowers \pmtwo{} by \irfWindA--\irfWindB\% the next day, humidity by \irfRhA--\irfRhB\%, fading within about a week (Figure~\ref{fig:irf}); the range is the Cholesky ordering, and the ordering-free generalised response \cite{pesaran} lies inside it. Weather shocks explain \fevdA--\fevdB\% of the 14-day forecast-error variance, again depending on the ordering.
-\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{irf_range.pdf}\caption{Impulse responses of \pmtwo{} to wind and humidity shocks under both orderings.}\label{fig:irf}\end{figure*}
-
-\subsection{The Weekly Horizon}
-Adding last week's wind and humidity to a model with last week's \pmtwo{} raises $R^2$ only from \nestRone{} to \nestRtwo{} ($\Delta R^2=\nestDR$, joint HAC Wald $p=\nestP$): within the tested specification weather is a short-memory predictor, and the 52-week models use no weather.
+\subsection{Stationarity, ACF and PACF}
+The sample ACF of log \pmtwo{} (2015--18, Fig.~\ref{fig:acf}) decays slowly, is \acfHalf\ at lag 26 and returns to \acfYear\ at lag 52: a yearly wave, so the mean depends on the time of year. The PACF has spikes at lags 1--2 only. ADF \cite{adf} (null: unit root) rejects ($p=\adfPLog$) and KPSS \cite{kpss} (null: stationary) does not reject (statistic \kpssLog, 5\% value 0.463), yet the series is clearly seasonal: these tests look for random-walk behaviour and a constant mean, not for a regular seasonal swing, so the ACF is the more informative tool (Table~\ref{tab:st}). After a seasonal difference $\nabla_{52}x_t=x_t-x_{t-52}$ the wave disappears and both tests pass ($p=\adfPDiff$; KPSS \kpssDiff), but the ACF at lag 52 turns negative, a first hint of over-differencing.
+\begin{figure*}[t]\centering\includegraphics[width=0.92\textwidth]{acf_pacf.pdf}\\[2pt]\includegraphics[width=0.92\textwidth]{acf_pacf_d52.pdf}\caption{ACF and PACF of weekly log \pmtwo{}, 2015--18 (top) and of its seasonal difference (bottom). Grey band: $\pm1.96/\sqrt n$.}\label{fig:acf}\end{figure*}
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/stationarity.tex}}\caption{ADF and KPSS, weekly series, 2015--18.}\label{tab:st}\end{table}
 
 \section{Forecasting Models}
-\subsection{Models and Selection}
-Table~\ref{tab:zoo} lists the models; the paragraph below gives the details.
-\begin{table}[t]\centering\scriptsize\renewcommand{\arraystretch}{1.12}\begin{tabular}{|p{1.7cm}|p{3.0cm}|p{2.2cm}|}\hline
-\textbf{Model} & \textbf{Idea} & \textbf{Selection}\\\hline
-Climatology & mean log \pmtwo{} of each calendar week & none (benchmark)\\\hline
-Seasonal naive & value 52 weeks earlier & none\\\hline
-Clim.\ + AR(1) & climatology plus AR(1) anomalies & none\\\hline
-Linear reg. & Fourier terms + linear trend & $K=3$ fixed\\\hline
-DHR (selected) & Fourier terms + ARMA/ARIMA errors & $K,p,q$ by AICc; level by validation\\\hline
-SARIMA & seasonal ARIMA, $D=1$ or $D=0$ + constant & fixed orders\\\hline
-LSTM & recursive one-step net on anomalies & 16 units, lag 8\\\hline
-\end{tabular}\caption{The model set.}\label{tab:zoo}\end{table}
-All models forecast weekly log \pmtwo{} with no weather inputs. \sech{Climatology} is the mean of each calendar week over the training years (the benchmark); \sech{seasonal naive} repeats the value 52 weeks earlier. \sech{Dynamic harmonic regression} (DHR) \cite{fpp} writes $y_t=c+\delta t+\sum_{k\le K}[\alpha_k\sin\frac{2\pi kt}{m}+\beta_k\cos\frac{2\pi kt}{m}]+\eta_t$ with $m=365.25/7$ and ARMA$(p,q)$ errors $\eta_t$ (ARIMA$(p,1,q)$ for a random-walk level). The level is constant, linear or a random walk; $K\le5$ and $(p,q)$ are chosen by AICc \cite{hurvich} within each level type, and the level by an inner validation year. \sech{SARIMA}$(1,0,1)(0,1,1)_{52}$ and $(1,0,1)(1,0,0)_{52}$ with a constant, \sech{linear regression} on Fourier terms plus a trend, and a small \sech{LSTM} \cite{lstm} (16 units, recursive, deterministic) complete the set. The point forecast is the median $e^{\mu_h}$ and the 95\% interval $e^{\mu_h\pm1.96\sigma_h}$ with horizon-specific $\sigma_h$.
+All models are fitted to weekly log \pmtwo{} using only the data before each forecast origin; every choice below (orders, number of harmonics, trend option) is repeated at each origin.
+\subsection{Benchmarks}
+The \textbf{seasonal naive} forecast repeats the value of the same week a year earlier, $\hat x_{t+h}=x_{t+h-52}$, noise included. The \textbf{seasonal mean} averages the log value of each calendar week over all training years, $\hat\mu_w=N^{-1}\sum_j\log x_{w,j}$, the seasonal index of classical decomposition. For week \exWeek\ the four training values were \exYa, \exYb, \exYc\ and \exYd~\ugm{}; naive gives \exNaive, the seasonal mean \exMean.
+\subsection{Holt--Winters}
+Additive Holt--Winters \cite{holt,winters} on the log scale with $m=52$: $L_t=\alpha(x_t-I_{t-m})+(1-\alpha)L_{t-1}$, $I_t=\delta(x_t-L_t)+(1-\delta)I_{t-m}$, $\hat x_t(h)=L_t+I_{t-m+h}$, with an optional damped trend chosen by AIC \cite{akaike}.
+\subsection{SARIMA}
+$\mathrm{SARIMA}(p,0,q)(P,1,Q)_{52}$ \cite{box}: $\phi(B)\Phi(B^{52})(1-B^{52})x_t=\theta(B)\Theta(B^{52})w_t$. The orders in $\{0,1,2\}\times\{0,1\}\times\{(0,1),(1,0),(1,1)\}$ are chosen by AIC at each origin; non-converged fits are rejected. Four candidates on 2015--18 (Table~\ref{tab:ident}) show that seasonal terms are decisive ($\Delta$AIC $>30$ against the non-seasonal model, Lecture 29 guidelines \cite{akaike,schwarz}); model D, $(1,0,1)(0,1,1)_{52}$, has the lowest AIC.
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/sarima_ident.tex}}\caption{SARIMA candidates, log \pmtwo{}, 2015--18.}\label{tab:ident}\end{table}
+\subsection{Harmonic Regression with ARMA Errors}
+$x_t=c+\sum_{k=1}^{K}[a_k\sin\frac{2\pi kt}{m}+b_k\cos\frac{2\pi kt}{m}]+\eta_t$ with $\eta_t\sim\mathrm{ARMA}(p,q)$ and $m=365.25/7$ weeks \cite{fpp}. It is a regression with autocorrelated errors in which the yearly shape has only $2K$ parameters ($K\le5$); $K$ and $(p,q)$ are chosen by AIC. It smooths the yearly pattern rather than copying it (Fig.~\ref{fig:harm}).
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{harmonic_k.pdf}\caption{Fitted yearly curve for $K=1,2,4$ against the seasonal mean (2015--18).}\label{fig:harm}\end{figure}
+\subsection{Combination}
+The equal-weight average of the log forecasts of the seasonal mean, Holt--Winters, SARIMA and harmonic regression \cite{bates}; a point forecast only, so it has no interval.
+\subsection{Diagnostics of the SARIMA Model}
+Ljung--Box \cite{ljungbox,boxpierce} on the residuals of model D gives $p\approx0$ at every lag if all residuals are kept. This is an artifact: the state-space model with a seasonal difference starts with a diffuse prior on its first 52 seasonal states, so the first 52 residuals equal the series itself and are not forecast errors. With them dropped the residuals pass at lags 10 and 26 ($p=\lbTen$, $\lbTwentySix$) and are borderline at 52 ($p=\lbFiftyTwo$; Table~\ref{tab:lb}, Fig.~\ref{fig:res}). The seasonal MA coefficient is $\hat\Theta=\sarMA$ with standard error about \sarMASE: on the boundary of invertibility and not identified, the textbook sign of over-differencing. This is why a model that describes the yearly pattern directly is a serious competitor.
+\begin{figure*}[t]\centering\includegraphics[width=0.85\textwidth]{sarima_resid.pdf}\caption{Residuals and residual ACF of $(1,0,1)(0,1,1)_{52}$, 2015--18 (first 52 dropped).}\label{fig:res}\end{figure*}
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/ljungbox.tex}}\caption{Ljung--Box $p$-values for model D.}\label{tab:lb}\end{table}
 
-\subsection{Evaluation Design}
-Three expanding-window origins (end of 2016, 2017, 2018) each forecast 52 weeks, refitting and reselecting every model with data before the origin only \cite{tashman}. 2018 and 2019 are the main evidence; 2017 (two training years) is a stress test. We report MAE (in \ugm{}), coverage and the Winkler interval score \cite{winkler,gneiting}. Paired differences to climatology use a circular 8-week block bootstrap \cite{kunsch} drawn within each forecast year; a plain Diebold--Mariano test on one 52-step path is not valid, so \cite{dm,hln} is used only for one-step forecasts.
+\section{Evaluation Design}
+Following the expanding-window design \cite{tashman} we stand at the end of 2016, 2017 and 2018 and forecast the next 52 weeks (2017, 2018, 2019); at each origin every model is refitted and re-selected on the earlier data only. 2018 and 2019 are the main test years; 2017 (two training years) is a stress test. With $e_t=x_t-\hat x_t$ on the original scale (forecast $e^{\hat\mu_t}$), we report ME, MAE, RMSE and MAPE. The 95\% interval is $e^{\hat\mu_t\pm1.96\hat\sigma_t}$ with $\hat\sigma_t$ growing with the horizon, and coverage is the share of weeks inside it. Models are compared with the seasonal mean by the Diebold--Mariano test \cite{dm}, $H_0:E(|e^a_t|-|e^b_t|)=0$, with a Bartlett long-run variance (12 lags) because the errors of a 52-step forecast are strongly autocorrelated; for one-step forecasts the Harvey--Leybourne--Newbold small-sample version \cite{hln} is used. As a robustness check we also report an 8-week circular block bootstrap of the same difference.
 
-\subsection{Diagnostics: an Earlier Error}
-The draft's Ljung--Box test \cite{ljungbox} gave $p\approx0$ at every lag. This was an artifact: a state-space SARIMA with $D=1$ initialises its first 52 seasonal states diffusely \cite{dk}, so its first 52 residuals equal the series level and must be dropped. Without them the residuals pass at lags 10 and 26 ($p=\sLBten{},\,\sLBtwentysix{}$) but not at lag 52 ($p=\sLBfiftytwo{}$). The seasonal MA coefficient is \fcMaCoef{} with a standard error (about \fcMaSE{}, unstable across refits) far above 1: the parameter sits on the boundary and is not identified, a sign of possible over-differencing, not a proof.
-\begin{hlbox}
-The first $D=0$ model had no constant, which forces forecasts toward $\log\text{PM}_{2.5}=0$. The matched comparison (same orders, same folds) is in Table~\ref{tab:d0}; the no-constant fit has an AR root near 1 and is numerically fragile, so read it as ``60--90''. With or without a constant, $D=0$ stays clearly worse than climatology.
-\end{hlbox}
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/d0const.tex}}\caption{SARIMA $D=0$ with and without a constant.}\label{tab:d0}\end{table}
+\section{Does Weather Help?}
+\subsection{Deseasonalising and the VAR}
+Wind, humidity and \pmtwo{} all follow the calendar (Fig.~\ref{fig:wx}; raw Spearman correlations of \pmtwo{} with wind \spearWind\ and humidity \spearRh). We subtract each calendar day's smoothed average over the five years to obtain \emph{anomalies} and fit a VAR($p$) \cite{sims} to the three daily anomalies $W$ (wind speed), $H$ (humidity) and $P$ (log \pmtwo{}). AIC picks $p=\varLagAic$ and BIC $p=\varLagBic$ (Table~\ref{tab:var}); we use \varLagAic, and the residuals pass the portmanteau test ($p=\portP$).
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{weather_weekly.pdf}\caption{Weekly \pmtwo{}, wind speed and humidity, 2015--2019.}\label{fig:wx}\end{figure}
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/varlag.tex}}\caption{VAR lag selection (smaller is better).}\label{tab:var}\end{table}
+\subsection{Granger Causality}
+In the $P$ equation, $P_t=c+\sum_{i=1}^{p}a_iP_{t-i}+\sum b_iW_{t-i}+\sum d_iH_{t-i}+u_t$, wind does not Granger-cause $P$ \cite{granger} if $H_0:b_1=\dots=b_p=0$, tested by an $F$-test. Wind and humidity each Granger-cause \pmtwo{} (Table~\ref{tab:gr}, $p=\gWindP$ and \gRhP), also with temperature and rain in the system; the reverse directions are not significant ($p=\gRevWindP$, \gRevRhP). This is a statement about prediction, not proof of a physical cause.
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/granger.tex}}\caption{Granger $F$-tests, VAR(\varLagAic), daily anomalies 2015--19.}\label{tab:gr}\end{table}
+\subsection{The Weekly Horizon}
+On deseasonalised weekly data, adding last week's wind and humidity to last week's \pmtwo{} raises $R^2$ from \nestRone\ to \nestRtwo\ ($\Delta R^2=\nestDR$, $F$-test $p=\nestP$; Table~\ref{tab:nest}): no added information. The same week's weather is related to \pmtwo{} ($R^2=\nestRsame$) but is known only with hindsight. Weather therefore matters within days, and its information is used up inside a week.
+\begin{table}[t]\centering\small\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/nested.tex}}\caption{Weekly regression of deseasonalised \pmtwo{}.}\label{tab:nest}\end{table}
 
 \section{Model Comparisons}
-\subsection{52-Week Backtest}
-\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_backtest.pdf}\caption{The 2019 forecast of the selected model against climatology and the actuals (left), and MAE by forecast year (right).}\label{fig:bt}\end{figure*}
-In 2019 the selected model scores \fcMaeSelNineteen{} against \fcMaeClimNineteen{} for climatology; SARIMA with $D=1$ scores \fcMaeSarimaNineteen{} but \fcMaeSarimaSeventeen{} in 2017 (Table~\ref{tab:bt}, Figure~\ref{fig:bt}). Over 2018--19 the selected model differs from climatology by \fcSelDiff{} \ugm{} with a 95\% bootstrap interval [\fcSelLo{}, \fcSelHi{}]: statistically indistinguishable. The linear-trend variant has the lowest mean (\fcLinMae{} vs \fcClimMae{}) but its interval also spans 0 and it was not the pre-set choice. Seasonal naive, SARIMA $D=0$ and the small LSTM (\fcMaeLstmEighteen{} in 2018, \fcMaeLstmNineteen{} in 2019, after an alignment fix) are clearly worse. A year ahead the calendar carries almost all of the predictable signal. The selected model's residuals still show autocorrelation at lags 26 and 52 in the 2019 fold ($p=\fcLBtwentysix{}$ and $\fcLBfiftytwo{}$; lag 10 is marginal at $p=\fcLBten{}$) while ARCH-LM(4) is clean ($p=\fcARCHp{}$): a few harmonics do not capture all seasonal structure, which is a limit of the model.
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/fc_backtest.tex}}\caption{52-week MAE (\ugm{}); last column: bootstrap verdict against climatology, 2018--19.}\label{tab:bt}\end{table}
-
-\subsection{Prediction Intervals}
-Model-based 95\% intervals covered \fcCovRaw\% of the 2019 weeks (\fcCovEighteen\% in 2018, only \fcCovSeventeen\% in the 2017 fold); all five 2019 misses were below the lower bound, a level bias, since 2019 was cleaner than 2015--18. Scaling the spread by season using only earlier folds raises coverage to \fcCovCal\% but widens the intervals from \fcCalWidthRaw{} to \fcCalWidthCal{} and worsens the Winkler score (\fcCalWinkRaw{} to \fcCalWinkCal{}; Table~\ref{tab:cal}): it buys coverage, not sharper intervals. The LSTM's interval is an optimistic in-sample heuristic.
-
-The calibration rule was fixed before 2019 was scored: compute standardised log errors $z=(\log y-\mu)/\sigma$ on the \emph{earlier} folds, scale $\sigma$ separately for winter and other months with shrinkage toward the pooled value (26 pseudo-weeks), and re-centre only if the bias has the same sign and exceeds 0.5 standard deviations in both folds. It did not re-centre in 2019 (mean $z$ of \fcZa{} and \fcZb{}), so only the scale changed. A smooth shrunk shift defined \emph{after} seeing 2019 removes the level bias (bias \fcRawBias{} to \fcShiftBias{}, Winkler \fcShiftWink{}), but we report it only as a sensitivity, since choosing a rule on the test year would be tuning on it. The scale factors differ by fold (\fcFwNineteen{}/\fcFnNineteen{} for 2019, \fcFwTwenty{}/\fcFnTwenty{} for the 2020 forecast), so the calibration is itself uncertain.
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/calib.tex}}\caption{95\% intervals for 2019 (width in \ugm{}).}\label{tab:cal}\end{table}
-
+\subsection{52-Week Forecasts}
+Fig.~\ref{fig:fc19} shows every model's forecast for 2019 and Table~\ref{tab:acc} the errors. MAE for 2018--19 is \maeNaiveAvg\ for the seasonal naive, \maeMeanAvg\ for the seasonal mean, \maeHWAvg\ for Holt--Winters, \maeSarimaAvg\ for SARIMA, \maeHarmAvg\ for harmonic regression and \maeCombAvg\ for the combination. SARIMA is best in 2018 but its MAE in 2017, with two training years, is \maeSarimaSeventeen\ against \maeMeanSeventeen\ for the seasonal mean; Holt--Winters is also weak in 2017 (\maeHWSeventeen) and 2019 (\maeHWNineteen), because its fitted seasonal smoothing parameter is almost zero ($\hat\delta\approx\hwGamma$) so its seasonal index stays at its initial value and over-predicts. The seasonal naive forecast repeats last year's noise. The ME is negative for every model: all over-predict, since 2018--19 were cleaner than the training years.
+\begin{figure*}[t]\centering\includegraphics[width=0.84\textwidth]{fc19_all.pdf}\caption{Forecasts of the six methods for 2019 (blue) against actual weekly \pmtwo{} (orange); bands are 95\% intervals.}\label{fig:fc19}\end{figure*}
+\begin{table*}[t]\centering\small\input{../slides/beamer/tables/acc.tex}\caption{Errors in \ugm{} ($e=$ actual $-$ forecast); last four columns average 2018 and 2019.}\label{tab:acc}\end{table*}
+\subsection{Significance and Intervals}
+The Diebold--Mariano comparison against the seasonal mean is in Table~\ref{tab:dm} and the interval coverage in Table~\ref{tab:cov}. No model is significantly better than the seasonal mean: SARIMA (\dmDSarima\ \ugm{}, $p=\dmPSarima$), harmonic regression ($p=\dmPHarm$) and the combination ($p=\dmPComb$) cannot be told apart from it, whereas the seasonal naive ($p=\dmPNaive$) and Holt--Winters ($p=\dmPHW$) are significantly worse; the block bootstrap agrees. The 95\% intervals cover \covMeanEighteen--\covHWEighteen\% of the 2018 weeks but only \covMeanNineteen--\covHWNineteen\% in 2019 and \covSarimaSeventeen\% (SARIMA) to \covHWSeventeen\% in 2017, i.e.\ they are too narrow when the level drifts; the seasonal naive covers well (\covNaiveNineteen\%) only through very wide bands (\widthNaiveNineteen\ \ugm{}). SARIMA's 2017 interval is badly overconfident.
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}\input{../slides/beamer/tables/dm_full.tex}\caption{DM test against the seasonal mean, 2018--19.}\label{tab:dm}\end{table}
+\begin{table}[t]\centering\footnotesize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/cover.tex}}\caption{Coverage of the 95\% intervals and 2019 mean width.}\label{tab:cov}\end{table}
 \subsection{One Week Ahead}
-The no-weather model's one-step MAE is \fcOneDhr{}. Last week's wind and humidity change it by \fcOneLagged\%, the last three days of the previous week by \fcOneLastThree\%, and the \emph{same} week's weather, known only with hindsight, by \fcOneOracle\% (Harvey--Leybourne--Newbold $p\approx0.07$). Weather explains \pmtwo{} but is a poor forecasting input (Figure~\ref{fig:one}).
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{fc_oneweek.pdf}\caption{One-week-ahead MAE, 2018--19.}\label{fig:one}\end{figure}
-
-\subsection{Conclusive Statements}
-\begin{itemize}\setlength\itemsep{0pt}\setlength\topsep{2pt}
- \item No model is significantly better than climatology in this limited rolling-origin evaluation; Fourier+ARMA is indistinguishable from it and more robust than SARIMA with seasonal differencing.
- \item The SARIMA model with $D=1$ is fragile: it is clearly worse over all three folds, collapsing in 2017 when it has only two seasons to learn from.
- \item Weather helps one week ahead only with hindsight, and not at all at 52 weeks, so a calendar baseline is the right yardstick for long-horizon claims.
- \item Interval coverage can be bought with width; sharpness (the Winkler score) must be reported alongside it.
-\end{itemize}
+With one-step forecasts from the harmonic model, last week's weather makes the MAE slightly \emph{worse}, from \oneNo\ to \oneLag\ \ugm{} ($\oneLagPct\%$, DM $p=\oneLagP$); only the same week's weather (an oracle, unavailable in practice) helps (\oneOracle, $\oneOraclePct\%$, $p=\oneOracleP$). Persistence gives \onePers\ and the seasonal mean \oneMean.
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}\input{../slides/beamer/tables/oneweek.tex}\caption{One-week-ahead MAE (\ugm{}).}\label{tab:one}\end{table}
 
 \section{Peculiarities in Results}
-\begin{itemize}\setlength\itemsep{0pt}\setlength\topsep{2pt}
- \item \sech{Three origins are few.} Resampling weekly errors cannot create extra test years; ``indistinguishable'' means only that the interval contains 0. 2019 was examined in earlier iterations, so it is not a pristine hold-out.
- \item \sech{Median versus mean.} The log model's point forecast is a median, so errors are biased low; the mean needs $e^{\mu+\sigma^2/2}$.
- \item \sech{Calendar.} Week 53 is folded into week 52 and leap days map to a 365-day year; the 2017 fold ends on 24 Dec 2017.
- \item \sech{The LSTM.} A first version paired each input with the next week's calendar features; an audit found it and the corrected model is still poor. It is a small untuned baseline, not a statement about neural networks.
- \item \sech{Residual seasonality.} A few Fourier harmonics leave autocorrelation at lags 26 and 52; a richer seasonal structure might help, but with \nTrain{} training weeks it risks overfitting.
- \item \sech{The station panel.} The six-station check is small and thin in 2017, so the size of the decline, not its direction, is uncertain.
- \item \sech{Simulation noise.} Simulated quantities vary by about 0.3 percentage points between re-runs.
+\begin{itemize}\setlength\itemsep{1pt}\setlength\topsep{2pt}
+ \item \sech{SARIMA is not clearly better.} It ties with the seasonal mean on three training years and fails on two. A year ahead the signal is the calendar; differencing compares each week with a single earlier value, adds noise, and here is over-differenced ($\hat\Theta\approx-1$); the first 52 residuals are an artifact of the diffuse initialisation, not forecast errors.
+ \item \sech{Level bias.} Later years were cleaner than the training years, so every model over-predicts (negative ME in Table~\ref{tab:acc}), and the same bias (\preBiasLo--\preBiasHi\%) is visible in January--March 2020. No model with a constant level can capture the drift.
+ \item \sech{Median versus mean.} On the log scale the point forecast $e^{\hat\mu}$ is the median; the mean is $e^{\hat\mu+\hat\sigma^2/2}$.
+ \item \sech{Few test years.} Three origins cannot rank similar models, and 2019 was examined in earlier drafts of the project (all selection in the code uses only earlier data).
+ \item \sech{Weather is short-lived.} Granger-significant over days, useless over weeks (it even slightly worsens one-week forecasts): both statements are true at their time scales.
 \end{itemize}
 
-\section{Forecasting Results}
-\subsection{The 2020 Outlook and its Validation}
-The final model is fitted on 2015--2019; 5{,}000 weekly paths are simulated (53 weeks, so every calendar day is covered), calibrated, converted to daily values by adding a whole within-week offset vector so each week keeps its simulated mean, and classified into \pmtwo{} bands (not the official multi-pollutant index). Applied to 2019 with data to 2018, all \fcValInside{} monthly means fall inside their 95\% intervals, but the share of Poor-or-worse days is over-predicted (\fcValPoorPred\% vs \fcValPoorAct\% observed). In 2020, January--February fall inside the interval and March--June below it (Figure~\ref{fig:out}, Table~\ref{tab:out}).
-\begin{figure*}[t]\centering\includegraphics[width=\textwidth]{fc_outlook.pdf}\caption{2020 outlook: monthly mean \pmtwo{} with 95\% interval (left) and expected days per band (right).}\label{fig:out}\end{figure*}
-
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/fc_outlook.tex}}\caption{2020 outlook (\ugm{}); Days Poor+ = expected days above 90 \ugm{}; actual shown for full months.}\label{tab:out}\end{table}
-\subsection{The 2020 Lockdown}
-The ten Sunday-ending weeks 29 March--31 May cover 23 March--31 May. Observed \pmtwo{} averaged \fcLockActual{} \ugm{} against a no-lockdown median of \fcLockCf{}: about \fcLockPct\% lower (95\% interval \fcLockLo--\fcLockHi\%), or \fcLockWxPct\% with the actual weather. The model was already about \fcLockPre\% too high before the lockdown; adjusting gives \fcLockAdj\%, other level specifications \fcLockSensLo--\fcLockSensHi\%, and a placebo on the same weeks of 2019 gives \fcLockPlacebo\% with an interval spanning 0 (Table~\ref{tab:lock}). The drop is large and robust in sign, but its size is model-relative and descriptive, not causal \cite{mahato}.
-\begin{figure}[t]\centering\includegraphics[width=\linewidth]{fc_lockdown.pdf}\caption{Actual 2020 weekly \pmtwo{} against the no-lockdown forecast and a weather-adjusted forecast.}\label{fig:lock}\end{figure}
-\begin{table}[t]\centering\scriptsize\adjustbox{max width=\linewidth}{\input{../slides/beamer/tables/lock_sens.tex}}\caption{Gap between actual and projected \pmtwo{} under other level assumptions.}\label{tab:lock}\end{table}
+\section{The 2020 What-If}\label{sec:2020}
+A model fitted on 2015--2019 cannot know about the lockdown that began on 25 March 2020. We therefore use 2020 in two ways. \textbf{January--February} is a genuine out-of-sample test: actual values already ran \preBiasLo--\preBiasHi\% below the forecasts (MAE \janMaeMin--\janMaeMax\ \ugm{}, larger than in 2017--19 because of this level bias). \textbf{The ten Sunday-ending weeks 29 March -- 31 May} (covering 23 March -- 31 May) compare the actual weeks with the ``business as usual'' path (Fig.~\ref{fig:lock}, Table~\ref{tab:lock}). The mean was \lockActual~\ugm{} against \lockFcHarm\ for the harmonic model, a gap of \lockGapHarm\%; the models give \lockGapMax\% to \lockGapMin\%. The models were already \preBiasLo--\preBiasHi\% too high before the lockdown, so the bias-adjusted gap is \lockAdjMax\% to \lockAdjMin\% (harmonic \lockAdjHarm\%). The same ten-week gap over all windows of 2017--19 lies within about \lockUsualLo\% and \lockUsualHi\% for the harmonic model (lowest \lockWinMinHarm\%), and the same weeks of 2019 give \lockPlaceboHarm\%, so for the seasonal mean, harmonic regression and combination the 2020 gap is below every ordinary window; for Holt--Winters and SARIMA, whose 2017 forecasts were poor, a few ordinary windows reach this level (Fig.~\ref{fig:gap}). It is descriptive, not causal \cite{mahato}.
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{fc_lockdown.pdf}\caption{Forecasts made at the end of 2019 (colours) against actual weekly \pmtwo{} in 2020 (black); grey: lockdown.}\label{fig:lock}\end{figure}
+\begin{figure}[t]\centering\includegraphics[width=\linewidth]{lock_gap.pdf}\caption{Ten-week gap for every window in 2017--19 (dots), the 2020 lockdown weeks (orange) and the same weeks of 2019 (diamond).}\label{fig:gap}\end{figure}
+\begin{table*}[t]\centering\small\input{../slides/beamer/tables/lock.tex}\caption{Gap between actual and business-as-usual \pmtwo{}, ten weeks 29 Mar -- 31 May 2020.}\label{tab:lock}\end{table*}
 
 \section{Conclusion}
 \begin{itemize}\setlength\itemsep{0pt}\setlength\topsep{2pt}
- \item Wind and humidity \emph{predict} \pmtwo{} over days, robustly, but not beyond a week.
- \item A year ahead the calendar carries almost all the predictable signal; no model showed a convincing gain over climatology.
- \item Interval widths can be rescaled out of sample at the cost of sharpness; the LSTM and a no-constant SARIMA are clearly worse.
- \item Observed lockdown-period \pmtwo{} is much lower than projected, but its size depends on the projected level.
- \item Limits: three origins, a changing monitor network, one grid cell, one city, and a 2019 year that was seen earlier.
+ \item A year ahead, weekly \pmtwo{} is almost entirely the yearly cycle; no model is significantly better than the seasonal mean, the seasonal naive and Holt--Winters are significantly worse, and SARIMA with a seasonal difference is the least stable with short data.
+ \item Wind and humidity help predict \pmtwo{} over days but add nothing at the weekly scale or to one-week forecasts.
+ \item \pmtwo{} in the 2020 lockdown weeks was \lockGapMax\% to \lockGapMin\% below the business-as-usual path (\lockAdjMax\% to \lockAdjMin\% after the pre-lockdown bias), beyond ordinary forecast error for the better models; the estimate is descriptive.
+ \item Limits: three test years, a level drift not modelled, one city, one weather grid point, a changing station network.
 \end{itemize}
 
 \section{Availability}
@@ -199,26 +169,22 @@ The authors express their gratitude to Prof.\ Anupama Sharma for the opportunity
 \bibitem{openmeteo} P. Zippenfenig, ``Open-Meteo.com Weather API'' [computer software], Zenodo, 2023. doi:\href{https://doi.org/10.5281/zenodo.7970649}{10.5281/zenodo.7970649}.
 \bibitem{stl} R. B. Cleveland, W. S. Cleveland, J. E. McRae and I. Terpenning, ``STL: a seasonal-trend decomposition procedure based on loess'', \emph{J. Official Statistics}, vol.~6, no.~1, pp.~3--73, 1990.
 \bibitem{boxcox} G. E. P. Box and D. R. Cox, ``An analysis of transformations'', \emph{J. R. Stat. Soc. B}, vol.~26, no.~2, pp.~211--243, 1964. doi:\href{https://doi.org/10.1111/j.2517-6161.1964.tb00553.x}{10.1111/j.2517-6161.1964.tb00553.x}.
-\bibitem{engle} R. F. Engle, ``Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation'', \emph{Econometrica}, vol.~50, no.~4, pp.~987--1007, 1982. doi:\href{https://doi.org/10.2307/1912773}{10.2307/1912773}.
 \bibitem{adf} D. A. Dickey and W. A. Fuller, ``Distribution of the estimators for autoregressive time series with a unit root'', \emph{J. Am. Stat. Assoc.}, vol.~74, no.~366a, pp.~427--431, 1979. doi:\href{https://doi.org/10.1080/01621459.1979.10482531}{10.1080/01621459.1979.10482531}.
 \bibitem{kpss} D. Kwiatkowski, P. C. B. Phillips, P. Schmidt and Y. Shin, ``Testing the null hypothesis of stationarity against the alternative of a unit root'', \emph{J. Econometrics}, vol.~54, no.~1--3, pp.~159--178, 1992. doi:\href{https://doi.org/10.1016/0304-4076(92)90104-Y}{10.1016/0304-4076(92)90104-Y}.
 \bibitem{sims} C. A. Sims, ``Macroeconomics and reality'', \emph{Econometrica}, vol.~48, no.~1, pp.~1--48, 1980. doi:\href{https://doi.org/10.2307/1912017}{10.2307/1912017}.
-\bibitem{lut} H. L\"utkepohl, \emph{New Introduction to Multiple Time Series Analysis}. Springer, 2005. doi:\href{https://doi.org/10.1007/978-3-540-27752-1}{10.1007/978-3-540-27752-1}.
 \bibitem{granger} C. W. J. Granger, ``Investigating causal relations by econometric models and cross-spectral methods'', \emph{Econometrica}, vol.~37, no.~3, pp.~424--438, 1969. doi:\href{https://doi.org/10.2307/1912791}{10.2307/1912791}.
-\bibitem{neweywest} W. K. Newey and K. D. West, ``A simple, positive semi-definite, heteroskedasticity and autocorrelation consistent covariance matrix'', \emph{Econometrica}, vol.~55, no.~3, pp.~703--708, 1987. doi:\href{https://doi.org/10.2307/1913610}{10.2307/1913610}.
-\bibitem{pesaran} H. H. Pesaran and Y. Shin, ``Generalized impulse response analysis in linear multivariate models'', \emph{Economics Letters}, vol.~58, no.~1, pp.~17--29, 1998. doi:\href{https://doi.org/10.1016/S0165-1765(97)00214-0}{10.1016/S0165-1765(97)00214-0}.
 \bibitem{fpp} R. J. Hyndman and G. Athanasopoulos, \emph{Forecasting: Principles and Practice}, 3rd ed. OTexts, 2021, sec.~10.5. \url{https://otexts.com/fpp3/dhr.html}.
-\bibitem{hurvich} C. M. Hurvich and C.-L. Tsai, ``Regression and time series model selection in small samples'', \emph{Biometrika}, vol.~76, no.~2, pp.~297--307, 1989. doi:\href{https://doi.org/10.1093/biomet/76.2.297}{10.1093/biomet/76.2.297}.
-\bibitem{lstm} S. Hochreiter and J. Schmidhuber, ``Long short-term memory'', \emph{Neural Computation}, vol.~9, no.~8, pp.~1735--1780, 1997. doi:\href{https://doi.org/10.1162/neco.1997.9.8.1735}{10.1162/neco.1997.9.8.1735}.
 \bibitem{tashman} L. J. Tashman, ``Out-of-sample tests of forecasting accuracy: an analysis and review'', \emph{Int. J. Forecasting}, vol.~16, no.~4, pp.~437--450, 2000. doi:\href{https://doi.org/10.1016/S0169-2070(00)00065-0}{10.1016/S0169-2070(00)00065-0}.
-\bibitem{winkler} R. L. Winkler, ``A decision-theoretic approach to interval estimation'', \emph{J. Am. Stat. Assoc.}, vol.~67, no.~337, pp.~187--191, 1972. doi:\href{https://doi.org/10.1080/01621459.1972.10481224}{10.1080/01621459.1972.10481224}.
-\bibitem{gneiting} T. Gneiting and A. E. Raftery, ``Strictly proper scoring rules, prediction, and estimation'', \emph{J. Am. Stat. Assoc.}, vol.~102, no.~477, pp.~359--378, 2007. doi:\href{https://doi.org/10.1198/016214506000001437}{10.1198/016214506000001437}.
-\bibitem{kunsch} H. R. K\"unsch, ``The jackknife and the bootstrap for general stationary observations'', \emph{Ann. Statist.}, vol.~17, no.~3, pp.~1217--1241, 1989. doi:\href{https://doi.org/10.1214/aos/1176347265}{10.1214/aos/1176347265}.
 \bibitem{dm} F. X. Diebold and R. S. Mariano, ``Comparing predictive accuracy'', \emph{J. Bus. Econ. Statist.}, vol.~13, no.~3, pp.~253--263, 1995. doi:\href{https://doi.org/10.1080/07350015.1995.10524599}{10.1080/07350015.1995.10524599}.
 \bibitem{hln} D. Harvey, S. Leybourne and P. Newbold, ``Testing the equality of prediction mean squared errors'', \emph{Int. J. Forecasting}, vol.~13, no.~2, pp.~281--291, 1997. doi:\href{https://doi.org/10.1016/S0169-2070(96)00719-4}{10.1016/S0169-2070(96)00719-4}.
 \bibitem{ljungbox} G. M. Ljung and G. E. P. Box, ``On a measure of lack of fit in time series models'', \emph{Biometrika}, vol.~65, no.~2, pp.~297--303, 1978. doi:\href{https://doi.org/10.1093/biomet/65.2.297}{10.1093/biomet/65.2.297}.
-\bibitem{dk} J. Durbin and S. J. Koopman, \emph{Time Series Analysis by State Space Methods}, 2nd ed. Oxford University Press, 2012. doi:\href{https://doi.org/10.1093/acprof:oso/9780199641178.001.0001}{10.1093/acprof:oso/9780199641178.001.0001}.
 \bibitem{mahato} S. Mahato, S. Pal and K. G. Ghosh, ``Effect of lockdown amid COVID-19 pandemic on air quality of the megacity Delhi, India'', \emph{Sci. Total Environ.}, vol.~730, art.~139086, 2020. doi:\href{https://doi.org/10.1016/j.scitotenv.2020.139086}{10.1016/j.scitotenv.2020.139086}.
+\bibitem{holt} C. C. Holt, ``Forecasting seasonals and trends by exponentially weighted moving averages'', \emph{Int. J. Forecasting}, vol.~20, no.~1, pp.~5--10, 2004. doi:\href{https://doi.org/10.1016/j.ijforecast.2003.09.015}{10.1016/j.ijforecast.2003.09.015}.
+\bibitem{winters} P. R. Winters, ``Forecasting sales by exponentially weighted moving averages'', \emph{Management Science}, vol.~6, no.~3, pp.~324--342, 1960. doi:\href{https://doi.org/10.1287/mnsc.6.3.324}{10.1287/mnsc.6.3.324}.
+\bibitem{akaike} H. Akaike, ``A new look at the statistical model identification'', \emph{IEEE Trans. Automatic Control}, vol.~19, no.~6, pp.~716--723, 1974. doi:\href{https://doi.org/10.1109/TAC.1974.1100705}{10.1109/TAC.1974.1100705}.
+\bibitem{schwarz} G. Schwarz, ``Estimating the dimension of a model'', \emph{Ann. Statist.}, vol.~6, no.~2, pp.~461--464, 1978. doi:\href{https://doi.org/10.1214/aos/1176344136}{10.1214/aos/1176344136}.
+\bibitem{boxpierce} G. E. P. Box and D. A. Pierce, ``Distribution of residual autocorrelations in autoregressive-integrated moving average time series models'', \emph{J. Am. Stat. Assoc.}, vol.~65, no.~332, pp.~1509--1526, 1970. doi:\href{https://doi.org/10.1080/01621459.1970.10481180}{10.1080/01621459.1970.10481180}.
+\bibitem{bates} J. M. Bates and C. W. J. Granger, ``The combination of forecasts'', \emph{J. Oper. Res. Soc.}, vol.~20, no.~4, pp.~451--468, 1969. doi:\href{https://doi.org/10.1057/jors.1969.103}{10.1057/jors.1969.103}.
 \end{thebibliography}
 \endgroup
 \end{document}

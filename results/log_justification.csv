@@ -1,8 +1,4 @@
 ,raw PM2.5,log PM2.5
-Skewness,1.7040534557567426,-0.07717474518217178
-"corr(monthly mean, monthly SD)",0.9512126284985621,-0.06664492227012875
-Max / min monthly SD,7.902987411736373,1.3406362380231145
-Levene F (equal variance across months),49.63266340605501,2.3988595791755065
-Levene p-value,9.55123518434803e-97,0.005908007405113993
-"ARCH-LM statistic (7 lags, on daily change)",235.18490135248155,36.434290466039606
-ARCH-LM p-value,3.9252924219641363e-47,6.001734133987486e-06
+Skewness,1.66,-0.14
+"corr(monthly mean, monthly SD)",0.94,-0.09
+Max / min monthly SD,7.9,1.46

@@ -1,33 +1,32 @@
-"""Slide-sized vector figures and LaTeX tables for the Beamer deck.
+"""Figures, LaTeX tables and number macros for the deck and the report.
 
-Each figure is drawn at the size it appears on the slide (14.6 cm wide) with 9-10 pt fonts, so labels are as
-readable as the slide text. Numbers come from data/processed and results/, never typed by hand.
-Run after notebooks 02-03:  .venv/bin/python slides/beamer/make_figures.py
+Figures come in two sizes: PROFILE=deck (default; drawn at the size they appear on a slide) and PROFILE=report (drawn at one
+column / full text width of the two-column report), so fonts stay legible in both. Every number comes from data/processed and
+results/, never typed by hand.   Run after notebooks 02-04:
+    .venv/bin/python slides/beamer/make_figures.py && PROFILE=report .venv/bin/python slides/beamer/make_figures.py
 """
+import json
+import os
 import sys
 import warnings
 from pathlib import Path
 
 import matplotlib as mpl
-import matplotlib.dates  # noqa: F401
+import matplotlib.dates as mdates  # noqa: F401
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
-from statsmodels.tsa.api import VAR
-from statsmodels.tsa.seasonal import STL
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.aqi import band_edges  # noqa: E402
+from src import forecast as F  # noqa: E402
 from src.plots import AXIS, AQUA, BLUE, INK, INK_2, MUTED, NEUTRAL, ORANGE, SEASON_COLORS, use_style  # noqa: E402
 from src.data import SEASONS, OTHER_SEASON  # noqa: E402
-from src.tsa import doy_anomaly  # noqa: E402
 
 warnings.filterwarnings("ignore")
-import os
 PROFILE = os.environ.get("PROFILE", "deck")          # "deck" (slides) or "report" (two-column paper)
 FIG, TAB = HERE / ("fig" if PROFILE == "deck" else "fig_report"), HERE / "tables"
 FIG.mkdir(exist_ok=True)
@@ -35,13 +34,13 @@ TAB.mkdir(exist_ok=True)
 W_CM = 14.6 if PROFILE == "deck" else 17.0
 SINGLE_CM = 8.4   # one report column
 K = 1.15 if PROFILE == "deck" else 1.0
+CM = 1 / 2.54
 
 
 def fs(x):
-    """Scale a hard-coded font size for the profile (report never goes below 7 pt)."""
+    """Scale a hard-coded font size for the profile (the report never goes below 7 pt)."""
     return x * K if PROFILE == "deck" else max(x, 7.0)
 
-CM = 1 / 2.54
 
 use_style()
 mpl.rcParams.update({
@@ -54,13 +53,18 @@ daily = pd.read_csv(ROOT / "data/processed/delhi_daily.csv", index_col="Date", p
 weekly = pd.read_csv(ROOT / "data/processed/delhi_weekly.csv", index_col="Date", parse_dates=True)
 RES = ROOT / "results"
 months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MODELS = ["Seasonal naive", "Seasonal mean", "Holt-Winters", "SARIMA", "Harmonic regression", "Combination"]
+COL = {"Seasonal naive": NEUTRAL, "Seasonal mean": MUTED, "Holt-Winters": AQUA, "SARIMA": ORANGE, "Harmonic regression": BLUE,
+       "Combination": "#7a4fd1"}
 
 
-def new_fig(h_cm, nrows=1, ncols=1, w=None, single=False, **kw):
-    if PROFILE == "report" and single:
+def new_fig(h_cm, nrows=1, ncols=1, w=None, single=False, half=False, **kw):
+    if PROFILE == "report" and (single or half):
         w, h_cm = SINGLE_CM, h_cm * 1.25
-    if PROFILE == "deck":
-        h_cm *= 1.1
+    elif PROFILE == "deck" and half:
+        w, h_cm = 7.6, h_cm * 1.15
+    elif PROFILE == "deck":
+        h_cm *= 1.0
     return plt.subplots(nrows, ncols, figsize=((w or W_CM) * CM, h_cm * CM), layout="constrained", **kw)
 
 
@@ -69,225 +73,243 @@ def save(fig, name):
     plt.close(fig)
 
 
-def has(*names):
-    return all((RES / n).exists() for n in names)
-
-
-# logo.png is kept in the repo; to rebuild it: pdfimages -png -f 1 -l 1 Slides.pdf slides/beamer/logo
+# logo.png is kept in the repo
 if (HERE / "logo-000.png").exists():
     rgb, mask = Image.open(HERE / "logo-000.png").convert("RGB"), Image.open(HERE / "logo-001.png").convert("L")
     rgb.putalpha(mask)
     rgb.save(HERE / "logo.png")
 
-# ── 1. The problem: daily PM2.5 over CPCB AQI bands ────────────────────────────────────────────────────
-fig, ax = new_fig(4.0)
-ymax = 400
-for name, lo, hi, colour in band_edges():
-    if lo >= ymax:
-        break
-    ax.axhspan(lo, min(hi, ymax), color=colour, alpha=0.13, lw=0, zorder=0)
-    ax.text(1.005, (lo + min(hi, ymax)) / 2, name, transform=ax.get_yaxis_transform(), va="center", fontsize=fs(7), color=INK_2)
-ax.plot(daily.index, daily["pm25"], color=BLUE, lw=0.6, alpha=0.5, label="Daily mean")
-ax.plot(daily.index, daily["pm25"].rolling(30, center=True).mean(), color=BLUE, lw=2.2, label="30-day average")
-ax.set_ylim(0, ymax)
-ax.set_xlim(daily.index.min(), daily.index.max())
-ax.set_ylabel("PM$_{2.5}$ (µg/m³)")
-ax.legend(loc="upper left", ncols=2)
-save(fig, "problem_aqi")
 
-# ── 2. Seasonality: month boxplot (backup) and STL decomposition ───────────────────────────────────────
+def jl(name):
+    return json.loads((RES / name).read_text())
+
+
+eda, var, fcn = jl("key_numbers_eda.json"), jl("key_numbers_var.json"), jl("key_numbers_forecast.json")
+y = weekly["log_pm25"]; raw = weekly["pm25"]
+fb = pd.read_csv(RES / "fc_backtest_forecasts.csv", parse_dates=["date"])
+f20 = pd.read_csv(RES / "fc_2020_forecasts.csv", parse_dates=["date"])
+LOCK0, LOCK1 = pd.Timestamp("2020-03-25"), pd.Timestamp("2020-05-31")
+
+
+# ═══ 1. Exploring the data ════════════════════════════════════════════════════════════════════════════
+fig, ax = new_fig(4.4, single=True)
+ax.plot(daily.index, daily["pm25"], color=MUTED, lw=0.6, label="daily")
+ax.plot(daily.index, daily["pm25"].rolling(30, center=True, min_periods=15).mean(), color=BLUE, lw=1.8, label="30-day mean")
+ax.axvspan(pd.Timestamp("2020-01-01"), daily.index[-1], color=NEUTRAL, alpha=0.35, lw=0)
+ax.text(pd.Timestamp("2020-04-01"), 560, "2020\n(not used\nto fit)", ha="center", va="top", fontsize=fs(7.5), color=INK_2)
+ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(loc="upper left", frameon=False, ncols=2)
+ax.set_xlim(daily.index[0], daily.index[-1])
+save(fig, "daily_ts")
+
+d_mod = daily.loc[:"2019-12-31"]
 fig, ax = new_fig(5.0, single=True)
-data = [daily.loc[daily.index.month == m, "pm25"].dropna() for m in range(1, 13)]
-season_of_month = {m: n for n, ms in SEASONS.items() for m in ms}
-bp = ax.boxplot(data, tick_labels=(months if PROFILE == "deck" else [m[0] for m in months]), patch_artist=True, widths=0.65, showfliers=True,
+data = [d_mod.loc[d_mod.index.month == m, "pm25"].dropna() for m in range(1, 13)]
+smap = {m: n for n, ms in SEASONS.items() for m in ms}
+bp = ax.boxplot(data, tick_labels=(months if PROFILE == "deck" else [m[0] for m in months]), patch_artist=True, widths=0.65,
                 medianprops=dict(color=INK, lw=1.8), whiskerprops=dict(color=MUTED), capprops=dict(color=MUTED),
                 flierprops=dict(marker="o", markersize=2.5, markerfacecolor=MUTED, markeredgecolor="none", alpha=0.5))
 for box, m in zip(bp["boxes"], range(1, 13)):
-    box.set(facecolor=SEASON_COLORS[season_of_month.get(m, OTHER_SEASON)], edgecolor="white", linewidth=1.5)
-ax.set_ylabel("PM$_{2.5}$ (µg/m³)")
-ax.set_ylim(0, 720)
+    box.set(facecolor=SEASON_COLORS[smap.get(m, OTHER_SEASON)], edgecolor="white", linewidth=1.5)
+ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.set_ylim(0, 720)
 save(fig, "seasonal_boxplot")
 
-# ── 0. Daily PM2.5 with 30-day mean (replaces the notebook PNG so fonts are legible) ──────────────────
-fig, ax = new_fig(4.4, single=True)
-ax.plot(daily.index, daily["pm25"], color=MUTED, lw=0.6, label="daily")
-ax.plot(daily.index, daily["pm25"].rolling(30, min_periods=15).mean(), color=BLUE, lw=1.8, label="30-day mean")
-ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(loc="upper right", frameon=False)
-save(fig, "daily_ts")
+bm = pd.read_csv(RES / "monthly_mean_sd.csv", index_col=0)
+fig, axes = new_fig(4.4, ncols=2)
+for ax, (m_, s_, t_) in zip(axes, [(bm.mean_raw, bm.sd_raw, f"Raw PM$_{{2.5}}$ (corr. {eda['corr_mean_sd_raw']:.2f})"),
+                                    (bm.mean_log, bm.sd_log, f"log PM$_{{2.5}}$ (corr. {eda['corr_mean_sd_log']:.2f})")]):
+    ax.scatter(m_, s_, color=BLUE, s=22)
+    for mo, (xx, yy) in enumerate(zip(m_, s_), 1):
+        ax.annotate(months[mo - 1][:3], (xx, yy), fontsize=fs(7), xytext=(3, 2), textcoords="offset points", color=INK_2)
+    ax.set_xlabel("monthly mean"); ax.set_title(t_, loc="left")
+axes[0].set_ylabel("monthly SD")
+save(fig, "mean_sd")
 
-stl = STL(weekly["log_pm25"], period=52, robust=True).fit()
-fig, axes = new_fig(4.6, nrows=4, sharex=True, single=True)
-for ax, (name, lab, s) in zip(axes, [("Observed", "log PM$_{2.5}$", stl.observed), ("Trend", "Trend", stl.trend),
-                                      ("Seasonal", "Seasonal", stl.seasonal), ("Residual", "Residual", stl.resid)]):
-    if name == "Residual":
-        ax.vlines(s.index, 0, s, color=BLUE, lw=1.2)
+stlc = pd.read_csv(RES / "stl_components.csv", index_col=0, parse_dates=True)
+fig, axes = new_fig(5.2, nrows=4, sharex=True, single=True)
+for ax, (c, lab) in zip(axes, [("observed", "log PM$_{2.5}$"), ("trend", "Trend"), ("seasonal", "Seasonal"), ("resid", "Remainder")]):
+    if c == "resid":
+        ax.vlines(stlc.index, 0, stlc[c], color=BLUE, lw=1.2)
     else:
-        ax.plot(s.index, s, color=BLUE)
+        ax.plot(stlc.index, stlc[c], color=BLUE)
     ax.set_ylabel(lab, rotation=0, ha="right", va="center", fontsize=fs(9), color=INK_2)
-    ax.tick_params(axis="y", labelsize=fs(8))
+    ax.tick_params(axis="y", labelsize=fs(7.5))
 save(fig, "stl")
 
-# ── 3. Why log: histograms of raw vs log PM2.5 with the best-fitting normal curve ─────────────────────
-from scipy import stats as _st  # noqa: E402
-pm = daily["pm25"].dropna()
-lg = np.log(pm)
-fig, axes = new_fig(4.1, ncols=2)
-for ax, s, ttl, c, xl in [(axes[0], pm, "Raw PM$_{2.5}$", ORANGE, "µg/m³"), (axes[1], lg, "log PM$_{2.5}$", BLUE, "log units")]:
-    ax.hist(s, bins=40, density=True, color=c, alpha=0.8, edgecolor="white", linewidth=0.5)
-    xs = np.linspace(s.min(), s.max(), 300)
-    ax.plot(xs, _st.norm.pdf(xs, s.mean(), s.std()), color=INK, lw=1.6, label="normal curve with same mean and SD")
-    sk = float(((s - s.mean()) ** 3).mean() / s.std(ddof=0) ** 3)
-    ax.set_title(f"{ttl}: skewness {sk:+.2f}", loc="left", color=INK)
-    ax.set_xlabel(xl)
-    ax.set_yticks([])
-    ax.grid(False)
-h_, l_ = axes[0].get_legend_handles_labels()
-fig.legend(h_, l_, loc="outside lower center", frameon=False, fontsize=fs(8))
-save(fig, "why_log")
 
-# ── 4. Volatility: monthly SD, raw vs log ──────────────────────────────────────────────────────────────
-bm = pd.read_csv(RES / "monthly_mean_sd.csv", index_col=0)
-fig, axes = new_fig(3.1, ncols=2)
-for ax, col, ttl, c, ylab in [(axes[0], "sd_raw", "Raw PM$_{2.5}$", ORANGE, "SD (µg/m³)"),
-                              (axes[1], "sd_log", "log PM$_{2.5}$", BLUE, "SD (log units)")]:
-    ax.bar(range(1, 13), bm[col], color=c, width=0.7)
-    ax.set_xticks(range(1, 13), [m[0] for m in months])
-    ratio = bm[col].max() / bm[col].min()
-    ax.set_title(f"{ttl}: largest / smallest = {ratio:.1f}×", loc="left", color=INK)
-    ax.set_ylabel(ylab, fontsize=fs(9))
-    ax.grid(axis="x", visible=False)
-save(fig, "volatility_sd")
+def acf_panel(ax, vals, title, n, lags=60):
+    ax.vlines(range(1, lags + 1), 0, vals[1:lags + 1], color=BLUE, lw=1.4)
+    ax.axhline(0, color=INK_2, lw=0.8)
+    ax.axhspan(-1.96 / np.sqrt(n), 1.96 / np.sqrt(n), color=NEUTRAL, alpha=0.35, lw=0)
+    ax.set_xlabel("lag (weeks)"); ax.set_title(title, loc="left"); ax.set_ylim(-1, 1)
 
-# ── 5. Stationarity: weekly log PM2.5 (training years) with rolling mean and SD ────────────────────────
-lw_tr = weekly.loc[:"2018-12-31", "log_pm25"]
-roll_m, roll_s = lw_tr.rolling(52).mean(), lw_tr.rolling(52).std()
-fig, axes = new_fig(3.9, nrows=2, sharex=True, height_ratios=[1.7, 1])
-axes[0].plot(lw_tr.index, lw_tr, color=NEUTRAL, lw=1.3, label="Weekly log PM$_{2.5}$")
-axes[0].plot(roll_m.index, roll_m, color=BLUE, lw=2.4, label="52-week rolling mean")
-axes[0].set_ylabel("log PM$_{2.5}$", fontsize=fs(9))
-axes[0].set_ylim(2.8, 6.8)
-axes[1].plot(roll_s.index, roll_s, color=ORANGE, lw=2.4, label="52-week rolling SD")
-axes[1].set_ylabel("SD", fontsize=fs(9))
-axes[1].set_ylim(0, 1.0)
-import matplotlib.dates as mdates
-axes[1].xaxis.set_major_locator(mdates.YearLocator())
-axes[1].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-h0, l0 = axes[0].get_legend_handles_labels()
-h1, l1 = axes[1].get_legend_handles_labels()
-fig.legend(h0 + h1, l0 + l1, loc="outside upper center", ncols=3, frameon=False)
-save(fig, "stationarity")
 
-# ── 6. Granger tests with robust (HAC) errors ──────────────────────────────────────────────────────────
-if has("granger_hac.csv"):
-    gh = pd.read_csv(RES / "granger_hac.csv")
-    pick = [("Wind → PM2.5", "PM2.5, wind, humidity", "Wind → PM$_{2.5}$"),
-            ("Humidity → PM2.5", "PM2.5, wind, humidity", "Humidity → PM$_{2.5}$"),
-            ("Humidity → PM2.5", "+ rain control", "Humidity → PM$_{2.5}$, rain controlled"),
-            ("Rain → PM2.5", "+ rain control", "Rain → PM$_{2.5}$ (given wind, humidity)"),
-            ("PM2.5 → Wind", "PM2.5, wind, humidity", "PM$_{2.5}$ → Wind"),
-            ("PM2.5 → Humidity", "PM2.5, wind, humidity", "PM$_{2.5}$ → Humidity")]
-    rows = [(lab.replace(' → ', r' $\to$ '), float(gh[(gh.direction == d_) & (gh.spec == s_)].p_value.iloc[0])) for d_, s_, lab in pick][::-1]
-    fig, ax = new_fig(4.1)
-    score = [-np.log10(p) for _, p in rows]
-    ax.barh([r[0] for r in rows], score, color=[BLUE if p < 0.05 else NEUTRAL for _, p in rows], height=0.5)
-    ax.axvline(-np.log10(0.05), color=ORANGE, lw=1.6)
-    ax.text(-np.log10(0.05) + 0.3, len(rows) - 0.35, "p = 0.05", color=ORANGE, fontsize=fs(8), va="bottom")
-    for i, (s_, (_, p)) in enumerate(zip(score, rows)):
-        if p < 1e-10:
-            lab = r"$p<10^{-10}$"
-        elif p < 1e-3:
-            m_, e_ = f"{p:.0e}".split("e")
-            lab = rf"$p={m_}\times10^{{{int(e_)}}}$"
-        else:
-            lab = f"p = {p:.2f}, not significant"
-        ax.text(max(s_ + 0.3, 2.0), i, lab, va="center", fontsize=fs(8), color=INK)
-    ax.set_xlim(0, 27)
-    ax.set_xlabel("Evidence: $-\\log_{10}(p)$ (longer = stronger)")
-    ax.grid(axis="y", visible=False)
-    save(fig, "granger_hac")
+acf_, pacf_ = pd.read_csv(RES / "acf_weekly_train.csv", index_col=0), pd.read_csv(RES / "pacf_weekly_train.csv", index_col=0)
+fig, axes = new_fig(4.6, ncols=2)
+acf_panel(axes[0], acf_["log PM2.5"].to_numpy(), "ACF of log PM$_{2.5}$", eda["n_weeks_train"])
+acf_panel(axes[1], pacf_["log PM2.5"].to_numpy(), "PACF of log PM$_{2.5}$", eda["n_weeks_train"])
+for xx in (26, 52):
+    axes[0].axvline(xx, color=ORANGE, ls=":", lw=1.2)
+save(fig, "acf_pacf")
+fig, axes = new_fig(4.6, ncols=2)
+acf_panel(axes[0], acf_["52-week difference"].to_numpy(), "ACF after seasonal difference", eda["n_weeks_train"] - 52)
+acf_panel(axes[1], pacf_["52-week difference"].to_numpy(), "PACF after seasonal difference", eda["n_weeks_train"] - 52)
+save(fig, "acf_pacf_d52")
 
-# ── 7. What a shock is, and what happens after one ─────────────────────────────────────────────────────
-d = daily.loc[:"2019-12-31"]
-anom = pd.DataFrame({"wind": doy_anomaly(d["wind"]), "rh": doy_anomaly(d["rh"]), "pm25": doy_anomaly(d["log_pm25"])})
-var4 = VAR(anom).fit(4)
-wind_clim = d["wind"] - anom["wind"]
-wind_pred = wind_clim.loc[var4.fittedvalues.index] + var4.fittedvalues["wind"]
-resid = var4.resid
-z = resid / resid.std()
-fig, axes = new_fig(4.6, ncols=2, width_ratios=[1.1, 1])
-seg = slice("2019-01-14", "2019-01-27")
-ax = axes[0]
-ax.plot(d.loc[seg].index, d.loc[seg, "wind"], color=ORANGE, marker="o", ms=4, label="Actual wind")
-ax.plot(wind_pred.loc[seg].index, wind_pred.loc[seg], color=INK_2, ls="--", marker="s", ms=3, label="Predicted from the past")
-t0 = pd.Timestamp("2019-01-21")
-ax.annotate("", xy=(t0, d.loc[t0, "wind"]), xytext=(t0, wind_pred.loc[t0]), arrowprops=dict(arrowstyle="<->", color=INK, lw=1.4))
-ax.text(t0, 20.3, f"expected {wind_pred.loc[t0]:.1f}, actual {d.loc[t0, 'wind']:.1f}\nshock = +{d.loc[t0, 'wind'] - wind_pred.loc[t0]:.1f} km/h", fontsize=fs(8), ha="center", va="center")
-ax.set_ylabel("Wind speed (km/h)")
-ax.set_ylim(3, 23)
-ticks = pd.date_range("2019-01-14", "2019-01-27", freq="4D")
-ax.set_xticks(ticks)
-ax.set_xticklabels([x.strftime("%d %b") for x in ticks])
-ax.set_title("Shock = actual minus predicted", loc="left", color=INK)
-ax = axes[1]
-edges = [-np.inf, -1.5, -0.75, -0.25, 0.25, 0.75, 1.5, np.inf]
-fut = anom["pm25"].shift(-1) - anom["pm25"].shift(1)  # change in log PM2.5 from day t-1 to day t+1
-curves = {}
-for nm, col, lab in [("wind", ORANGE, "wind shock"), ("rh", AQUA, "humidity shock")]:
-    zz = z[nm]
-    bins = pd.cut(zz, edges)
-    g = pd.DataFrame({"z": zz, "y": fut.loc[zz.index], "bin": bins}).dropna().groupby("bin", observed=True)
-    xm = g["z"].mean().to_numpy()
-    ym, ys, n = g["y"].mean().to_numpy(), g["y"].std().to_numpy(), g["y"].count().to_numpy()
-    se = ys / np.sqrt(n)
-    ax.errorbar(xm + (0.04 if nm == "rh" else -0.04), (np.exp(ym) - 1) * 100, yerr=[(np.exp(ym) - np.exp(ym - 1.96 * se)) * 100, (np.exp(ym + 1.96 * se) - np.exp(ym)) * 100],
-                color=col, marker="o", ms=4.5, lw=1.5, capsize=2.5, label=lab)
-    curves[nm] = {"z": xm.round(2).tolist(), "pct": ((np.exp(ym) - 1) * 100).round(1).tolist(), "n": n.tolist()}
-ax.axhline(0, color=INK_2, lw=0.9)
-ax.axvline(0, color=MUTED, lw=0.9, ls=":")
-ax.set_xlabel("Shock size (SDs)")
-ax.set_ylabel("PM$_{2.5}$ change (%)")
-ax.set_title("Bigger shock, bigger fall in PM$_{2.5}$", loc="left", color=INK)
-ax.set_ylim(-34, 50)
-ax.legend(loc="upper right", fontsize=fs(8))
-save(fig, "shock_example")
-import json
-(RES / "shock_binned.json").write_text(json.dumps({"curves": curves, "jan21_shock_kmh": float(d.loc[t0, "wind"] - wind_pred.loc[t0]),
-                                                  "jan21_wind": float(d.loc[t0, "wind"]), "jan21_pred": float(wind_pred.loc[t0])}, indent=1))
+# ═══ 2. Benchmarks and the harmonic curve ══════════════════════════════════════════════════════════════
+from src.tsa import week_index  # noqa: E402
+tr_y = y.loc[:"2018-12-30"]; tr_raw = raw.loc[:"2018-12-30"]
+wk_idx = pd.Series(week_index(tr_y.index), index=tr_y.index)
+fig, ax = new_fig(4.6, single=True, half=True)
+for yr, c in zip((2015, 2016, 2017, 2018), (NEUTRAL, "#cfcfc7", "#a8a8a0", MUTED)):
+    s = tr_raw[tr_raw.index.year == yr]; ax.plot(wk_idx[s.index], s, color=c, lw=1.0, label=str(yr))
+smean = np.exp(tr_y.groupby(wk_idx).mean())
+ax.plot(smean.index, smean, color=BLUE, lw=2.6, label="mean")
+ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(ncols=3, frameon=False, loc="upper center", fontsize=fs(7), columnspacing=0.8, handlelength=1.2)
+ax.set_ylim(0, 700)
+save(fig, "year_curves")
 
-# ── 8. Impulse responses, with the range across the two orderings ──────────────────────────────────────
-H = 10
-idx = {c: i for i, c in enumerate(anom.columns)}
-irf = var4.irf(H)
-se_ = irf.stderr(orth=True)
-alt_order = ["pm25", "wind", "rh"]
-var_alt = VAR(anom[alt_order]).fit(4)
-irf_alt = var_alt.irf(H).orth_irfs
-sd = np.sqrt(np.diag(var4.sigma_u))
-fig, axes = new_fig(4.3, ncols=2, sharey=True)
-for ax, imp, c, ttl in [(axes[0], "wind", ORANGE, f"+1 SD wind shock ({sd[idx['wind']]:.1f} km/h)"),
-                        (axes[1], "rh", AQUA, f"+1 SD humidity shock ({sd[idx['rh']]:.1f}% RH)")]:
-    r, s = irf.orth_irfs[:H + 1, idx["pm25"], idx[imp]], se_[:H + 1, idx["pm25"], idx[imp]]
-    pct = (np.exp(r) - 1) * 100
-    lo, hi = (np.exp(r - 1.96 * s) - 1) * 100, (np.exp(r + 1.96 * s) - 1) * 100
-    alt = (np.exp(irf_alt[:H + 1, alt_order.index("pm25"), alt_order.index(imp)]) - 1) * 100
-    h = np.arange(H + 1)
-    ax.fill_between(h, lo, hi, color=c, alpha=0.18, lw=0)
-    ax.plot(h, pct, color=c, marker="o", ms=4, label="Weather ordered first (95% band)")
-    ax.plot(h, alt, color=INK_2, ls="--", marker="s", ms=3, label="PM$_{2.5}$ ordered first (lagged effect only)")
-    ax.axhline(0, color=INK_2, lw=0.9)
-    ax.set_title(ttl, loc="left", color=INK)
-    ax.set_xlabel("Days after the shock")
-axes[0].set_ylabel("Change (%)")
-axes[0].set_ylim(-14.5, 3)
-h_, l_ = axes[0].get_legend_handles_labels()
-fig.legend(h_, l_, loc="outside lower center", ncols=2, frameon=False, fontsize=fs(8))
-save(fig, "irf_range")
+Xf = lambda ix, Kk: F.fourier(ix, Kk)  # noqa: E731
+fig, ax = new_fig(4.6, single=True, half=True)
+ax.plot(smean.index, smean, color=NEUTRAL, lw=1.4, label="seasonal mean")
+wkset = tr_y.index[:52]
+import statsmodels.api as sm  # noqa: E402
+for Kk, c in ((1, AQUA), (2, ORANGE), (4, BLUE)):
+    X = sm.add_constant(Xf(tr_y.index, Kk)); b = sm.OLS(tr_y.to_numpy(), X).fit()
+    ref = pd.date_range("2018-01-07", periods=52, freq="W-SUN")
+    curve = np.exp(b.predict(sm.add_constant(Xf(ref, Kk), has_constant="add")))
+    ax.plot(week_index(ref), curve, color=c, lw=2.0, label=f"K = {Kk}")
+ax.set_xlabel("calendar week"); ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.legend(ncols=2, frameon=False, loc="upper center", fontsize=fs(7.5), columnspacing=0.8, handlelength=1.2); ax.set_ylim(0, 400)
+save(fig, "harmonic_k")
 
-# ── tables ─────────────────────────────────────────────────────────────────────────────────────────────
+# ═══ 3. SARIMA residuals (refit the identification model, ~15 s) ═══════════════════════════════════════
+from statsmodels.tsa.statespace.sarimax import SARIMAX  # noqa: E402
+rD = F._fit(SARIMAX(tr_y, order=(1, 0, 1), seasonal_order=(0, 1, 1, 52)))
+e = pd.Series(np.asarray(rD.resid), index=tr_y.index).iloc[int(rD.loglikelihood_burn):]
+from statsmodels.tsa.stattools import acf as _acf  # noqa: E402
+fig, axes = new_fig(3.9, ncols=2, width_ratios=[1.3, 1])
+axes[0].plot(tr_y.index[-len(e):], e, color=BLUE, lw=1.2); axes[0].axhline(0, color=INK_2, lw=0.8); axes[0].set_title("Residuals (first 52 dropped)", loc="left")
+axes[0].xaxis.set_major_locator(mdates.YearLocator()); axes[0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+a_ = _acf(e, nlags=40)
+axes[1].vlines(range(1, 41), 0, a_[1:], color=BLUE, lw=1.4); axes[1].axhline(0, color=INK_2, lw=0.8)
+axes[1].axhspan(-1.96 / np.sqrt(len(e)), 1.96 / np.sqrt(len(e)), color=NEUTRAL, alpha=0.35, lw=0)
+axes[1].set_title("Residual ACF", loc="left"); axes[1].set_xlabel("lag (weeks)")
+save(fig, "sarima_resid")
+
+# ═══ 4. Weather ═══════════════════════════════════════════════════════════════════════════════════════
+from src.tsa import doy_anomaly, doy_climatology, doy365  # noqa: E402
+w_mod = weekly.loc[:"2019-12-29"]
+fig, axes = new_fig(5.6, nrows=3, sharex=True, single=True)
+for ax, (c, lab, col) in zip(axes, [("pm25", "PM$_{2.5}$", BLUE), ("wind", "Wind (km/h)", ORANGE), ("rh", "Humidity (%)", AQUA)]):
+    ax.plot(w_mod.index, w_mod[c], color=col, lw=1.2); ax.set_ylabel(lab, fontsize=fs(8))
+    ax.tick_params(axis="y", labelsize=fs(7.5))
+save(fig, "weather_weekly")
+
+fig, axes = new_fig(4.8, nrows=2, sharex=True, single=True)
+lg = d_mod["log_pm25"]; clim = doy_climatology(lg)
+axes[0].plot(lg.index, lg, color=NEUTRAL, lw=0.7, label="daily")
+axes[0].plot(lg.index, clim.reindex(doy365(lg.index)).to_numpy(), color=BLUE, lw=1.8, label="seasonal mean")
+axes[0].set_ylabel("log PM$_{2.5}$"); axes[0].legend(ncols=2, frameon=False, loc="lower left")
+an = doy_anomaly(lg); axes[1].plot(an.index, an, color=BLUE, lw=0.8); axes[1].axhline(0, color=INK_2, lw=0.8); axes[1].set_ylabel("anomaly")
+save(fig, "deseason")
+
+lag = pd.read_csv(RES / "var_lag_selection.csv", index_col=0)
+fig, ax = new_fig(4.0, single=True, half=True)
+ax.plot(lag.index, lag["AIC"], marker="o", color=BLUE, label="AIC"); ax.plot(lag.index, lag["BIC"], marker="s", color=ORANGE, label="BIC")
+ax.axvline(var["var_lag_aic"], color=MUTED, ls=":"); ax.set_xlabel("VAR lag $p$ (days)"); ax.set_ylabel("criterion"); ax.legend(frameon=False)
+ax.set_ylim(2.3, 3.0)
+save(fig, "var_lag")
+
+# ═══ 5. Backtest forecasts ═════════════════════════════════════════════════════════════════════════════
+def panel(ax, fold, m, title=None, band=True):
+    o = fb[(fb.fold == fold) & (fb.model == m)]
+    ax.plot(o.date, o.actual, color=ORANGE, lw=1.0, marker="o", ms=2.2, label="actual")
+    if band and o.sd.notna().all():
+        ax.fill_between(o.date, np.exp(o.mu - 1.96 * o.sd), np.exp(o.mu + 1.96 * o.sd), color=COL[m], alpha=0.16, lw=0)
+    ax.plot(o.date, np.exp(o.mu), color=COL[m], lw=1.9, label=m)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    ax.set_title(title or m, loc="left"); ax.set_ylim(0, 520)
+
+
+for name, pair in (("fc19_a", ("Seasonal naive", "Seasonal mean")), ("fc19_b", ("Holt-Winters", "SARIMA")), ("fc19_c", ("Harmonic regression", "Combination"))):
+    fig, axes = new_fig(5.2, ncols=2, sharey=True)
+    for ax, m in zip(axes, pair):
+        panel(ax, 2019, m, f"{m}, 2019" + (" (no interval)" if m == "Combination" else ""))
+    axes[0].set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
+    save(fig, name)
+
+if PROFILE == "report":
+    fig, axes = new_fig(8.2, nrows=2, ncols=3, sharex=True, sharey=True)
+    for ax, m in zip(axes.ravel(), MODELS):
+        panel(ax, 2019, m, m)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("PM$_{2.5}$ ($\\mu$g/m$^3$)")
+    save(fig, "fc19_all")
+
+fig, axes = new_fig(5.2, ncols=2, sharey=True)
+for ax, fold in zip(axes, (2017, 2018)):
+    for m in ("Seasonal mean", "Holt-Winters", "SARIMA", "Harmonic regression"):
+        o = fb[(fb.fold == fold) & (fb.model == m)]; ax.plot(o.date, np.exp(o.mu), color=COL[m], lw=1.5, label=m)
+    o = fb[(fb.fold == fold) & (fb.model == "Seasonal mean")]
+    ax.plot(o.date, o.actual, color="black", lw=1.0, marker="o", ms=2.0, label="actual")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
+    ax.set_title(str(fold), loc="left"); ax.set_ylim(0, 520)
+axes[0].set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
+axes[1].legend(fontsize=fs(7), ncols=1, loc="upper right", frameon=False)
+save(fig, "fc_other")
+
+mae = pd.read_csv(RES / "fc_backtest_mae.csv", index_col=0)
+fig, ax = new_fig(5.0, single=True)
+x_ = np.arange(len(MODELS)); w_ = 0.27
+for k, (fo, c) in enumerate([(2017, NEUTRAL), (2018, AQUA), (2019, BLUE)]):
+    ax.bar(x_ + (k - 1) * w_, [mae.loc[m, str(fo)] for m in MODELS], w_, color=c, label=str(fo))
+ax.set_xticks(x_, ["Naive", "Seasonal\nmean", "Holt-\nWinters", "SARIMA", "Harmonic", "Combin."], fontsize=fs(7.5))
+ax.set_ylabel("MAE ($\\mu$g/m$^3$)"); ax.set_ylim(0, 70); ax.legend(title="forecast year", ncols=3, frameon=False, loc="upper left", fontsize=fs(7.5), title_fontsize=fs(7.5))
+save(fig, "fc_mae")
+
+# one week ahead
+ow = pd.read_csv(RES / "fc_oneweek.csv", index_col=0)
+fig, ax = new_fig(4.4, single=True)
+labs_ = ["Persistence", "Seasonal\nmean", "Harmonic,\nno weather", "+ last week's\nweather", "+ same-week\n(oracle)"]
+vals = [ow.loc[m, "both years"] for m in ow.index]
+bars = ax.bar(range(len(vals)), vals, color=[NEUTRAL, NEUTRAL, BLUE, AQUA, ORANGE])
+for i, v in enumerate(vals):
+    ax.text(i, v + 0.4, f"{v:.1f}", ha="center", fontsize=fs(8))
+ax.set_xticks(range(len(vals)), labs_, fontsize=fs(7.5), **({} if PROFILE == "deck" else dict(rotation=35, ha="right")))
+ax.set_ylabel("MAE ($\\mu$g/m$^3$)"); ax.set_ylim(0, max(vals) * 1.15)
+save(fig, "fc_oneweek")
+
+# ═══ 6. 2020 what-if ═══════════════════════════════════════════════════════════════════════════════════
+fig, ax = new_fig(4.6, single=True)
+a20 = f20[f20.model == "Seasonal mean"]
+for m in ("Seasonal mean", "Holt-Winters", "SARIMA", "Harmonic regression"):
+    o = f20[f20.model == m]; ax.plot(o.date, np.exp(o.mu), color=COL[m], lw=1.6, label=m)
+ax.plot(a20.date, a20.actual, color="black", lw=1.5, marker="o", ms=3, label="actual 2020")
+ax.axvspan(LOCK0, LOCK1, color=NEUTRAL, alpha=0.3, lw=0)
+ax.text(LOCK0 + (LOCK1 - LOCK0) / 2, 12, "lockdown", ha="center", fontsize=fs(8), color=INK_2)
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%b")); ax.set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
+ax.legend(fontsize=fs(7.5), ncols=2, loc="upper right", frameon=False, bbox_to_anchor=(1.0, 0.92)); ax.set_ylim(0, 420)
+save(fig, "fc_lockdown")
+
+win = pd.read_csv(RES / "fc_lockdown_windows.csv"); lk = pd.read_csv(RES / "fc_lockdown.csv", index_col=0)
+fig, ax = new_fig(4.6, single=True)
+for i, m in enumerate(MODELS):
+    g = win[win.model == m].gap_pct
+    ax.scatter(np.full(len(g), i) + np.random.default_rng(0).uniform(-0.18, 0.18, len(g)), g, s=6, color=MUTED, alpha=0.6, linewidths=0)
+    ax.scatter(i, lk.loc[m, "lockdown gap (%)"], s=45, color=ORANGE, zorder=3, label="2020 lockdown weeks" if i == 0 else None)
+    ax.scatter(i, lk.loc[m, "same weeks of 2019 (%)"], s=40, marker="D", color=BLUE, zorder=3, label="same weeks, 2019" if i == 0 else None)
+ax.axhline(0, color=INK_2, lw=0.8)
+ax.set_xticks(range(len(MODELS)), ["Naive", "Seasonal\nmean", "Holt-\nWinters", "SARIMA", "Harmonic", "Combin."], fontsize=fs(7.5))
+ax.set_ylabel("gap (%)"); fig.legend(*ax.get_legend_handles_labels(), frameon=False, loc="outside lower center", ncols=2, fontsize=fs(7.5))
+save(fig, "lock_gap")
+
+
+# ═══ tables ════════════════════════════════════════════════════════════════════════════════════════════
 def sci(p):
+    if p < 1e-12:
+        return r"\ensuremath{<10^{-12}}"
     if p < 1e-3:
         m, e = f"{p:.1e}".split("e")
-        return rf"${m}\times10^{{{int(e)}}}$"
+        return rf"\ensuremath{{{m}\times10^{{{int(e)}}}}}"
     return f"{p:.3f}" if p < 0.1 else f"{p:.2f}"
 
 
@@ -298,263 +320,151 @@ def write(name, spec, header, rows):
     (TAB / f"{name}.tex").write_text(f"\\begin{{tabular}}{{{cols}}}\n\\hline\n{header} \\\\\\hline\n{body} \\\\\\hline\n\\end{{tabular}}\n")
 
 
+neg = lambda v, d=1: f"{v:.{d}f}".replace("-", r"\ensuremath{-}")  # noqa: E731
 tex_pm = lambda s: s.replace("→", r"$\to$").replace("PM2.5", r"PM$_{2.5}$")  # noqa: E731
 
-# stationarity (training years)
-st = pd.read_csv(RES / "stationarity_train.csv", index_col=0)
-labs = {"Weekly log PM2.5 (train)": r"log PM$_{2.5}$ (level)", "Weekly Δ₅₂ log PM2.5 (D=1)": r"seasonal difference $\Delta_{52}$",
-        "Weekly Δ Δ₅₂ log PM2.5 (d=1, D=1)": r"$\Delta\Delta_{52}$ (over-differenced)"}
-rows = []
-for k, lab in labs.items():
-    r = st.loc[k]
-    rows.append([lab, f"{r['adf_stat']:.2f}", f"{r['adf_crit_5%']:.2f}", sci(r["adf_p"]), f"{r['kpss_p']:.2f}", f"{r['lag1_acf']:.2f}"])
-write("stationarity", "lrrrrr", r"\textbf{Weekly series, 2015--18} & \textbf{ADF stat} & \textbf{5\% crit.} & \textbf{ADF $p$} & \textbf{KPSS $p$} & \textbf{lag-1 ACF}", rows)
+for f_ in TAB.glob("*.tex"):
+    if f_.name != "numbers.tex":
+        f_.unlink()
 
-# variance / volatility tests with plain-English column
+am = pd.read_csv(RES / "annual_means.csv", index_col=0)
+rows = [[str(yr), f"{r.iloc[0]:.0f}", ("--" if yr == 2016 else neg(r.iloc[1], 0) + "\\%")] for yr, r in am.iterrows()]
+write("annual", "lrr", r"\textbf{Year} & \textbf{Mean PM$_{2.5}$ ($\mu$g/m$^3$)} & \textbf{vs 2016}", rows)
+
 lt = pd.read_csv(RES / "log_justification.csv", index_col=0)
-q = {"corr(monthly mean, monthly SD)": r"Does spread grow with level? (corr.\ of monthly mean and SD)",
-     "Levene F (equal variance across months)": r"Is the spread equal in all 12 months? (Levene $F$)",
-     "ARCH-LM statistic (7 lags, on daily change)": r"Do big changes cluster in time? (ARCH-LM)"}
-rows = [[lab, f"{lt.loc[k].iloc[0]:.2f}", f"{lt.loc[k].iloc[1]:.2f}"] for k, lab in q.items()]
-write("log_tests", "lrr", r"\textbf{Question the test asks} & \textbf{Raw} & \textbf{Log}", rows)
+rows = [[lab, f"{lt.loc[k].iloc[0]:.2f}", f"{lt.loc[k].iloc[1]:.2f}"] for k, lab in
+        [("Skewness", "Skewness"), ("corr(monthly mean, monthly SD)", "Correlation of monthly mean and monthly SD"),
+         ("Max / min monthly SD", "Largest / smallest monthly SD")]]
+write("log_tests", "lrr", r"\textbf{Check} & \textbf{Raw} & \textbf{Log}", rows)
 
-# Granger (HAC) robustness, for the backup slide
-if has("granger_hac.csv"):
-    gh = pd.read_csv(RES / "granger_hac.csv")
-    rows = [[tex_pm(r["direction"]), tex_pm(r["spec"]), f"{r['wald_chi2']:.1f}", sci(r["p_value"])] for _, r in gh.iterrows()]
-    write("granger_robust", "llrr", r"\textbf{Direction} & \textbf{Model} & \textbf{Wald $\chi^2$} & \textbf{$p$ (HAC)}", rows)
+st = pd.read_csv(RES / "stationarity_train.csv", index_col=0)
+rows = []
+for k, lab in (("log PM2.5", r"log PM$_{2.5}$"), ("52-week difference of log PM2.5", r"$\nabla_{52}$ log PM$_{2.5}$")):
+    r = st.loc[k]
+    rows.append([lab, f"{r['adf_stat']:.2f}", sci(r["adf_p"]), f"{r['kpss_stat']:.3f}", "0.463"])
+write("stationarity", "lrrrr", r"\textbf{Weekly series, 2015--18} & \textbf{ADF stat} & \textbf{ADF $p$} & \textbf{KPSS stat} & \textbf{KPSS 5\% crit.}", rows)
 
-# IRF/FEVD under both orderings, for the backup slide
-if has("irf_orderings.csv", "fevd_orderings.csv"):
-    io = pd.read_csv(RES / "irf_orderings.csv")
-    fo = pd.read_csv(RES / "fevd_orderings.csv")
-    rows = []
-    for shock in ["Wind", "Humidity"]:
-        a = io[(io.shock == shock) & io.ordering.str.startswith("weather")].iloc[0]
-        b = io[(io.shock == shock) & io.ordering.str.startswith("PM2.5")].iloc[0]
-        w_ = fo[(fo.variable == shock) & fo.ordering.str.startswith("weather")].share_h14_pct.iloc[0]
-        p_ = fo[(fo.variable == shock) & fo.ordering.str.startswith("PM2.5")].share_h14_pct.iloc[0]
-        rows.append([f"+1 SD {shock.lower()} shock", f"{a.day1_pct:.0f}\\%", f"{b.day1_pct:.0f}\\%", f"{w_:.0f}\\%", f"{p_:.0f}\\%"])
-    write("orderings", "lcccc", r"\textbf{Shock} & \textbf{Day 1: W-first} & \textbf{Day 1: P-first} & \textbf{14-day share: W-first} & \textbf{14-day share: P-first}", rows)
+idn = pd.read_csv(RES / "fc_sarima_identification.csv", index_col=0)
+rows = [[mname.replace("ARIMA", r"ARIMA"), f"{r.AIC:.1f}", f"{r.BIC:.1f}"] for mname, r in idn.iterrows()]
+write("sarima_ident", "lrr", r"\textbf{Candidate (log PM$_{2.5}$, 2015--18)} & \textbf{AIC} & \textbf{BIC}", rows)
 
-# ── Phase 4 (forecasting) figures, tables and numbers ─────────────────────────────────────────────────
-import json as _json  # noqa: E402
+lb = pd.read_csv(RES / "fc_sarima_ljungbox.csv", index_col=0)
+rows = [[str(i), sci(r.iloc[0]), sci(r.iloc[1])] for i, r in lb.iterrows()]
+write("ljungbox", "lrr", r"\textbf{Ljung--Box lag} & \textbf{$p$, all residuals} & \textbf{$p$, first 52 dropped}", rows)
 
-FCN = _json.loads((RES / "key_numbers_forecast.json").read_text()) if has("key_numbers_forecast.json") else None
-if FCN is not None:
-    from matplotlib.patches import Patch  # noqa: E402
-    fb = pd.read_csv(RES / "fc_backtest_forecasts.csv", parse_dates=["date"])
-    fm = pd.read_csv(RES / "fc_backtest_metrics.csv")
-    SELN = "Fourier+ARMA (selected)"
+specs = pd.read_csv(RES / "fc_specs.csv")
+rows = []
+for fo in (2017, 2018, 2019):
+    h = specs[(specs.fold == fo) & (specs.model == "Harmonic regression")].iloc[0]
+    s = specs[(specs.fold == fo) & (specs.model == "SARIMA")].iloc[0]
+    hw = specs[(specs.fold == fo) & (specs.model == "Holt-Winters")].iloc[0]
+    rows.append([str(fo), f"{int(h.K)} pairs, ARMA({int(h.p)},{int(h.q)})", f"({int(s.p)},0,{int(s.q)})({int(s.P)},1,{int(s.Q)})$_{{52}}$", f"{hw.trend}, $\\alpha$={hw.alpha:.2f}"])
+write("specs", "llll", r"\textbf{Forecast year} & \textbf{Harmonic (by AIC)} & \textbf{SARIMA (by AIC)} & \textbf{Holt-Winters trend}", rows)
 
-    # 1. backtest: 2019 forecast + MAE by fold
-    f19s = fb[(fb.fold == 2019) & (fb.model == SELN)].set_index("date")
-    f19c = fb[(fb.fold == 2019) & (fb.model == "Climatology")].set_index("date")
-    def draw_fc(ax):
-        ax.fill_between(f19s.index, np.exp(f19s.mu - 1.96 * f19s.sd), np.exp(f19s.mu + 1.96 * f19s.sd), color=BLUE, alpha=0.18, lw=0, label="95% interval")
-        ax.plot(f19s.index, np.exp(f19s.mu), color=BLUE, label="Fourier+ARMA")
-        ax.plot(f19c.index, np.exp(f19c.mu), color=NEUTRAL, ls="--", lw=1.3, label="Climatology")
-        ax.plot(f19s.index, f19s.actual, color=ORANGE, marker="o", ms=2.5, lw=1.2, label="Actual 2019")
-        ax.set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)")
-        ax.set_title("52-week forecast made on 30 Dec 2018", loc="left", color=INK)
-        ax.xaxis.set_major_formatter(mpl.dates.DateFormatter("%b")); ax.set_ylim(0, 470); ax.legend(fontsize=fs(6.5), ncols=2, loc="upper center")
-    def draw_mae(ax):
-        show = [("Climatology", "Clim."), (SELN, "Fourier"), ("SARIMA D=1", "SARIMA1"), ("SARIMA D=0", "SARIMA0"), ("LSTM (small)", "LSTM")]
-        x_ = np.arange(len(show)); w_ = 0.27
-        for k, (fo, c) in enumerate([(2017, NEUTRAL), (2018, AQUA), (2019, BLUE)]):
-            ax.bar(x_ + (k - 1) * w_, [fm[(fm.fold == fo) & (fm.model == m)].MAE.iloc[0] for m, _ in show], w_, color=c, label=str(fo))
-        ax.set_xticks(x_, [s for _, s in show], fontsize=fs(6.5)); ax.set_ylabel("MAE ($\\mu$g/m$^3$)"); ax.set_ylim(0, 80); ax.legend(title="forecast year", fontsize=fs(6.5), title_fontsize=fs(6.5), ncols=3, loc="upper left")
-        ax.set_title("Error by forecast year", loc="left", color=INK)
-    if PROFILE == "deck":
-        fig, ax = new_fig(5.0); draw_fc(ax); save(fig, "fc_backtest")
-        fig, ax = new_fig(4.8); draw_mae(ax); save(fig, "fc_mae")
-    else:
-        fig, axes = new_fig(5.0, ncols=2, width_ratios=[1.5, 1]); draw_fc(axes[0]); draw_mae(axes[1]); save(fig, "fc_backtest")
+rm, mm_, pm_, me_ = [pd.read_csv(RES / f"fc_backtest_{k}.csv", index_col=0) for k in ("rmse", "mae", "mape", "me")]
+rows = []
+for m in MODELS:
+    rows.append([m, f"{mm_.loc[m, '2017']:.1f}", f"{mm_.loc[m, '2018']:.1f}", f"{mm_.loc[m, '2019']:.1f}", f"{mm_.loc[m, 'mean 2018-19']:.1f}",
+                 f"{rm.loc[m, 'mean 2018-19']:.1f}", f"{pm_.loc[m, 'mean 2018-19']:.0f}", neg(me_.loc[m, "mean 2018-19"])])
+write("acc", "lrrrrrrr", r"\textbf{Model} & \textbf{2017} & \textbf{2018} & \textbf{2019} & \textbf{MAE} & \textbf{RMSE} & \textbf{MAPE\%} & \textbf{ME}", rows)
 
-    # 2. one week ahead
-    ow = pd.read_csv(RES / "fc_oneweek.csv", index_col=0)
-    order_ = ["Persistence", "Climatology", "Climatology + AR(1)", "DHR, no weather", "+ lagged weather (operational)", "+ last 3 days of prior week (operational)", "+ same-week weather (ORACLE)"]
-    labs_ = ["Persis-\ntence", "Clima-\ntology", "Clim.\n+AR(1)", "Fourier\nARMA", "+ lagged\nweather", "+ last 3\ndays", "+ same-week\n(oracle)"]
-    fig, ax = new_fig(4.4, single=True)
-    ax.bar(range(7), [ow.loc[m, "both years"] for m in order_], color=[NEUTRAL, NEUTRAL, NEUTRAL, BLUE, AQUA, AQUA, ORANGE], width=0.65)
-    for i, m in enumerate(order_):
-        ax.text(i, ow.loc[m, "both years"] + 0.4, f"{ow.loc[m, 'both years']:.1f}", ha="center", fontsize=fs(8))
-    ax.set_xticks(range(7), labs_, fontsize=fs(7.5), **({} if PROFILE == "deck" else dict(rotation=35, ha="right"))); ax.set_ylabel("MAE ($\\mu$g/m$^3$)"); ax.set_ylim(0, 35)
-    ax.set_title("2018--19, one week ahead (lower is better)", loc="left", color=INK)
-    save(fig, "fc_oneweek")
+dmt = pd.read_csv(RES / "fc_dm.csv", index_col=0)
+rows = [[m, neg(r["mean MAE difference vs seasonal mean"]), neg(r["DM"], 2), f"{r['DM p-value']:.3f}", f"[{neg(r['bootstrap lo95'])}, {neg(r['bootstrap hi95'])}]"] for m, r in dmt.iterrows()]
+write("dm_full", "lrrrr", r"\textbf{Model vs seasonal mean} & \textbf{mean diff.} & \textbf{DM} & \textbf{$p$} & \textbf{bootstrap 95\%}", rows)
+rows = [r[:4] for r in rows]
+write("dm", "lrrr", r"\textbf{Model vs seasonal mean} & \textbf{mean diff.} & \textbf{DM} & \textbf{$p$}", rows)
 
-    # 3. 2020 outlook
-    o20 = pd.read_csv(RES / "fc_outlook_2020.csv", index_col=0)
-    fig, axes = new_fig(5.0, ncols=2, width_ratios=[1.3, 1])
-    ax = axes[0]; xs = np.arange(12)
-    ax.fill_between(xs, o20["lo95"], o20["hi95"], color=BLUE, alpha=0.18, lw=0)
-    ax.plot(xs, o20["median"], color=BLUE, marker="o", ms=3.5, label="Forecast (median, 95% interval)")
-    ok = o20["actual_days_covered"] >= 25
-    ax.plot(xs[ok.to_numpy()], o20.loc[ok, "actual_mean_2020"], color=ORANGE, marker="s", ms=3.5, label="Actual 2020")
-    for yv in (60, 90, 120):
-        ax.axhline(yv, color=MUTED, lw=0.6, ls=":")
-    ax.set_xticks(xs, [m[0] for m in months]); ax.set_ylabel("Monthly PM$_{2.5}$"); ax.legend(fontsize=fs(7), loc="upper center")
-    ax.set_title("Forecast made in Dec 2019", loc="left", color=INK)
-    ax = axes[1]
-    cols = {"Good": "#00B050", "Satisfactory": "#92D050", "Moderate": "#E6C200", "Poor": "#FF9900", "Very Poor": "#FF0000", "Severe": "#C00000"}
-    bot = np.zeros(12)
-    for c in cols:
-        v = o20[f"days_{c}"].to_numpy(); ax.bar(xs, v, bottom=bot, color=cols[c], width=0.8); bot += v
-    ax.set_xticks(xs, [m[0] for m in months]); ax.set_ylabel("Expected days"); ax.set_title("Days per PM$_{2.5}$ band", loc="left", color=INK)
-    fig.legend([Patch(color=c) for c in cols.values()], list(cols), loc="outside lower center", ncols=6, frameon=False, fontsize=fs(7))
-    save(fig, "fc_outlook")
+cov = pd.read_csv(RES / "fc_coverage.csv", index_col=0); wd = pd.read_csv(RES / "fc_width.csv", index_col=0)
+rows = [[m, *(f"{100 * cov.loc[m, c]:.0f}\\%" for c in ("2017", "2018", "2019")), f"{wd.loc[m, '2019']:.0f}"] for m in MODELS if not np.isnan(cov.loc[m, "2019"])]
+write("cover", "lrrrr", r"\textbf{Model} & \textbf{2017} & \textbf{2018} & \textbf{2019} & \textbf{width 2019}", rows)
 
-    # 4. lockdown
-    w20 = pd.read_csv(RES / "fc_weekly_2020.csv", index_col=0, parse_dates=True) if has("fc_weekly_2020.csv") else None
-    if w20 is not None:
-        fig, ax = new_fig(4.6, single=True)
-        ax.fill_between(w20.index, w20.lo95, w20.hi95, color=BLUE, alpha=0.18, lw=0, label="95% interval (no lockdown)")
-        ax.plot(w20.index, w20["median"], color=BLUE, label="No-lockdown forecast")
-        ax.plot(w20.index, w20.weather_adj_median, color=AQUA, ls="--", label="Weather-adjusted forecast")
-        ax.plot(w20.index, w20.actual, color=ORANGE, marker="o", ms=3, label="Actual 2020")
-        ax.axvspan(pd.Timestamp("2020-03-25"), pd.Timestamp("2020-05-31"), color=NEUTRAL, alpha=0.25, lw=0)
-        ax.text(pd.Timestamp("2020-04-27"), ax.get_ylim()[1] * 0.93, "lockdown", ha="center", fontsize=fs(8), color=INK_2)
-        ax.set_ylabel("Weekly PM$_{2.5}$ ($\\mu$g/m$^3$)"); ax.xaxis.set_major_formatter(mpl.dates.DateFormatter("%b")); ax.legend(fontsize=fs(7.5), ncols=2, loc="upper right")
-        save(fig, "fc_lockdown")
+lg_ = pd.read_csv(RES / "var_lag_selection.csv", index_col=0).loc[0:8]
+rows = [[str(p), f"{r.AIC:.3f}", f"{r.BIC:.3f}"] for p, r in lg_.iterrows()]
+write("varlag", "lrr", r"\textbf{lag $p$} & \textbf{AIC} & \textbf{BIC}", rows)
 
-    # 5. station check
-    sc = pd.read_csv(RES / "station_check.csv", index_col=0)
-    fig, axes = new_fig(4.2, ncols=2)
-    axes[0].bar(sc.index, sc.stations, color=NEUTRAL, width=0.6); axes[0].set_title("Stations reporting PM$_{2.5}$", loc="left", color=INK)
-    for lab, col, c in [("All stations", "all_log_anom", BLUE), ("Fixed 6-station panel", "panel_log_anom", ORANGE), ("City, weather-adjusted", "weather_adj_log_anom", AQUA)]:
-        axes[1].plot(sc.index, sc[col], marker="o", ms=3.5, color=c, label=lab)
-    axes[1].axhline(0, color=INK_2, lw=0.8); axes[1].set_ylabel("Mean log anomaly"); axes[1].legend(fontsize=fs(7))
-    axes[1].set_title("Decline on fixed monitors", loc="left", color=INK)
-    save(fig, "fc_station")
+gv = pd.read_csv(RES / "granger_var.csv"); gc = pd.read_csv(RES / "granger_var_controls.csv")
+rows = [[tex_pm(r["direction"]), f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gv.iterrows()]
+rows += [[tex_pm(r["direction"]).replace("(with temperature and rain)", r"(+ temp., rain)"), f"{r['F']:.1f}", sci(r["p_value"])] for _, r in gc.iterrows()]
+write("granger", "lrr", r"\textbf{Direction (VAR(4), daily anomalies)} & \textbf{$F$} & \textbf{$p$}", rows)
 
-    # tables
-    ld = pd.read_csv(RES / "fc_loss_diff.csv"); ld = ld[ld.folds == "folds 2018+2019"].set_index("model")
-    mae = pd.read_csv(RES / "fc_backtest_mae.csv", index_col=0)
-    rows = []
-    for m, lab in [("Climatology", "Climatology (benchmark)"), ("Climatology + AR(1)", r"Climatology + AR(1)"), ("Linear regression", "Linear regression"),
-                   (SELN, "Fourier+ARMA (selected)"), ("SARIMA D=1", r"SARIMA $D=1$"), ("SARIMA D=0", r"SARIMA $D=0$ (+constant)"), ("LSTM (small)", "LSTM (small)"), ("Seasonal naive", "Seasonal naive")]:
-        v = ld.loc[m, "verdict"] if m in ld.index else "reference"
-        rows.append([lab] + [f"{mae.loc[m, c]:.1f}" for c in ["2017", "2018", "2019", "mean 2018-19"]] + [v])
-    write("fc_backtest", "lrrrrl", r"\textbf{Model} & \textbf{2017} & \textbf{2018} & \textbf{2019} & \textbf{Mean 18--19} & \textbf{vs climatology}", rows)
-    rows = []
-    for m_, r in o20.iterrows():
-        pp = r["days_Poor"] + r["days_Very Poor"] + r["days_Severe"]
-        act = f"{r['actual_mean_2020']:.0f}" if r["actual_days_covered"] >= 25 else "--"
-        rows.append([m_, f"{r['median']:.0f}", f"{r['lo95']:.0f}--{r['hi95']:.0f}", f"{r['P(mean>90)'] * 100:.0f}\\%", f"{pp:.0f}", act])
-    write("fc_outlook", "lrrrrr", r"\textbf{Month} & \textbf{Median} & \textbf{95\% interval} & \textbf{P(mean$>$90)} & \textbf{Days Poor+} & \textbf{Actual}", rows)
+nst = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
+rows = [[r"$P_t$ on $P_{t-1}$", f"{nst.iloc[0]:.3f}", "--"],
+        [r"$+\,W_{t-1},H_{t-1}$ (last week's weather)", f"{nst.iloc[1]:.3f}", f"$F={nst['F']:.2f}$, $p={nst['p_value']:.2f}$"],
+        [r"weather of the same week only", f"{nst['R2 same-week weather only']:.3f}", "hindsight"]]
+write("nested", "lrr", r"\textbf{Weekly regression (anomalies)} & \textbf{$R^2$} & \textbf{test}", rows)
 
-    # extra tables for the final deck and report
-    gr = pd.read_csv(RES / "granger_hac_robust.csv")
-    pick = [("baseline (P=4)", "baseline"), ("+ rain and temperature", "+ rain, temperature"), ("+ linear time trend", "+ linear trend"), ("climatology from 2015-2018 only", "training-only climatology")]
-    rows = []
-    for key_, lab_ in pick:
-        w_ = gr[(gr.spec == key_) & (gr.direction == "Wind → PM2.5")].iloc[0]; h_ = gr[(gr.spec == key_) & (gr.direction == "Humidity → PM2.5")].iloc[0]
-        rows.append([lab_, sci(w_.p_value), sci(h_.p_value)])
-    write("granger4", "lrr", r"\textbf{Specification} & \textbf{Wind $\to$ PM$_{2.5}$} & \textbf{Humidity $\to$ PM$_{2.5}$}", rows)
-    ls_ = pd.read_csv(RES / "fc_lockdown_sensitivity.csv")
-    rows = []
-    for _, r in ls_.iterrows():
-        nm = r["counterfactual"].replace("selected spec (linear, K=5, AR1), headline", "Headline (linear level)").replace("random-walk level (ARIMA errors)", "Random-walk level").replace("constant level", "Constant level")
-        nm = nm.replace("headline + shrunk mean-bias shift (post-hoc)", "Headline + bias shift (post hoc)").replace("PLACEBO: same weeks of 2019 vs 2019 forecast", "Placebo: same weeks of 2019")
-        adj = "--" if pd.isna(r["lockdown_gap_adjusted_for_pre_gap_pct"]) else f"{r['lockdown_gap_adjusted_for_pre_gap_pct']:.0f}\\%"
-        rows.append([nm, f"{r['pre_lockdown_gap_pct']:.0f}\\%".replace("-", "$-$"), f"{r['lockdown_gap_10wk_pct']:.0f}\\%".replace("-", "$-$"), adj.replace("-", "$-$")])
-    write("lock_sens", "lrrr", r"\textbf{Counterfactual} & \textbf{Pre-lockdown gap} & \textbf{Lockdown gap} & \textbf{Adjusted}", rows)
-    ck_ = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
-    rows = [[nm.replace(" (post-hoc sensitivity)", " (post hoc)"), f"{r['coverage'] * 100:.0f}\\%", f"{r['width']:.0f}", f"{r['winkler']:.0f}", f"{r['bias']:+.1f}".replace("-", "$-$")] for nm, r in ck_.iterrows()]
-    write("calib", "lrrrr", r"\textbf{2019 intervals} & \textbf{Coverage} & \textbf{Width} & \textbf{Winkler} & \textbf{Bias}", rows)
-    dz = pd.read_csv(RES / "fc_sarima_d0_constant.csv", index_col=0)
-    rows = [[{"no constant": "SARIMA $D=0$, no constant", "with constant": "SARIMA $D=0$, with constant", "Climatology (reference)": "Climatology"}[i_]] + [f"{dz.loc[i_, c]:.1f}" for c in ["2017", "2018", "2019"]] for i_ in dz.index]
-    write("d0const", "lrrr", r"\textbf{MAE ($\mu$g/m$^3$)} & \textbf{2017} & \textbf{2018} & \textbf{2019}", rows)
-    ck = pd.read_csv(RES / "fc_calibration_2019.csv", index_col=0)
-    _bm = pd.read_csv(RES / "fc_backtest_metrics.csv").set_index(["model", "fold"])["MAE"]   # unrounded: avoids double rounding
-    mae_ = lambda m_, f_: f"{_bm[(m_, f_)]:.1f}"  # noqa: E731
-    nums_fc = {
-        "fcMaeSelNineteen": mae_("Fourier+ARMA (selected)", 2019), "fcMaeClimNineteen": mae_("Climatology", 2019),
-        "fcMaeSarimaNineteen": mae_("SARIMA D=1", 2019), "fcMaeSarimaSeventeen": mae_("SARIMA D=1", 2017),
-        "fcMaeLstmNineteen": mae_("LSTM (small)", 2019), "fcMaeLstmEighteen": mae_("LSTM (small)", 2018), "fcMaeSarimaZeroNineteen": mae_("SARIMA D=0", 2019),
-        "fcCalWidthRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['width']:.0f}", "fcCalWidthCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['width']:.0f}",
-        "fcCalWinkRaw": f"{FCN['calibration_2019_all']['Model-based Gaussian']['winkler']:.0f}", "fcCalWinkCal": f"{FCN['calibration_2019_all']['Calibrated (season scale)']['winkler']:.0f}",
-        "fcCovSeventeen": f"{FCN['backtest']['coverage_selected']['2017'] * 100:.0f}", "fcCovEighteen": f"{FCN['backtest']['coverage_selected']['2018'] * 100:.0f}",
-        "fcSelDiff": f"{ld.loc[SELN, 'mean_MAE_diff_vs_climatology']:+.1f}".replace("-", "$-$"), "fcSelLo": f"{ld.loc[SELN, 'ci_lo']:+.1f}".replace("-", "$-$"), "fcSelHi": f"{ld.loc[SELN, 'ci_hi']:+.1f}",
-        "fcLinMae": f"{mae.loc['Fourier+ARMA linear', 'mean 2018-19']:.1f}", "fcSelMae": f"{mae.loc[SELN, 'mean 2018-19']:.1f}", "fcClimMae": f"{mae.loc['Climatology', 'mean 2018-19']:.1f}",
-        "fcLockActual": f"{FCN['lockdown']['plain']['actual_mean']:.1f}", "fcLockCf": f"{FCN['lockdown']['plain']['cf_median']:.1f}",
-        "fcZa": f"{FCN['calibration_rule_2019']['by_fold_mean_z']['2017']:.2f}".replace("-", "$-$"), "fcZb": f"{FCN['calibration_rule_2019']['by_fold_mean_z']['2018']:.2f}".replace("-", "$-$"),
-        "fcFwNineteen": f"{FCN['calibration_rule_2019']['f']['true']:.2f}", "fcFnNineteen": f"{FCN['calibration_rule_2019']['f']['false']:.2f}",
-        "fcFwTwenty": f"{FCN['outlook_2020_rule']['f']['true']:.2f}", "fcFnTwenty": f"{FCN['outlook_2020_rule']['f']['false']:.2f}",
-        "fcShiftBias": f"{FCN['calibration_2019_all']['Season scale + shrunk shift (post-hoc sensitivity)']['bias']:+.1f}", "fcRawBias": f"{FCN['calibration_2019_all']['Model-based Gaussian']['bias']:+.1f}".replace("-", "$-$"),
-        "fcShiftWink": f"{FCN['calibration_2019_all']['Season scale + shrunk shift (post-hoc sensitivity)']['winkler']:.0f}",
-        "fcLBten": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag10']:.3f}", "fcLBtwentysix": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag26']:.3f}",
-        "fcLBfiftytwo": f"{FCN['diagnostics_selected_2019_fold']['LB_p_lag52']:.3f}", "fcARCHp": f"{FCN['diagnostics_selected_2019_fold']['ARCH4_p']:.2f}",
-        "fcOneDhr": f"{FCN['oneweek_mae']['DHR, no weather']:.1f}", "fcOneOracleMae": f"{FCN['oneweek_mae']['+ same-week weather (ORACLE)']:.1f}",
-        "fcLockPre": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['pre_lockdown_gap_pct']):.0f}",
-        "fcLockAdj": f"{abs(FCN['lockdown_sensitivity']['selected spec (linear, K=5, AR1), headline']['lockdown_gap_adjusted_for_pre_gap_pct']):.0f}",
-        "fcLockPlacebo": f"{abs(FCN['lockdown_sensitivity']['PLACEBO: same weeks of 2019 vs 2019 forecast']['lockdown_gap_10wk_pct']):.0f}",
-        "fcLockSensLo": f"{min(abs(v['lockdown_gap_10wk_pct']) for k, v in FCN['lockdown_sensitivity'].items() if not k.startswith('PLACEBO')):.0f}",
-        "fcLockSensHi": f"{max(abs(v['lockdown_gap_10wk_pct']) for k, v in FCN['lockdown_sensitivity'].items() if not k.startswith('PLACEBO')):.0f}",
-        "fcCovRaw": f"{FCN['coverage_2019_raw'] * 100:.0f}", "fcCovCal": f"{FCN['coverage_2019_calibrated'] * 100:.0f}",
-        "fcMaSE": f"{FCN['sarima_D1_maS_se']:.1f}", "fcMaCoef": f"{FCN['sarima_D1_maS_coef']:.3f}".replace("-", "$-$"),
-        "fcOneLagged": f"{FCN['oneweek_gain_pct']['lagged']:+.1f}".replace("-", "$-$"), "fcOneLastThree": f"{FCN['oneweek_gain_pct']['last3']:+.1f}".replace("-", "$-$"),
-        "fcOneOracle": f"{FCN['oneweek_gain_pct']['oracle']:+.1f}",
-        "fcLockPct": f"{abs(FCN['lockdown']['plain']['gap_median_pct']):.0f}", "fcLockLo": f"{abs(FCN['lockdown']['plain']['gap_hi95_pct']):.0f}", "fcLockHi": f"{abs(FCN['lockdown']['plain']['gap_lo95_pct']):.0f}",
-        "fcLockWxPct": f"{abs(FCN['lockdown']['weather_adjusted']['gap_median_pct']):.0f}",
-        "fcValPoorPred": f"{FCN['validation_2019']['poor_or_worse_pred_pct']:.0f}", "fcValPoorAct": f"{FCN['validation_2019']['poor_or_worse_actual_pct']:.0f}",
-        "fcValInside": f"{FCN['validation_2019']['months_actual_inside_95']}",
-    }
-    sk = _json.loads((RES / "key_numbers_eda.json").read_text())
-    nums_fc.update({"declAll": f"{abs(sk['decline_2016_2019_pct']['all_stations']):.0f}", "declPanel": f"{abs(sk['decline_2016_2019_pct']['fixed_panel']):.0f}",
-                    "declWx": f"{abs(sk['decline_2016_2019_pct']['weather_adjusted']):.0f}"})
-    FC_NUMS = nums_fc
-else:
-    FC_NUMS = {}
+row_names = {"Persistence": "Persistence", "Seasonal mean": "Seasonal mean", "Harmonic, no weather": "Harmonic, no weather",
+             "+ last week's weather": "+ last week's weather", "+ same-week weather (oracle)": "+ same-week weather (oracle)"}
+rows = [[row_names[m], f"{r['2018']:.1f}", f"{r['2019']:.1f}", f"{r['both years']:.1f}", ("--" if np.isnan(r["DM p vs no weather"]) else f"{r['DM p vs no weather']:.2f}")]
+        for m, r in ow.iterrows()]
+write("oneweek", "lrrrr", r"\textbf{One-week-ahead model} & \textbf{MAE 2018} & \textbf{MAE 2019} & \textbf{MAE both} & \textbf{DM $p$}", rows)
 
-print("figures:", sorted(p.name for p in FIG.glob("*.pdf")))
+rows = []
+for m in MODELS:
+    r = lk.loc[m]
+    rows.append([m, f"{r['MAE Jan-Feb 2020']:.1f}", neg(r["bias Jan-Mar 2020 (%)"], 0) + "\\%", neg(r["lockdown gap (%)"], 0) + "\\%",
+                 neg(r["same weeks of 2019 (%)"], 0) + "\\%", f"{neg(r['typical 10-week gap 2017-19: 5th pct'], 0)} to {neg(r['typical 10-week gap 2017-19: 95th pct'], 0)}\\%"])
+write("lock", "lrrrrr", r"\textbf{Model} & \textbf{MAE Jan--Feb} & \textbf{bias to Mar} & \textbf{lockdown gap} & \textbf{2019 same weeks} & \textbf{usual gap range}", rows)
 
-# ── numbers used in the slide text (single source of truth) ────────────────────────────────────────────
-import json  # noqa: E402
-
-def jl(name):
-    return json.loads((RES / name).read_text())
-
-
-eda, var_k = jl("key_numbers_eda.json"), jl("key_numbers_var.json")
+# ═══ number macros ═════════════════════════════════════════════════════════════════════════════════════
+W3 = {"2017": "Seventeen", "2018": "Eighteen", "2019": "Nineteen", "mean 2018-19": "Avg"}
+SHORT = {"Seasonal naive": "Naive", "Seasonal mean": "Mean", "Holt-Winters": "HW", "SARIMA": "Sarima", "Harmonic regression": "Harm", "Combination": "Comb"}
 nums = {
-    "pctPoor": f"{eda['pct_days_poor_or_worse']:.0f}", "winterMean": f"{eda['winter_mean_pm25']:.0f}", "monsoonMean": f"{eda['monsoon_mean_pm25']:.0f}",
-    "ratioWM": f"{eda['winter_to_monsoon_ratio']:.1f}", "Fs": f"{eda['seasonal_strength']:.2f}",
+    "nDays": f"{eda['n_days']:,}".replace(",", "{,}"), "nWeeks": str(eda["n_weeks"]), "nWeeksModel": str(eda["n_weeks_model"]), "nTrain": str(eda["n_weeks_train"]),
+    "pctPoor": f"{eda['pct_days_poor_or_worse']:.0f}", "pmMean": f"{eda['pm25_mean_2015_2019']:.0f}",
+    "winterMean": f"{eda['winter_mean_pm25']:.0f}", "monsoonMean": f"{eda['monsoon_mean_pm25']:.0f}", "ratioWM": f"{eda['winter_to_monsoon_ratio']:.1f}",
+    "skewRaw": f"{eda['skew_raw']:.2f}", "skewLog": neg(eda["skew_log"], 2), "corrRaw": f"{eda['corr_mean_sd_raw']:.2f}", "corrLog": neg(eda["corr_mean_sd_log"], 2),
+    "sdRatioRaw": f"{eda['sd_ratio_raw']:.1f}", "sdRatioLog": f"{eda['sd_ratio_log']:.1f}", "Fs": f"{eda['seasonal_strength']:.2f}", "Ft": f"{eda['trend_strength']:.2f}",
+    "seasRatio": f"{eda['stl_seasonal_ratio']:.0f}", "declAll": f"{abs(eda['decline_2016_2019_pct']):.0f}",
+    "acfOne": f"{eda['acf_lag1']:.2f}", "acfHalf": neg(eda["acf_lag26"], 2), "acfYear": f"{eda['acf_lag52']:.2f}", "acfDOne": f"{eda['acf_d52_lag1']:.2f}",
+    "adfPLog": sci(eda["adf_p_log"]), "kpssLog": f"{eda['kpss_stat_log']:.3f}", "adfPDiff": sci(eda["adf_p_d52"]), "kpssDiff": f"{eda['kpss_stat_d52']:.3f}",
+    "stnFirst": str(eda["stations_by_year"]["2015"]), "stnSecond": str(eda["stations_by_year"]["2016"]), "stnLast": str(eda["stations_by_year"]["2019"]),
+    "varLagAic": str(var["var_lag_aic"]), "varLagBic": str(var["var_lag_bic"]), "portP": f"{var['portmanteau_p']:.2f}",
+    "spearWind": neg(var["spearman_pm25_wind"], 2), "spearRh": neg(var["spearman_pm25_rh"], 2),
+    "gWindP": sci(var["granger"]["Wind → PM2.5"]), "gRhP": sci(var["granger"]["Humidity → PM2.5"]), "gBothP": sci(var["granger"]["Wind + Humidity → PM2.5"]),
+    "gRevWindP": f"{var['granger']['PM2.5 → Wind']:.2f}", "gRevRhP": f"{var['granger']['PM2.5 → Humidity']:.2f}",
+    "gWindPc": sci(var["granger_controls"]["Wind → PM2.5 (with temperature and rain)"]), "gRhPc": sci(var["granger_controls"]["Humidity → PM2.5 (with temperature and rain)"]),
+    "nestRone": f"{nst.iloc[0]:.3f}", "nestRtwo": f"{nst.iloc[1]:.3f}", "nestDR": f"{nst['delta R2']:.3f}", "nestP": f"{nst['p_value']:.2f}", "nestRsame": f"{nst['R2 same-week weather only']:.2f}",
+    "sarMA": neg(fcn["sarima_seasonal_ma"], 2), "sarMASE": f"{fcn['sarima_seasonal_ma_se']:.0f}",
+    "lbAll": sci(fcn["lb_all_lag10"]), "lbTen": f"{fcn['lb_drop_lag10']:.2f}", "lbTwentySix": f"{fcn['lb_drop_lag26']:.2f}", "lbFiftyTwo": f"{fcn['lb_drop_lag52']:.3f}",
 }
-lt_ = pd.read_csv(RES / "log_justification.csv", index_col=0)
-nums.update({
-    "skewRaw": f"{lt_.loc['Skewness'].iloc[0]:+.2f}", "skewLog": f"{lt_.loc['Skewness'].iloc[1]:+.2f}".replace("-", "$-$"),
-    "sdRatioRaw": f"{lt_.loc['Max / min monthly SD'].iloc[0]:.1f}", "sdRatioLog": f"{lt_.loc['Max / min monthly SD'].iloc[1]:.1f}",
-    "archRaw": f"{lt_.loc['ARCH-LM statistic (7 lags, on daily change)'].iloc[0]:.0f}", "archLog": f"{lt_.loc['ARCH-LM statistic (7 lags, on daily change)'].iloc[1]:.0f}",
-    "levPlog": f"{lt_.loc['Levene p-value'].iloc[1]:.3f}", "boxcox": f"{eda['boxcox_lambda_daily']:.3f}",
-})
-io_, fo_ = pd.read_csv(RES / "irf_orderings.csv"), pd.read_csv(RES / "fevd_orderings.csv")
-wk_ = pd.read_csv(RES / "weekly_weather_lag.csv")
-neg = lambda x: f"{abs(x):.0f}"  # noqa: E731
-nums.update({
-    "irfWindA": neg(io_[(io_.shock == "Wind") & io_.ordering.str.startswith("PM2.5")].day1_pct.iloc[0]),
-    "irfWindB": neg(io_[(io_.shock == "Wind") & io_.ordering.str.startswith("weather")].day1_pct.iloc[0]),
-    "irfRhA": neg(io_[(io_.shock == "Humidity") & io_.ordering.str.startswith("PM2.5")].day1_pct.iloc[0]),
-    "irfRhB": neg(io_[(io_.shock == "Humidity") & io_.ordering.str.startswith("weather")].day1_pct.iloc[0]),
-    "fevdA": f"{fo_[fo_.ordering.str.startswith('PM2.5') & (fo_.variable != 'PM2.5')].share_h14_pct.sum():.0f}",
-    "fevdB": f"{fo_[fo_.ordering.str.startswith('weather') & (fo_.variable != 'PM2.5')].share_h14_pct.sum():.0f}",
-    "lagWindP": f"{wk_[wk_.term == 'wind (last week)'].p_value.iloc[0]:.2f}", "lagRhP": f"{wk_[wk_.term == 'humidity (last week)'].p_value.iloc[0]:.2f}",
-    "sameWeekRsq": f"{wk_[wk_.model == 'same-week weather'].r2_model.iloc[0]:.2f}",
-})
-sb = jl("shock_binned.json")
-nums.update({"shockWindBig": f"{abs(sb['curves']['wind']['pct'][-1]):.0f}", "shockWindBigZ": f"{sb['curves']['wind']['z'][-1]:.1f}",
-             "shockWindCalm": f"{sb['curves']['wind']['pct'][0]:.0f}", "shockWindCalmZ": f"{abs(sb['curves']['wind']['z'][0]):.1f}",
-             "janWind": f"{sb['jan21_wind']:.1f}", "janPred": f"{sb['jan21_pred']:.1f}", "janShock": f"{sb['jan21_shock_kmh']:.1f}"})
-bm_ = pd.read_csv(RES / "monthly_mean_sd.csv", index_col=0)
-nums.update({"sdNov": f"{bm_.loc[11, 'sd_raw']:.0f}", "sdAug": f"{bm_.loc[8, 'sd_raw']:.0f}"})
-nums.update(FC_NUMS)
-_dg2 = pd.read_csv(RES / "fc_diagnostics.csv", index_col=0).iloc[1]; _st2 = pd.read_csv(RES / "stationarity_train.csv", index_col=0); _sc2 = pd.read_csv(RES / "station_check.csv", index_col=0)
-nums.update({"sLBten": f"{_dg2.LB_p_lag10:.2f}", "sLBtwentysix": f"{_dg2.LB_p_lag26:.2f}", "sLBfiftytwo": f"{_dg2.LB_p_lag52:.3f}",
-             "acfOver": f"{_st2.iloc[3].lag1_acf:.2f}".replace("-", "$-$"), "panelDaysSev": f"{int(_sc2.loc[2017, 'panel_days'])}", "nTrain": f"{int(_st2.iloc[0].n)}"})
-_gr = pd.read_csv(RES / "granger_hac_robust.csv"); _nest = pd.read_csv(RES / "weekly_lag_nested.csv").iloc[0]
-_g = lambda spec_, d_: _gr[(_gr.spec == spec_) & (_gr.direction == d_)].iloc[0]  # noqa: E731
-nums.update({"gWindP": sci(_g("baseline (P=4)", "Wind → PM2.5").p_value), "gRhP": sci(_g("baseline (P=4)", "Humidity → PM2.5").p_value),
-             "gWindPc": sci(_g("+ rain and temperature", "Wind → PM2.5").p_value), "gRhPc": sci(_g("+ rain and temperature", "Humidity → PM2.5").p_value),
-             "nestDR": f"{_nest.delta_R2:.3f}", "nestP": f"{_nest.joint_wald_p_weather:.2f}", "nestRone": f"{_nest.R2_lagged_pm25_only:.3f}", "nestRtwo": f"{_nest.R2_plus_lagged_weather:.3f}"})
+for m, sh in SHORT.items():
+    for c, w in W3.items():
+        nums[f"mae{sh}{w}"] = f"{mm_.loc[m, c]:.1f}"
+    nums[f"rmse{sh}Avg"] = f"{rm.loc[m, 'mean 2018-19']:.1f}"; nums[f"mape{sh}Avg"] = f"{pm_.loc[m, 'mean 2018-19']:.0f}"; nums[f"me{sh}Avg"] = neg(me_.loc[m, "mean 2018-19"])
+    if not np.isnan(cov.loc[m, "2019"]):
+        for c, w in W3.items():
+            if c in cov.columns:
+                nums[f"cov{sh}{w}"] = f"{100 * cov.loc[m, c]:.0f}"
+for m, r in dmt.iterrows():
+    nums[f"dmP{SHORT[m]}"] = f"{r['DM p-value']:.2f}"; nums[f"dmD{SHORT[m]}"] = neg(r["mean MAE difference vs seasonal mean"])
+bestm = mm_["mean 2018-19"].idxmin()
+nums["bestAvgModel"] = bestm
+for m, sh in SHORT.items():
+    if not np.isnan(wd.loc[m, "2019"]):
+        nums[f"width{sh}Nineteen"] = f"{wd.loc[m, '2019']:.0f}"; nums[f"width{sh}Seventeen"] = f"{wd.loc[m, '2017']:.0f}"
+nums["hwGamma"] = sci(float(specs[(specs.fold == 2019) & (specs.model == "Holt-Winters")].gamma.iloc[0]))
+nums["hwAlpha"] = f"{float(specs[(specs.fold == 2019) & (specs.model == 'Holt-Winters')].alpha.iloc[0]):.2f}"
+# one week ahead
+nums.update({"onePers": f"{ow.loc['Persistence', 'both years']:.1f}", "oneMean": f"{ow.loc['Seasonal mean', 'both years']:.1f}", "oneNo": f"{ow.loc['Harmonic, no weather', 'both years']:.1f}",
+             "oneLag": f"{ow.loc[chr(43) + ' last week' + chr(39) + 's weather', 'both years']:.1f}", "oneOracle": f"{ow.loc['+ same-week weather (oracle)', 'both years']:.1f}",
+             "oneLagPct": neg(ow.loc["+ last week's weather", "change vs no weather (%)"]), "oneOraclePct": neg(ow.loc["+ same-week weather (oracle)", "change vs no weather (%)"]),
+             "oneLagP": f"{ow.loc[chr(43) + ' last week' + chr(39) + 's weather', 'DM p vs no weather']:.2f}", "oneOracleP": f"{ow.loc['+ same-week weather (oracle)', 'DM p vs no weather']:.2f}"})
+# 2020
+H = lk.loc["Harmonic regression"]; Sm = lk.loc["Seasonal mean"]
+nums.update({"lockActual": f"{H['actual lockdown mean']:.0f}", "lockFcHarm": f"{H['forecast lockdown mean']:.0f}", "lockFcMean": f"{Sm['forecast lockdown mean']:.0f}",
+             "lockGapHarm": neg(H["lockdown gap (%)"], 0), "lockGapMean": neg(Sm["lockdown gap (%)"], 0),
+             "lockGapMin": neg(lk["lockdown gap (%)"].max(), 0), "lockGapMax": neg(lk["lockdown gap (%)"].min(), 0),
+             "lockPreHarm": neg(H["bias Jan-Mar 2020 (%)"], 0), "lockAdjMin": neg(lk["gap after removing pre-lockdown bias (%)"].max(), 0), "lockAdjMax": neg(lk["gap after removing pre-lockdown bias (%)"].min(), 0), "lockAdjHarm": neg(H["gap after removing pre-lockdown bias (%)"], 0),
+             "lockPlaceboHarm": neg(H["same weeks of 2019 (%)"], 0), "janMaeMin": f"{lk['MAE Jan-Feb 2020'].min():.0f}", "janMaeMax": f"{lk['MAE Jan-Feb 2020'].max():.0f}", "preBiasLo": f"{abs(lk['bias Jan-Mar 2020 (%)'].max()):.0f}", "preBiasHi": f"{abs(lk['bias Jan-Mar 2020 (%)'].min()):.0f}", "preBiasMin": neg(lk["bias Jan-Mar 2020 (%)"].max(), 0), "preBiasMax": neg(lk["bias Jan-Mar 2020 (%)"].min(), 0), "janMaeHarm": f"{H['MAE Jan-Feb 2020']:.1f}", "janMaeMean": f"{Sm['MAE Jan-Feb 2020']:.1f}",
+             "lockUsualLo": neg(win[win.model == "Harmonic regression"].gap_pct.quantile(0.05), 0), "lockUsualHi": neg(win[win.model == "Harmonic regression"].gap_pct.quantile(0.95), 0),
+             "lockWinMinHarm": neg(win[win.model == "Harmonic regression"].gap_pct.min(), 0), "lockWinMin": neg(win.gap_pct.min(), 0), "lockWinMax": neg(win.gap_pct.max(), 0)})
+# worked example: calendar week 3 (mid-January)
+EXW = 3
+exs = {yr: float(tr_raw[(tr_raw.index.year == yr) & (week_index(tr_raw.index) == EXW)].iloc[0]) for yr in (2015, 2016, 2017, 2018)}
+nums.update({"exWeek": str(EXW), **{f"exY{chr(97 + i)}": f"{v:.0f}" for i, v in enumerate(exs.values())},
+             "exMean": f"{np.exp(np.mean(np.log(list(exs.values())))):.0f}", "exNaive": f"{exs[2018]:.0f}"})
+nums["declWeeks"] = str(len(weekly.loc["2020-01-01":]))
 (TAB / "numbers.tex").write_text("\n".join(f"\\newcommand{{\\{k}}}{{{v}}}" for k, v in nums.items()) + "\n")
+print("figures:", sorted(p.name for p in FIG.glob("*.pdf")))
 print("numbers:", len(nums))

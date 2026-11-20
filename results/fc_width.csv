@@ -1,0 +1,7 @@
+model,2017,2018,2019
+Seasonal naive,167.1,175.0,159.6
+Seasonal mean,76.9,104.6,102.8
+Holt-Winters,198.8,176.7,187.0
+SARIMA,36.1,151.1,133.0
+Harmonic regression,93.1,116.2,115.6
+Combination,,,

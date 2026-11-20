@@ -1,8 +1,6 @@
-model,2018,2019,both years,DM p vs no-weather DHR
-Persistence,26.692,34.697,30.694,0.002
-Climatology,21.772,27.818,24.795,0.249
-Climatology + AR(1),17.897,28.538,23.217,0.714
-"DHR, no weather",20.326,24.455,22.391,
-+ lagged weather (operational),21.191,24.648,22.92,0.075
-+ last 3 days of prior week (operational),20.424,24.059,22.241,0.585
-+ same-week weather (ORACLE),17.566,24.121,20.844,0.074
+,2018,2019,both years,DM p vs no weather,change vs no weather (%)
+Persistence,26.692,34.697,30.694,0.002,37.101
+Seasonal mean,21.772,27.818,24.795,0.198,10.75
+"Harmonic, no weather",20.326,24.45,22.388,,0.0
++ last week's weather,21.191,24.817,23.004,0.028,2.752
++ same-week weather (oracle),17.566,24.319,20.943,0.096,-6.456

@@ -1,0 +1,10 @@
+fold,model,trend,alpha,gamma,p,q,P,Q,n_rejected,K
+2017,Holt-Winters,none,0.22789283276171424,0.013223987351368852,,,,,,
+2017,SARIMA,,,,1.0,0.0,1.0,0.0,0.0,
+2017,Harmonic regression,,,,1.0,0.0,,,0.0,5.0
+2018,Holt-Winters,none,0.2519581715731228,7.480418284268772e-05,,,,,,
+2018,SARIMA,,,,1.0,1.0,0.0,1.0,0.0,
+2018,Harmonic regression,,,,1.0,1.0,,,0.0,5.0
+2019,Holt-Winters,none,0.27072674623840365,7.292732537615964e-05,,,,,,
+2019,SARIMA,,,,1.0,1.0,0.0,1.0,0.0,
+2019,Harmonic regression,,,,1.0,1.0,,,0.0,5.0

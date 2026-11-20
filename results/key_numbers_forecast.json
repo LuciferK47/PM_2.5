@@ -1,241 +1,31 @@
 {
-  "sarima_d0_const": {
-    "2017": {
-      "no constant": 76.92,
-      "with constant": 44.87,
-      "Climatology (reference)": 31.0
-    },
-    "2018": {
-      "no constant": 60.98,
-      "with constant": 42.84,
-      "Climatology (reference)": 21.77
-    },
-    "2019": {
-      "no constant": 92.11,
-      "with constant": 44.1,
-      "Climatology (reference)": 27.82
-    }
-  },
-  "nonconverged_rejected_per_origin": {
-    "2017": 6,
-    "2018": 3,
-    "2019": 5
-  },
-  "sarima_D1_maS_coef": -0.988,
-  "sarima_D1_maS_se": 8.259,
-  "calibration_rule_2019": {
-    "f": {
-      "true": 1.3343095497324873,
-      "false": 1.421532404826579
-    },
-    "shift": 0.0,
-    "by_fold_mean_z": {
-      "2017": -0.66,
-      "2018": -0.45
-    },
-    "recentre": false
-  },
-  "coverage_2019_raw": 0.9038461538461539,
-  "coverage_2019_calibrated": 0.9615384615384616,
-  "calibration_2019_all": {
-    "Model-based Gaussian": {
-      "MAE": 25.694,
-      "coverage": 0.904,
-      "width": 125.08,
-      "winkler": 174.878,
-      "bias": -8.492
-    },
-    "Calibrated (season scale)": {
-      "MAE": 25.694,
-      "coverage": 0.962,
-      "width": 178.655,
-      "winkler": 192.721,
-      "bias": -8.492
-    },
-    "Season scale + shrunk shift (post-hoc sensitivity)": {
-      "MAE": 23.598,
-      "coverage": 0.962,
-      "width": 158.878,
-      "winkler": 161.033,
-      "bias": 4.328
-    }
-  },
-  "shrunk_shift_2019": -0.445110367609404,
-  "oneweek_mae": {
+  "sarima_seasonal_ma": -0.988,
+  "sarima_seasonal_ma_se": 8.3,
+  "lb_all_lag10": 0.0,
+  "lb_drop_lag10": 0.597,
+  "lb_drop_lag26": 0.133,
+  "lb_drop_lag52": 0.02,
+  "oneweek": {
     "Persistence": 30.69,
-    "Climatology": 24.79,
-    "Climatology + AR(1)": 23.22,
-    "DHR, no weather": 22.39,
-    "+ lagged weather (operational)": 22.92,
-    "+ last 3 days of prior week (operational)": 22.24,
-    "+ same-week weather (ORACLE)": 20.84
+    "Seasonal mean": 24.79,
+    "Harmonic, no weather": 22.39,
+    "+ last week's weather": 23.0,
+    "+ same-week weather (oracle)": 20.94
   },
-  "oneweek_gain_pct": {
-    "lagged": -2.4,
-    "last3": 0.7,
-    "oracle": 6.9
+  "lockdown_gap_range": [
+    -49.9,
+    -43.5
+  ],
+  "harmonic_2020": {
+    "MAE Jan-Feb 2020": 44.9,
+    "bias Jan-Mar 2020 (%)": -17.6,
+    "lockdown gap (%)": -49.4,
+    "gap after removing pre-lockdown bias (%)": -38.6,
+    "actual lockdown mean": 48.7,
+    "forecast lockdown mean": 96.2,
+    "same weeks of 2019 (%)": -14.8,
+    "typical 10-week gap 2017-19: 5th pct": -30.6,
+    "typical 10-week gap 2017-19: 95th pct": 23.9
   },
-  "validation_2019": {
-    "months_actual_inside_95": 12,
-    "annual_days_pred": {
-      "Good": 21.5,
-      "Satisfactory": 75.2,
-      "Moderate": 67.4,
-      "Poor": 53.0,
-      "Very Poor": 113.2,
-      "Severe": 34.7
-    },
-    "annual_days_actual": {
-      "Good": 25,
-      "Satisfactory": 97,
-      "Moderate": 78,
-      "Poor": 58,
-      "Very Poor": 73,
-      "Severe": 34
-    },
-    "mean_abs_days_error_per_band_month": 1.89,
-    "poor_or_worse_pred_pct": 55.0,
-    "poor_or_worse_actual_pct": 45.2
-  },
-  "outlook_2020_spec": {
-    "trend": "linear",
-    "K": 5,
-    "p": 1,
-    "q": 0,
-    "n_rejected_nonconverged": 13
-  },
-  "outlook_2020_rule": {
-    "f": {
-      "true": 1.0935180465819772,
-      "false": 0.9476619724449761
-    },
-    "shift": 0.0,
-    "by_fold_mean_z": {
-      "2018": -0.45,
-      "2019": -0.53
-    },
-    "recentre": false
-  },
-  "lockdown": {
-    "plain": {
-      "actual_mean": 48.669714285714285,
-      "cf_median": 85.46299198510313,
-      "gap_median_pct": -43.051707931100005,
-      "gap_lo95_pct": -52.341350673611394,
-      "gap_hi95_pct": -31.980318287029235
-    },
-    "weather_adjusted": {
-      "cf_median": 78.38583242809868,
-      "gap_median_pct": -37.910062528631435,
-      "gap_lo95_pct": -47.7503801997891,
-      "gap_hi95_pct": -26.53614923420981
-    }
-  },
-  "lockdown_sensitivity": {
-    "selected spec (linear, K=5, AR1), headline": {
-      "pre_lockdown_gap_pct": -11.26,
-      "lockdown_gap_10wk_pct": -43.05,
-      "lo95": -52.34,
-      "hi95": -31.98,
-      "gap_9wk_from_5Apr_pct": -41.78,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.83
-    },
-    "constant level": {
-      "pre_lockdown_gap_pct": -22.27,
-      "lockdown_gap_10wk_pct": -50.89,
-      "lo95": -59.58,
-      "hi95": -39.98,
-      "gap_9wk_from_5Apr_pct": -49.84,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -36.81
-    },
-    "random-walk level (ARIMA errors)": {
-      "pre_lockdown_gap_pct": -9.74,
-      "lockdown_gap_10wk_pct": -43.19,
-      "lo95": -55.21,
-      "hi95": -28.79,
-      "gap_9wk_from_5Apr_pct": -41.96,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -37.06
-    },
-    "headline + shrunk mean-bias shift (post-hoc)": {
-      "pre_lockdown_gap_pct": -2.37,
-      "lockdown_gap_10wk_pct": -37.33,
-      "lo95": -47.55,
-      "hi95": -25.14,
-      "gap_9wk_from_5Apr_pct": -35.92,
-      "lockdown_gap_adjusted_for_pre_gap_pct": -35.81
-    },
-    "PLACEBO: same weeks of 2019 vs 2019 forecast": {
-      "pre_lockdown_gap_pct": -9.04,
-      "lockdown_gap_10wk_pct": -15.01,
-      "lo95": -43.38,
-      "hi95": 28.14,
-      "gap_9wk_from_5Apr_pct": NaN,
-      "lockdown_gap_adjusted_for_pre_gap_pct": NaN
-    }
-  },
-  "backtest": {
-    "mae_selected": {
-      "2017": 31.48,
-      "2018": 23.43,
-      "2019": 25.69
-    },
-    "mae_climatology": {
-      "2017": 31.0,
-      "2018": 21.77,
-      "2019": 27.82
-    },
-    "coverage_selected": {
-      "2017": 0.692,
-      "2018": 0.942,
-      "2019": 0.904
-    },
-    "sarima_D1_mae": {
-      "2017": 53.83,
-      "2018": 21.08,
-      "2019": 27.45
-    },
-    "sarima_D0_mae": {
-      "2017": 44.87,
-      "2018": 42.84,
-      "2019": 44.1
-    },
-    "lstm_mae": {
-      "2017": 36.34,
-      "2018": 28.32,
-      "2019": 54.35
-    },
-    "specs": {
-      "2017": {
-        "trend": "rw",
-        "K": 5,
-        "p": 1,
-        "q": 1,
-        "n_rejected_nonconverged": 6
-      },
-      "2018": {
-        "trend": "const",
-        "K": 5,
-        "p": 1,
-        "q": 1,
-        "n_rejected_nonconverged": 3
-      },
-      "2019": {
-        "trend": "rw",
-        "K": 5,
-        "p": 1,
-        "q": 1,
-        "n_rejected_nonconverged": 5
-      }
-    }
-  },
-  "diagnostics_selected_2019_fold": {
-    "burn": 1.0,
-    "n_resid": 208.0,
-    "resid_sd": 0.2265,
-    "LB_p_lag10": 0.0883,
-    "LB_p_lag26": 0.001,
-    "LB_p_lag52": 0.0092,
-    "ARCH4_p": 0.8696,
-    "JB_p": 0.0006
-  }
+  "best_model_mae_mean_2018_19": "SARIMA"
 }

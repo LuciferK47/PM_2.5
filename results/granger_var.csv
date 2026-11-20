@@ -1,6 +1,6 @@
-spec,direction,F,df,p_value,verdict (5%)
-"Anomalies, VAR(4)",Wind → PM2.5,35.95,"(4, 5427)",1.0756739434397503e-29,Granger-causes
-"Anomalies, VAR(4)",Humidity → PM2.5,14.35,"(4, 5427)",1.164599017115319e-11,Granger-causes
-"Anomalies, VAR(4)",Wind + Humidity → PM2.5,21.99,"(8, 5427)",2.762304628968957e-33,Granger-causes
-"Anomalies, VAR(4)",PM2.5 → Wind,1.82,"(4, 5427)",0.12151808076799614,No evidence
-"Anomalies, VAR(4)",PM2.5 → Humidity,0.66,"(4, 5427)",0.6166308297326155,No evidence
+direction,F,df,p_value
+Wind → PM2.5,35.95,"(4, 5427)",1.0756739434397503e-29
+Humidity → PM2.5,14.35,"(4, 5427)",1.164599017115319e-11
+Wind + Humidity → PM2.5,21.99,"(8, 5427)",2.762304628968957e-33
+PM2.5 → Wind,1.82,"(4, 5427)",0.12151808076799614
+PM2.5 → Humidity,0.66,"(4, 5427)",0.6166308297326155
