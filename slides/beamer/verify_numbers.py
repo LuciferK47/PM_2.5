@@ -371,10 +371,10 @@ tone = [w for w in ("Lecture", "course", "curriculum", "handout", "artifact", "n
 check("no lecture numbers, 'course' wording or admission-style phrases on the slides or in the notes", not tone, str(tone))
 tabs_ok = all((TAB / f"{n}.tex").read_text().startswith("\\begin{tabular}") for n in ("acc", "key", "dm", "cover", "lock", "oneweek", "granger", "stationarity"))
 check("generated tables exist and are boxed tabulars", tabs_ok)
-docs = (ROOT / "README.md").read_text() + (ROOT / "HANDOFF.md").read_text()
+docs = (ROOT / "README.md").read_text()
 strip = lambda v: re.sub(r"\\ensuremath\{(.*?)\}", r"\1", v).replace("$", "")  # noqa: E731
 miss = [k for k in ("maeNaiveAvg", "maeMeanAvg", "maeHWAvg", "maeSarimaAvg", "maeHarmAvg", "maeCombAvg", "maeSarimaSeventeen", "lockActual", "pctPoor", "Fs") if strip(macros[k]) not in docs]
-check("key numbers quoted in README/HANDOFF equal the macros", not miss, str(miss))
+check("key numbers quoted in README equal the macros", not miss, str(miss))
 
 bad = [n for n, ok, _ in results if not ok]
 print(f"\n{len(results) - len(bad)}/{len(results)} checks passed")

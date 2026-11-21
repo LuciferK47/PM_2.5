@@ -9,7 +9,7 @@ Delhi's PM2.5 follows a very strong yearly cycle. The project uses methods from 
 2. **Weather.** Do wind speed, humidity, temperature or rain help (VAR / Granger test, weekly test, one-week forecasts)?
 3. **Side investigation: 2020.** 2020 is an outlier by construction, not a forecasting question. A model fitted on 2015-2019 is used as a "business as usual" baseline: how far below it was PM2.5 in the lockdown weeks?
 
-The data end in July 2020, so this is a **historical study**, not an advisory. **New to the project? Read [HANDOFF.md](HANDOFF.md) first; [SPEAKER_NOTES.md](SPEAKER_NOTES.md) says what to present on each slide.**
+The data end in July 2020, so this is a **historical study**, not an advisory. The final report and presentation are `Final_Report.pdf` and `Final_Presentation.pdf`.
 
 ## Key findings
 
@@ -48,13 +48,12 @@ data/raw/          city_day.csv, station_day.csv, stations.csv, delhi_weather_op
 data/processed/    delhi_daily.csv, delhi_weekly.csv
 src/               data.py, tsa.py, forecast.py (models, backtest, metrics, DM test), plots.py, aqi.py
 notebooks/         01_data_prep, 02_eda, 03_var_granger, 04_forecasting (executed, outputs saved)
-tools/             build_nb02.py, build_nb03.py, build_nb04.py (regenerate notebooks), horizon.py (rolling 1-52 week study), extract_notes.py
+tools/             build_nb02.py, build_nb03.py, build_nb04.py (regenerate notebooks), horizon.py (rolling 1-52 week study)
 results/           CSV/JSON tables; fc_* files belong to the forecasting study
 figures/           PNG figures from the notebooks
-slides/beamer/     main.tex (final presentation), notes.tex (notes version), make_figures.py, verify_numbers.py, tables/
+slides/beamer/     main.tex (final presentation source), make_figures.py, verify_numbers.py, tables/
 report/            report.tex (final report)
-HANDOFF.md         full project guide: theory, data quirks, limitations, viva Q&A, reference audit
-SPEAKER_NOTES.md   what to say on each slide
+Final_Report.pdf, Final_Presentation.pdf   the final deliverables
 ```
 
 ## Reproduce
@@ -83,12 +82,11 @@ cd ..
 cd slides/beamer
 ../../.venv/bin/python make_figures.py && PROFILE=report ../../.venv/bin/python make_figures.py
 ../../.venv/bin/python verify_numbers.py
-tectonic main.tex && tectonic notes.tex          # slides and speaker-notes PDF
+tectonic main.tex                                # slides
 cd ../../report && tectonic report.tex
-cd .. && .venv/bin/python tools/extract_notes.py  # SPEAKER_NOTES.md
 ```
 
-PDFs are not tracked (`*.pdf` is git-ignored); build them with the commands above.
+The two final PDFs are committed at the repository root; other PDFs are git-ignored.
 `verify_numbers.py` re-derives the headline numbers from the raw files with separate code and fails on any mismatch.
 
 ## Limitations
